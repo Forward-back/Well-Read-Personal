@@ -280,7 +280,8 @@ const loadSessionAndHydrate = async (sid) => {
     }
 };
 const inputFieldRef = ref();
-const scrollContainer = ref<HTMLElement | null>(null);
+const scrollContainer = ref(null);
+const SCROLL_BOTTOM_THRESHOLD = 120;
 const created_at = ref('');
 const limit = ref(20);
 const messagesList = reactive([]);
@@ -1337,11 +1338,16 @@ const flashRewriteAnchor = (root, candidates, fallbackTarget, matchIndex = 1) =>
 const handleJumpToRewriteSource = async ({ source, target, candidates } = {}) => {
     if (!source?.message_id || !target) return;
     await nextTick();
-    const root = scrollContainer.value;
+    // 模板 ref 在部分 KeepAlive/HMR 组合下可能暂时为空，回退到 DOM 查询。
+    const root = scrollContainer.value || document.querySelector('.chat_scroll_box');
     const el = root?.querySelector(`[data-message-id="${CSS.escape(source.message_id)}"]`);
-    if (!el) return;
+    if (!el) {
+        MessagePlugin.warning(t('chat.queryRewriteJumpMissing'));
+        return;
+    }
     if (!flashRewriteAnchor(el, candidates, target, source.match_index || 1)) {
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        MessagePlugin.info(t('chat.queryRewriteJumpApprox'));
     }
 };
 

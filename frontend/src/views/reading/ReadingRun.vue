@@ -6,6 +6,9 @@
         <p class="reading-desc">{{ $t('reading.description') }}</p>
       </div>
       <div v-if="run" class="reading-header-actions">
+        <t-button v-if="canStartNewReading" theme="primary" @click="startNewReading">
+          {{ $t('reading.newReading') }}
+        </t-button>
         <t-button v-if="showReportEditor" variant="outline" theme="default" :loading="reportLoading" @click="openReportEditor">
           {{ $t('reading.editReport') }}
           <span v-if="reportEdited" class="reading-edited-badge">{{ $t('reading.editedTag') }}</span>
@@ -24,29 +27,35 @@
 
     <div v-if="!run" class="reading-start">
       <div class="reading-form">
-        <label class="reading-label">{{ $t('reading.kbLabel') }}</label>
-        <t-input v-model="kbSearch" clearable :placeholder="$t('reading.searchKb')" class="reading-search">
-          <template #prefix-icon><t-icon name="search" /></template>
-        </t-input>
-        <t-select v-model="kbId" :options="filteredKbOptions" filterable @change="loadDocuments" />
-        <label class="reading-label">{{ $t('reading.docsLabel') }}</label>
-        <t-input v-model="docSearch" clearable :placeholder="$t('reading.searchDocs')" class="reading-search" :disabled="!kbId">
-          <template #prefix-icon><t-icon name="search" /></template>
-        </t-input>
-        <t-select v-model="documentIds" :options="filteredDocumentOptions" multiple filterable :max="5" :disabled="!kbId" />
-        <label class="reading-label">{{ $t('reading.depthLabel') }}</label>
-        <t-radio-group v-model="depth">
-          <t-radio-button value="quick">{{ $t('reading.depth.quick') }}</t-radio-button>
-          <t-radio-button value="standard">{{ $t('reading.depth.standard') }}</t-radio-button>
-          <t-radio-button value="deep">{{ $t('reading.depth.deep') }}</t-radio-button>
-        </t-radio-group>
-        <p class="reading-depth-hint">{{ $t(`reading.depthHint.${depth}`) }}</p>
-        <label class="reading-label">{{ $t('reading.goalLabel') }}</label>
-        <t-textarea v-model="goal" :autosize="{ minRows: 2, maxRows: 4 }"
-          :placeholder="$t('reading.goalPlaceholder')" />
-        <t-button theme="primary" :loading="creating" :disabled="documentIds.length === 0" @click="startRun">
-          {{ $t('reading.start') }}
-        </t-button>
+        <div class="reading-form-col">
+          <label class="reading-label">{{ $t('reading.kbLabel') }}</label>
+          <t-input v-model="kbSearch" clearable :placeholder="$t('reading.searchKb')" class="reading-search">
+            <template #prefix-icon><t-icon name="search" /></template>
+          </t-input>
+          <t-select v-model="kbId" :options="filteredKbOptions" filterable @change="loadDocuments" />
+          <label class="reading-label">{{ $t('reading.docsLabel') }}</label>
+          <t-input v-model="docSearch" clearable :placeholder="$t('reading.searchDocs')" class="reading-search" :disabled="!kbId">
+            <template #prefix-icon><t-icon name="search" /></template>
+          </t-input>
+          <t-select v-model="documentIds" :options="filteredDocumentOptions" multiple filterable :max="5" :disabled="!kbId" />
+        </div>
+        <div class="reading-form-col">
+          <label class="reading-label">{{ $t('reading.depthLabel') }}</label>
+          <t-radio-group v-model="depth">
+            <t-radio-button value="quick">{{ $t('reading.depth.quick') }}</t-radio-button>
+            <t-radio-button value="standard">{{ $t('reading.depth.standard') }}</t-radio-button>
+            <t-radio-button value="deep">{{ $t('reading.depth.deep') }}</t-radio-button>
+          </t-radio-group>
+          <p class="reading-depth-hint">{{ $t(`reading.depthHint.${depth}`) }}</p>
+          <label class="reading-label">{{ $t('reading.goalLabel') }}</label>
+          <t-textarea v-model="goal" :autosize="{ minRows: 2, maxRows: 4 }"
+            :placeholder="$t('reading.goalPlaceholder')" />
+        </div>
+        <div class="reading-form-footer">
+          <t-button class="reading-start-button" theme="primary" :loading="creating" :disabled="documentIds.length === 0" @click="startRun">
+            {{ $t('reading.start') }}
+          </t-button>
+        </div>
       </div>
       <p class="reading-hint">{{ $t('reading.hint') }}</p>
     </div>
@@ -144,6 +153,11 @@
               <span>{{ $t('reading.contradictionCount', { count: structuredContradictions.length }) }}</span>
             </div>
             <p class="reading-hint">{{ $t('reading.finalHint') }}</p>
+            <div class="reading-actions">
+              <t-button theme="primary" @click="startNewReading">
+                {{ $t('reading.newReading') }}
+              </t-button>
+            </div>
           </div>
 
           <div v-else-if="currentPendingQuestion" class="reading-question">
@@ -322,6 +336,11 @@
               <h4>{{ group.label }}</h4>
               <p v-if="!group.items.length" class="reading-empty">—</p>
               <p v-for="(item, index) in group.items" :key="index" class="reading-note-item">{{ item }}</p>
+            </div>
+            <div class="reading-actions">
+              <t-button theme="primary" @click="startNewReading">
+                {{ $t('reading.newReading') }}
+              </t-button>
             </div>
           </div>
         </template>
@@ -672,6 +691,9 @@ const structuredTabs = computed(() => [
 ])
 const pauseEachRound = computed(() =>
   isStructured.value && (run.value?.plan.depth || 'standard') !== 'quick',
+)
+const canStartNewReading = computed(() =>
+  ['finished', 'stopped', 'failed'].includes(String(run.value?.status || '')),
 )
 
 const activeDocument = computed(() => {
@@ -1336,6 +1358,22 @@ const startRun = async () => {
   }
 }
 
+const startNewReading = async () => {
+  run.value = null
+  feedback.value = ''
+  goal.value = ''
+  documentIds.value = []
+  readingDocuments.value = []
+  activeDocumentId.value = ''
+  selectedTraceRound.value = 0
+  addDocDialogVisible.value = false
+  addDocIds.value = []
+  localStorage.removeItem(storageKey)
+  const query: Record<string, string> = {}
+  if (kbId.value) query.kb = kbId.value
+  await router.replace({ path: route.path, query })
+}
+
 const confirmPlan = async () => {
   if (!run.value || run.value.status !== 'planning') return
   acting.value = true
@@ -1596,17 +1634,59 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-width: 680px;
+  width: 100%;
+  max-width: 1120px;
+  margin: 4px auto 0;
 }
 
 .reading-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px 28px;
+  width: 100%;
+  padding: 24px;
   background: var(--td-bg-color-container);
   border: 1px solid var(--td-component-stroke);
   border-radius: 10px;
+}
+
+.reading-form-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.reading-form-footer {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.reading-start-button {
+  min-width: 240px;
+}
+
+@media (max-width: 900px) {
+  .reading-start {
+    max-width: 680px;
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .reading-form {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 20px;
+  }
+
+  .reading-form-footer {
+    justify-content: stretch;
+  }
+
+  .reading-start-button {
+    width: 100%;
+  }
 }
 
 .reading-label {
