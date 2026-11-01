@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WellRead · 文档版本控制（透明底）</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&family=Noto+Serif+SC:wght@400&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: transparent; }
+    body {
+      font-family: 'Geist', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+      color: #3B2E27;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+    .slide { width: min(960px, 100%); }
+    svg { width: 100%; height: auto; display: block; }
+  </style>
+</head>
+<body>
+  <main class="slide">
+    <svg viewBox="0 0 960 448" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="docver-title docver-desc">
+      <title id="docver-title">WellRead 文档版本控制：发布链路、版本链与废止旁路</title>
+      <desc id="docver-desc">内容变更经合并发布生成不可变版本快照，回答引用绑定版本，检索索引自动追平；版本链支持回滚但不删除历史，重新解析与废止作为两条旁路展示。</desc>
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#7B6A5E"/>
+        </marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#C4662F"/>
+        </marker>
+        <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#9C6B2F"/>
+        </marker>
+      </defs>
+
+      <g transform="translate(-32,-140)">
+        <!-- Connectors first (z-order behind nodes) -->
+        <line x1="224" y1="224" x2="264" y2="224" stroke="#7B6A5E" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="456" y1="224" x2="496" y2="224" stroke="#7B6A5E" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="704" y1="216" x2="744" y2="216" stroke="#7B6A5E" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="600" y1="272" x2="600" y2="312" stroke="#7B6A5E" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="612" y="300" fill="#7B6A5E" font-size="12" font-family="'Geist', 'Noto Sans SC', sans-serif">自动追平</text>
+
+        <path d="M168,472 V456 Q168,448 176,448 H712 Q720,448 720,440 V256 Q720,248 712,248 H704"
+              fill="none" stroke="#7B6A5E" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+        <text x="440" y="436" fill="#7B6A5E" font-size="12" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">重解析前快照</text>
+
+        <line x1="600" y1="472" x2="600" y2="392" stroke="#7B6A5E" stroke-width="1"
+              stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+        <text x="612" y="440" fill="#7B6A5E" font-size="12" font-family="'Geist', 'Noto Sans SC', sans-serif">默认剔除</text>
+
+        <!-- Node: 分块修订 -->
+        <rect x="64" y="184" width="160" height="80" rx="6" fill="#EFE4D6" stroke="#A89786" stroke-width="1"/>
+        <text x="144" y="220" fill="#3B2E27" font-size="16" font-weight="600" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">分块修订</text>
+        <text x="144" y="244" fill="#7B6A5E" font-size="12" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">改动草稿 · 冻结基线</text>
+
+        <!-- Node: 合并发布 -->
+        <rect x="264" y="184" width="192" height="80" rx="6" fill="#FFFDF9" stroke="#3B2E27" stroke-width="1"/>
+        <text x="360" y="220" fill="#3B2E27" font-size="16" font-weight="600" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">审批通过 · 合并发布</text>
+        <text x="360" y="244" fill="#7B6A5E" font-size="12" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">校验分块版本，冲突拒绝</text>
+
+        <!-- Node: 版本快照 (focal) -->
+        <rect x="496" y="176" width="208" height="96" rx="6" fill="#F7E4D3" stroke="#C4662F" stroke-width="1.2"/>
+        <text x="600" y="216" fill="#3B2E27" font-size="16" font-weight="600" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">版本快照 V1.N</text>
+        <text x="600" y="240" fill="#7B6A5E" font-size="12" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">全文快照 · 审计留痕</text>
+
+        <!-- Node: 引用绑定 -->
+        <rect x="744" y="184" width="208" height="80" rx="6" fill="#FFFDF9" stroke="#3B2E27" stroke-width="1"/>
+        <text x="848" y="220" fill="#3B2E27" font-size="16" font-weight="600" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">引用绑定版本</text>
+        <text x="848" y="244" fill="#7B6A5E" font-size="12" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">回答记录依据 V1.N</text>
+
+        <!-- Node: 检索索引 -->
+        <rect x="496" y="312" width="208" height="80" rx="6" fill="#FFFDF9" stroke="#3B2E27" stroke-width="1"/>
+        <text x="600" y="348" fill="#3B2E27" font-size="16" font-weight="600" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">检索索引自动追平</text>
+        <text x="600" y="372" fill="#7B6A5E" font-size="12" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">元数据原地更新 · 内容增量重推</text>
+
+        <!-- Version chain -->
+        <text x="64" y="300" fill="#3B2E27" font-size="12" font-weight="600"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">版本链 · 历史不可变</text>
+
+        <rect x="64" y="312" width="80" height="32" rx="4" fill="#F1E7DA" stroke="#7B6A5E" stroke-width="1"/>
+        <text x="104" y="332" fill="#3B2E27" font-size="16" text-anchor="middle"
+              font-family="'Geist Mono', monospace">V1.0</text>
+        <text x="152" y="332" fill="#A89786" font-size="12" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">→</text>
+
+        <rect x="160" y="312" width="80" height="32" rx="4" fill="#F1E7DA" stroke="#7B6A5E" stroke-width="1"/>
+        <text x="200" y="332" fill="#3B2E27" font-size="16" text-anchor="middle"
+              font-family="'Geist Mono', monospace">V1.1</text>
+        <text x="248" y="332" fill="#A89786" font-size="12" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">→</text>
+
+        <rect x="256" y="312" width="80" height="32" rx="4" fill="#F1E7DA" stroke="#7B6A5E" stroke-width="1"/>
+        <text x="296" y="332" fill="#3B2E27" font-size="16" text-anchor="middle"
+              font-family="'Geist Mono', monospace">V1.2</text>
+        <text x="344" y="332" fill="#A89786" font-size="12" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">→</text>
+
+        <rect x="352" y="312" width="80" height="32" rx="4" fill="#F7E4D3" stroke="#C4662F" stroke-width="1.2"/>
+        <text x="392" y="332" fill="#3B2E27" font-size="16" text-anchor="middle"
+              font-family="'Geist Mono', monospace">V1.3</text>
+        <text x="392" y="364" fill="#C4662F" font-size="12" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">回滚</text>
+
+        <text x="64" y="392" fill="#7B6A5E" font-size="12"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">回滚 = 恢复旧内容 → 生成新版本 V1.N+1</text>
+        <text x="64" y="412" fill="#7B6A5E" font-size="12"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">分块 ID 稳定，历史引用与评论锚点不失效</text>
+
+        <!-- Node: 重新解析 (big change) -->
+        <rect x="64" y="472" width="208" height="80" rx="6" fill="#EFE4D6" stroke="#A89786" stroke-width="1"/>
+        <text x="168" y="508" fill="#3B2E27" font-size="16" font-weight="600" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">重新解析（大改）</text>
+        <text x="168" y="532" fill="#7B6A5E" font-size="12" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">整篇重建分块 + 重嵌索引</text>
+
+        <!-- Node: 废止 (lifecycle side path) -->
+        <rect x="496" y="472" width="208" height="80" rx="6" fill="#FBF6EE" stroke="rgba(59,46,39,0.20)"
+              stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="600" y="508" fill="#3B2E27" font-size="16" font-weight="600" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">废止 · 生命周期</text>
+        <text x="600" y="532" fill="#7B6A5E" font-size="12" text-anchor="middle"
+              font-family="'Geist', 'Noto Sans SC', sans-serif">非版本动作 · 不删除内容</text>
+      </g>
+    </svg>
+  </main>
+</body>
+</html>
