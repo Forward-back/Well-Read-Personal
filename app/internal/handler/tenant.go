@@ -272,6 +272,8 @@ func (h *SettingsHandler) UpdateTenantKV(c *gin.Context) {
 	key := secutils.SanitizeForLog(c.Param("key"))
 
 	switch key {
+	case "prompt-templates":
+		h.updatePromptTemplates(c)
 	case "web-search-config":
 		h.updateTenantWebSearchConfigInternal(c)
 	case "parser-engine-config":
@@ -492,10 +494,56 @@ func (h *SettingsHandler) GetPromptTemplates(c *gin.Context) {
 		AgentSystemPrompt:    config.LocalizeTemplates(templates.AgentSystemPrompt, lang),
 		IntentPrompts:        config.LocalizeTemplates(templates.IntentPrompts, lang),
 	}
+	if override := h.config.AgentSystemPromptOverride(); override != "" {
+		localized.AgentSystemPrompt = []config.PromptTemplate{{
+			ID:      "personal_global_override",
+			Name:    "Global assistant prompt",
+			Content: override,
+			Default: true,
+			Mode:    "rag",
+		}}
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data":    localized,
+	})
+}
+
+// updatePromptTemplates saves the owner's global assistant prompt override.
+// An empty string removes the override and restores the built-in template.
+func (h *SettingsHandler) updatePromptTemplates(c *gin.Context) {
+	ctx := c.Request.Context()
+	var req struct {
+		AgentSystemPrompt string `json:"agent_system_prompt"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(errors.NewValidationError("Invalid request data").WithDetails(err.Error()))
+		return
+	}
+	if len(req.AgentSystemPrompt) > 64*1024 {
+		c.Error(errors.NewValidationError("prompt is too long"))
+		return
+	}
+
+	tenant, _ := types.TenantInfoFromContext(ctx)
+	if tenant == nil {
+		c.Error(errors.NewBadRequestError("Workspace is empty"))
+		return
+	}
+	tenant.AgentSystemPrompt = strings.TrimSpace(req.AgentSystemPrompt)
+	if _, err := h.service.UpdateTenant(ctx, tenant); err != nil {
+		c.Error(errors.NewInternalServerError("Failed to save prompt").WithDetails(err.Error()))
+		return
+	}
+	h.config.SetAgentSystemPromptOverride(tenant.AgentSystemPrompt)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"agent_system_prompt": tenant.AgentSystemPrompt,
+			"is_custom":           tenant.AgentSystemPrompt != "",
+		},
 	})
 }
 

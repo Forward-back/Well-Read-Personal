@@ -28,6 +28,7 @@
                 <template v-if="currentSection === 'account'">
                   <div class="section"><UserProfile /></div>
                   <div class="section"><GeneralSettings /></div>
+                  <div class="section"><GlobalPromptSettings /></div>
                   <div class="section"><ChatHistorySettings /></div>
                 </template>
 
@@ -66,6 +67,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUIStore } from '@/stores/ui'
 import UserProfile from './UserProfile.vue'
 import GeneralSettings from './GeneralSettings.vue'
+import GlobalPromptSettings from './GlobalPromptSettings.vue'
 import ChatHistorySettings from './ChatHistorySettings.vue'
 import ModelSettings from './ModelSettings.vue'
 import OllamaSettings from './OllamaSettings.vue'

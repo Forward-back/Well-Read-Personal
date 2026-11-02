@@ -419,6 +419,9 @@ const steerGuidance = "<steering_guidance>\n" +
 // The template must be defined in config/prompt_templates/agent_system_prompt.yaml
 // with mode "pure". Returns empty string if config is nil or template not found.
 func GetPureAgentSystemPrompt(cfg *config.Config) string {
+	if prompt := cfg.AgentSystemPromptOverride(); prompt != "" {
+		return prompt
+	}
 	if cfg != nil && cfg.PromptTemplates != nil {
 		if t := config.DefaultTemplateByMode(cfg.PromptTemplates.AgentSystemPrompt, "pure"); t != nil && t.Content != "" {
 			return t.Content
@@ -431,6 +434,9 @@ func GetPureAgentSystemPrompt(cfg *config.Config) string {
 // The template must be defined in config/prompt_templates/agent_system_prompt.yaml
 // with mode "rag". Returns empty string if config is nil or template not found.
 func GetProgressiveRAGSystemPrompt(cfg *config.Config) string {
+	if prompt := cfg.AgentSystemPromptOverride(); prompt != "" {
+		return prompt
+	}
 	if cfg != nil && cfg.PromptTemplates != nil {
 		if t := config.DefaultTemplateByMode(cfg.PromptTemplates.AgentSystemPrompt, "rag"); t != nil && t.Content != "" {
 			return t.Content

@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     credentials TEXT DEFAULT NULL,
     chat_history_config TEXT,
     retrieval_config TEXT,
+    agent_system_prompt TEXT NOT NULL DEFAULT '',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     deleted_at DATETIME

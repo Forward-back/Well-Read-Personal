@@ -16,6 +16,7 @@ import (
 
 	apprepo "gaze/internal/application/repository"
 	"gaze/internal/application/service"
+	"gaze/internal/config"
 	"gaze/internal/logger"
 	"gaze/internal/types"
 	"gaze/internal/types/interfaces"
@@ -60,7 +61,29 @@ func runStartupBootstrap(c *dig.Container) error {
 	}); err != nil {
 		return fmt.Errorf("resolve UserService: %w", err)
 	}
-	return ownerErr
+	if ownerErr != nil {
+		return ownerErr
+	}
+
+	if err := c.Invoke(func(
+		userSvc interfaces.UserService,
+		tenantSvc interfaces.TenantService,
+		cfg *config.Config,
+	) error {
+		user, err := userSvc.GetUserByEmail(ctx, email)
+		if err != nil || user == nil {
+			return fmt.Errorf("load owner for prompt override: %w", err)
+		}
+		tenant, err := tenantSvc.GetTenantByID(ctx, user.TenantID)
+		if err != nil || tenant == nil {
+			return fmt.Errorf("load workspace for prompt override: %w", err)
+		}
+		cfg.SetAgentSystemPromptOverride(tenant.AgentSystemPrompt)
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func ensureOwner(ctx context.Context, userSvc interfaces.UserService, email, password string) error {

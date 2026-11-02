@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"gaze/internal/types"
@@ -40,6 +41,36 @@ type Config struct {
 	// against window.location.origin — fine for typical single-origin
 	// deployments. Sourced from FRONTEND_BASE_URL env at startup.
 	FrontendBaseURL string `yaml:"frontend_base_url" json:"frontend_base_url"`
+
+	// agentPromptOverride holds the owner's global assistant prompt override.
+	// Atomic so runtime edits are visible to concurrent agent requests.
+	agentPromptOverride atomic.Pointer[string]
+}
+
+// SetAgentSystemPromptOverride applies a global assistant prompt override.
+// An empty value restores the built-in template.
+func (c *Config) SetAgentSystemPromptOverride(prompt string) {
+	if c == nil {
+		return
+	}
+	prompt = strings.TrimSpace(prompt)
+	if prompt == "" {
+		c.agentPromptOverride.Store(nil)
+		return
+	}
+	c.agentPromptOverride.Store(&prompt)
+}
+
+// AgentSystemPromptOverride returns the active global assistant prompt
+// override, or "" when the built-in template should be used.
+func (c *Config) AgentSystemPromptOverride() string {
+	if c == nil {
+		return ""
+	}
+	if p := c.agentPromptOverride.Load(); p != nil {
+		return *p
+	}
+	return ""
 }
 
 // AgentConfig represents the global agent settings.
