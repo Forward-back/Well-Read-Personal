@@ -37,7 +37,6 @@
                   <div class="section"><OllamaSettings /></div>
                   <div class="section"><ParserEngineSettings /></div>
                   <div class="section"><StorageEngineSettings /></div>
-                  <div class="section"><DocSyncSettings /></div>
                 </template>
 
                 <div v-else-if="currentSection === 'integrations'" class="section section--wide">
@@ -73,7 +72,6 @@ import ModelSettings from './ModelSettings.vue'
 import OllamaSettings from './OllamaSettings.vue'
 import ParserEngineSettings from './ParserEngineSettings.vue'
 import StorageEngineSettings from './StorageBackendSettings.vue'
-import DocSyncSettings from './DocSyncSettings.vue'
 import SystemInfo from './SystemInfo.vue'
 import RuntimeQueues from '@/views/system/RuntimeQueues.vue'
 import PersonalIntegrationSettings from './PersonalIntegrationSettings.vue'

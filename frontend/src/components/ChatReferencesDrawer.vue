@@ -92,31 +92,6 @@
                           :class="{ 'reference-item__chip--danger': chip.danger }"
                         >{{ chip.text }}</span>
                       </div>
-                      <div v-if="item.knowledgeBaseId && item.knowledgeId" class="reference-item__actions" @click.stop>
-                        <t-tooltip :content="t('collaboration.feedbackThis')" placement="top">
-                          <button
-                            type="button"
-                            class="reference-item__action"
-                            :aria-label="t('collaboration.feedbackThis')"
-                            @click="openFeedback(item)"
-                          >
-                            <t-icon name="chat-bubble-help" size="14px" />
-                          </button>
-                        </t-tooltip>
-                        <t-tooltip :content="t('collaboration.openDocCollab')" placement="top">
-                          <a
-                            v-if="item.knowledgeBaseId && item.knowledgeId"
-                            class="reference-item__action"
-                            :href="getDocumentCollabHref(item)"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            :aria-label="t('collaboration.openDocCollab')"
-                            @click.stop
-                          >
-                            <t-icon name="jump" size="14px" />
-                          </a>
-                        </t-tooltip>
-                      </div>
                     </div>
                   </div>
                 </template>
@@ -176,17 +151,6 @@
     />
   </Transition>
 
-  <IssueCreateDialog
-    v-model:visible="feedbackVisible"
-    :kb-id="feedbackTarget.kbId"
-    :knowledge-id="feedbackTarget.knowledgeId"
-    :knowledge-title="feedbackTarget.title"
-    :chunk-id="feedbackTarget.chunkId"
-    :chunk-index="feedbackTarget.chunkIndex"
-    :chunk-excerpt="feedbackTarget.excerpt"
-    :default-title="t('collaboration.qaFeedbackTitle')"
-    :default-body="feedbackTarget.body"
-  />
 </template>
 
 <script setup lang="ts">
@@ -194,8 +158,6 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useChatReferencesDrawer } from '@/composables/useChatReferencesDrawer'
-import IssueCreateDialog from '@/views/knowledge/collaboration/IssueCreateDialog.vue'
-import { listKnowledgeChunks } from '@/api/knowledge-base'
 import {
   buildReferenceSections,
   formatReferenceSnippet,
@@ -350,117 +312,6 @@ function getDocumentHref(item: ReferenceListItem) {
     path: `/platform/knowledge-bases/${item.knowledgeBaseId}`,
     query,
   }).href
-}
-
-function getDocumentCollabHref(item: ReferenceListItem) {
-  if (!item.knowledgeBaseId) return ''
-  const query: Record<string, string> = { doc_tab: 'collab' }
-  if (item.knowledgeId) query.knowledge_id = item.knowledgeId
-  return router.resolve({
-    path: `/platform/knowledge-bases/${item.knowledgeBaseId}`,
-    query,
-  }).href
-}
-
-const feedbackVisible = ref(false)
-const feedbackTarget = ref({
-  kbId: '',
-  knowledgeId: '',
-  title: '',
-  chunkId: '',
-  chunkIndex: 0,
-  excerpt: '',
-  body: '',
-})
-
-function buildFeedbackBody(excerpt: string) {
-  const context = drawer?.feedbackContext.value ?? {}
-  const answer = String(context.answer || '').trim().slice(0, 2000)
-  return [
-    `${t('collaboration.qaFeedbackChunk')}:`,
-    excerpt || '—',
-    '',
-    `${t('collaboration.qaFeedbackQuestion')}:`,
-    String(context.userQuery || '').trim() || '—',
-    '',
-    `${t('collaboration.qaFeedbackAnswer')}:`,
-    answer || '—',
-  ].join('\n')
-}
-
-function normalizeChunkText(value: string) {
-  return String(value || '').replace(/\s+/g, '')
-}
-
-async function resolveAppChunk(knowledgeId: string, excerpt: string) {
-  if (!knowledgeId) return null
-  try {
-    const first: any = await listKnowledgeChunks(knowledgeId, 1, 100)
-    if (first?.success === false) return null
-    const total = Number(first?.total || 0)
-    const pageCount = Math.max(1, Math.ceil(total / 100))
-    const pages = [first]
-    if (pageCount > 1) {
-      const rest = await Promise.all(
-        Array.from({ length: pageCount - 1 }, (_, i) => listKnowledgeChunks(knowledgeId, i + 2, 100)),
-      )
-      pages.push(...(rest as any[]))
-    }
-    const chunks = pages.flatMap((page: any) => (page?.data || []))
-    const normalizedExcerpt = normalizeChunkText(excerpt)
-    if (!normalizedExcerpt) return null
-    const samples: string[] = []
-    for (const ratio of [0, 0.25, 0.5]) {
-      const start = Math.floor(normalizedExcerpt.length * ratio)
-      const sample = normalizedExcerpt.slice(start, start + 24)
-      if (sample.length >= 8) samples.push(sample)
-    }
-    let best: any = null
-    let bestScore = 0
-    for (const chunk of chunks) {
-      const content = normalizeChunkText(chunk.content)
-      if (!content) continue
-      let score = 0
-      for (const sample of samples) {
-        if (content.includes(sample)) score += 1
-      }
-      if (score > bestScore) {
-        best = chunk
-        bestScore = score
-      }
-    }
-    return best
-  } catch {
-    return null
-  }
-}
-
-async function openFeedback(item: ReferenceListItem) {
-  const excerpt = item.content || item.snippet || ''
-  let chunkId = item.chunkId || item.chunkIds?.[0] || ''
-  let chunkIndex = item.chunkIndex || 0
-  if (item.knowledgeId) {
-    const appChunk = await resolveAppChunk(item.knowledgeId, excerpt)
-    if (appChunk) {
-      chunkId = appChunk.id || ''
-      chunkIndex = typeof appChunk.chunk_index === 'number' ? appChunk.chunk_index : 0
-    } else {
-      // YLSW 引用里的数字 chunk id 不是 app chunk id；解析失败时退回文档级，
-      // 避免后端以「分块锚点无效」拒绝提交。
-      chunkId = ''
-      chunkIndex = 0
-    }
-  }
-  feedbackTarget.value = {
-    kbId: item.knowledgeBaseId || '',
-    knowledgeId: item.knowledgeId || '',
-    title: item.title || '',
-    chunkId,
-    chunkIndex,
-    excerpt,
-    body: buildFeedbackBody(excerpt),
-  }
-  feedbackVisible.value = true
 }
 
 function shouldShowItemTitle(item: ReferenceListItem) {

@@ -24,12 +24,7 @@ import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '@/stores/auth';
 import DocumentPreview from '@/components/document-preview.vue';
 import KnowledgeProcessingTimeline from '@/components/knowledge-processing-timeline.vue';
-import CollaborationWorkbench from '@/views/knowledge/collaboration/CollaborationWorkbench.vue';
-import IssueCreateDialog from '@/views/knowledge/collaboration/IssueCreateDialog.vue';
-import VersionHistory from '@/views/knowledge/collaboration/VersionHistory.vue';
-import DocumentCommentsRail from '@/views/knowledge/collaboration/DocumentCommentsRail.vue';
 import { useRouter } from 'vue-router';
-import { triggerKBSync } from '@/api/collaboration';
 import { resolveKnowledgeDownloadFileName } from '@/views/knowledge/knowledgeDownloadFileName';
 import { isKnownPreviewableExt, resolveFilePreviewExt } from '@/utils/filePreview';
 
@@ -553,24 +548,8 @@ let url = ref('')
 // file 类型默认「预览」，URL / 手动创建 默认「全文」
 const viewMode = ref<'chunks' | 'merged' | 'preview'>('merged');
 
-// 协作标签页：与「文档内容」并列，初始打开文档时回到内容页；从 QA 引用
-// 跳转时父组件将 initialTab 设为 collab，直接落到协作页。
-const drawerTab = ref<'content' | 'collab' | 'versions'>('content');
-const initialDrawerTab = () => {
-  if (props.initialTab === 'collab') return 'collab';
-  if (props.initialTab === 'versions') return 'versions';
-  return 'content';
-};
-watch(() => props.visible, (visible) => {
-  if (visible) drawerTab.value = initialDrawerTab();
-});
-watch(() => props.details?.id, () => {
-  if (props.visible) drawerTab.value = initialDrawerTab();
-});
-watch(() => props.initialTab, (tab) => {
-  if (!props.visible) return;
-  if (tab === 'collab' || tab === 'versions' || tab === 'content') drawerTab.value = tab;
-});
+// 个人版文档抽屉只保留内容视图。
+const drawerTab = ref<'content'>('content');
 
 const canManageContent = computed(() => props.canManageKB === true || authStore.hasRole('admin'));
 
@@ -854,29 +833,6 @@ const jumpToCommentedChunk = async (chunkId) => {
 
 const onDocDrawerScroll = () => {
   if (selectionToolbar.visible) selectionToolbar.visible = false;
-};
-
-const engineSyncStatus = computed(() => props.details?.engine_sync_status || 'synced');
-const showEngineSyncBar = computed(() => engineSyncStatus.value === 'pending' || engineSyncStatus.value === 'failed');
-const engineSyncBusy = ref(false);
-
-const resyncEngine = async () => {
-  if (!props.kbId || !props.details?.id || engineSyncBusy.value) return;
-  engineSyncBusy.value = true;
-  try {
-    const result: any = await triggerKBSync(props.kbId, [props.details.id]);
-    if (result?.success === false) {
-      MessagePlugin.error(result?.message || t('collaboration.engineResyncFailed'));
-      return;
-    }
-    props.details.engine_sync_status = 'pending';
-    props.details.engine_sync_error = '';
-    MessagePlugin.success(t('collaboration.engineResyncQueued'));
-  } catch (error: any) {
-    MessagePlugin.error(error?.message || t('collaboration.engineResyncFailed'));
-  } finally {
-    engineSyncBusy.value = false;
-  }
 };
 
 // 合并后的文档内容（在下方通过 computed 定义）
@@ -1919,30 +1875,7 @@ const handleChunkPageChange = (pageInfo: { current: number }) => {
         </div>
       </t-drawer>
 
-      <div class="doc-drawer-tabs">
-        <t-button size="small" :variant="drawerTab === 'content' ? 'base' : 'outline'"
-          :theme="drawerTab === 'content' ? 'primary' : 'default'" @click="drawerTab = 'content'">
-          <template #icon><t-icon name="file" size="15px" /></template>
-          {{ $t('collaboration.documentTab') }}
-        </t-button>
-        <t-button size="small" :variant="drawerTab === 'collab' ? 'base' : 'outline'"
-          :theme="drawerTab === 'collab' ? 'primary' : 'default'" @click="drawerTab = 'collab'">
-          <template #icon><t-icon name="chat-bubble-help" size="15px" /></template>
-          {{ $t('collaboration.tab') }}
-        </t-button>
-        <t-button size="small" :variant="drawerTab === 'versions' ? 'base' : 'outline'"
-          :theme="drawerTab === 'versions' ? 'primary' : 'default'" @click="drawerTab = 'versions'">
-          <template #icon><t-icon name="history" size="15px" /></template>
-          {{ $t('collaboration.versionHistory') }}
-        </t-button>
-        <t-button size="small" :variant="commentsRailVisible ? 'base' : 'outline'"
-          :theme="commentsRailVisible ? 'primary' : 'default'" @click="toggleCommentsRail">
-          <template #icon><t-icon name="chat" size="15px" /></template>
-          {{ $t('collaboration.commentsToggle') }}<span v-if="commentsCount" class="doc-comments-count">{{ commentsCount }}</span>
-        </t-button>
-      </div>
-
-      <div class="doc-content-layout" :class="{ 'has-rail': commentsRailVisible }" v-show="drawerTab === 'content'">
+      <div class="doc-content-layout" v-show="drawerTab === 'content'">
       <div ref="docMarkdownRoot" class="doc-markdown-root doc-drawer-body setting-drawer__body"
         @mouseup="handleSelectionMouseUp" @mousedown="hideSelectionToolbar" @scroll.passive="onDocDrawerScroll">
         <section v-if="details.id" class="setting-drawer__section">
@@ -2313,18 +2246,6 @@ const handleChunkPageChange = (pageInfo: { current: number }) => {
                         </div>
                       </template>
                     </t-popup>
-                    <t-tooltip :content="$t('collaboration.feedbackThis')" placement="top">
-                      <t-button class="icon-action-btn collab-chunk-action" size="small" variant="text" shape="square"
-                        @click="openChunkIssue(chunk)">
-                        <template #icon><t-icon name="chat-bubble-help" size="15px" /></template>
-                      </t-button>
-                    </t-tooltip>
-                    <t-tooltip v-if="canEditContent" :content="$t('collaboration.createCR')" placement="top">
-                      <t-button class="icon-action-btn collab-chunk-action" size="small" variant="text" shape="square"
-                        @click="openChunkCR(chunk)">
-                        <template #icon><t-icon name="git-branch" size="15px" /></template>
-                      </t-button>
-                    </t-tooltip>
                     <template v-if="canEditContent">
                       <t-popup :visible="chunkHistoryPopup === chunk.original.id" trigger="click" placement="bottom-right"
                         :show-arrow="true" destroy-on-close :overlay-inner-style="{ padding: 0 }"
@@ -2431,67 +2352,9 @@ const handleChunkPageChange = (pageInfo: { current: number }) => {
           </div>
         </section>
       </div>
-        <DocumentCommentsRail
-          ref="commentsRailRef"
-          v-show="commentsRailVisible"
-          :kb-id="kbId"
-          :knowledge-id="details.id"
-          @close="commentsRailVisible = false"
-          @count-change="commentsCount = $event"
-          @jump-to-chunk="jumpToCommentedChunk"
-        />
       </div>
 
-      <Teleport to="body">
-        <div v-if="selectionToolbar.visible" class="collab-v2 doc-selection-toolbar" :style="selectionToolbarStyle">
-          <button type="button" @click="openSelectionIssue">💬 {{ $t('collaboration.selectionToolbarIssue') }}</button>
-          <button type="button" class="is-primary" @click="openSelectionCR">✎ {{ $t('collaboration.selectionToolbarSuggest') }}</button>
-          <button type="button" @click="openSelectionComment">💬 {{ $t('collaboration.selectionToolbarComment') }}</button>
-        </div>
-      </Teleport>
 
-      <div v-if="drawerTab === 'collab'" class="doc-collab-pane">
-        <template v-if="details.id">
-          <div v-if="showEngineSyncBar" class="doc-engine-sync-bar"
-            :class="{ 'is-failed': engineSyncStatus === 'failed' }">
-            <t-icon :name="engineSyncStatus === 'failed' ? 'error-circle' : 'time'" size="16px"
-              class="doc-engine-sync-icon" />
-            <div class="doc-engine-sync-text">
-              <div class="doc-engine-sync-title">
-                {{ engineSyncStatus === 'failed'
-                  ? $t('collaboration.engineSyncFailed')
-                  : $t('collaboration.engineSyncPending') }}
-              </div>
-              <p class="doc-engine-sync-hint">{{ $t('collaboration.engineSyncHint') }}</p>
-              <p v-if="details.engine_sync_error" class="doc-engine-sync-error">{{ details.engine_sync_error }}</p>
-            </div>
-            <t-button v-if="canManageContent" size="small" theme="primary" :loading="engineSyncBusy"
-              @click="resyncEngine">
-              {{ $t('collaboration.engineResync') }}
-            </t-button>
-          </div>
-          <CollaborationWorkbench ref="collabWorkbenchRef" :kb-id="kbId" :knowledge-id="details.id"
-            :knowledge-title="getDisplayTitle()" :chunks="collabChunks" :can-edit="canEditContent"
-            :can-manage="canManageContent" />
-        </template>
-        <div v-else class="doc-collab-loading">
-          <t-loading size="small" />
-          <span>{{ $t('common.loading') }}</span>
-        </div>
-      </div>
-
-      <div v-if="drawerTab === 'versions'" class="doc-versions-pane">
-        <VersionHistory :kb-id="kbId" :knowledge-id="details.id" :doc-title="getDisplayTitle()"
-          :active="drawerTab === 'versions'" @changed="onVersionChanged" />
-      </div>
-
-      <IssueCreateDialog v-model:visible="issueDialogVisible" :kb-id="kbId" :knowledge-id="details.id"
-        :knowledge-title="getDisplayTitle()" :chunk-id="issueDialogChunk?.id || ''"
-        :chunk-index="issueDialogChunkIndex" :chunk-excerpt="issueDialogChunk?.content || ''"
-        :anchor-text="issueDialogAnchor.anchorText" :anchor-start="issueDialogAnchor.anchorStart"
-        :anchor-end="issueDialogAnchor.anchorEnd" :anchor-line-start="issueDialogAnchor.anchorLineStart"
-        :anchor-line-end="issueDialogAnchor.anchorLineEnd"
-        @created="onCollabRecordCreated" />
     </t-drawer>
   </div>
 </template>

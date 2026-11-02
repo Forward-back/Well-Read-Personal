@@ -55,20 +55,6 @@
                                     {{ truncateContent(chunk.content, 80) }}
                                 </span>
                             </t-popup>
-                            <div class="doc-chunk-actions" @click.stop>
-                                <t-tooltip :content="$t('collaboration.feedbackThis')" placement="top">
-                                    <button type="button" class="doc-chunk-action"
-                                        @click="openFeedback(group, chunk)">
-                                        <t-icon name="chat-bubble-help" size="14px" />
-                                    </button>
-                                </t-tooltip>
-                                <t-tooltip :content="$t('collaboration.openDocCollab')" placement="top">
-                                    <a class="doc-chunk-action" :href="getDocumentCollabHref(group)"
-                                        target="_blank" rel="noopener noreferrer">
-                                        <t-icon name="jump" size="14px" />
-                                    </a>
-                                </t-tooltip>
-                            </div>
                         </div>
                         <div v-if="chunkMetaBadges(chunk).length" class="doc-chunk-meta">
                             <span v-for="(b, bIdx) in chunkMetaBadges(chunk)" :key="'b-' + bIdx"
@@ -78,11 +64,6 @@
                 </div>
             </div>
         </div>
-        <IssueCreateDialog v-model:visible="feedbackVisible" :kb-id="feedbackTarget.kbId"
-            :knowledge-id="feedbackTarget.knowledgeId" :knowledge-title="feedbackTarget.title"
-            :chunk-id="feedbackTarget.chunkId" :chunk-index="feedbackTarget.chunkIndex"
-            :chunk-excerpt="feedbackTarget.excerpt" :default-title="$t('collaboration.qaFeedbackTitle')"
-            :default-body="feedbackTarget.body" />
     </div>
 </template>
 <script setup>
@@ -91,7 +72,6 @@ import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { sanitizeHTML } from '@/utils/security';
 import ContentPopup from './tool-results/ContentPopup.vue';
-import IssueCreateDialog from '@/views/knowledge/collaboration/IssueCreateDialog.vue';
 import { useChatReferencesDrawer } from '@/composables/useChatReferencesDrawer';
 import { buildCitationNumberMap, citationDocDisplayName, citationDocKey, selectCitedRefs } from '@/utils/citationMarkdown';
 
@@ -236,45 +216,6 @@ const getDocumentCollabHref = (group) => {
         path: `/platform/knowledge-bases/${group.knowledgeBaseId}`,
         query
     }).href;
-};
-
-const feedbackVisible = ref(false);
-const feedbackTarget = ref({
-    kbId: '',
-    knowledgeId: '',
-    title: '',
-    chunkId: '',
-    chunkIndex: 0,
-    excerpt: '',
-    body: '',
-});
-
-const buildFeedbackBody = (chunk) => {
-    const chunkText = (chunk.content || '').replace(/\s+/g, ' ').trim();
-    const answer = (props.session?.content || '').trim().slice(0, 2000);
-    return [
-        `${t('collaboration.qaFeedbackChunk')}:`,
-        chunkText || '—',
-        '',
-        `${t('collaboration.qaFeedbackQuestion')}:`,
-        props.userQuery?.trim() || '—',
-        '',
-        `${t('collaboration.qaFeedbackAnswer')}:`,
-        answer || '—',
-    ].join('\n');
-};
-
-const openFeedback = (group, chunk) => {
-    feedbackTarget.value = {
-        kbId: group.knowledgeBaseId || '',
-        knowledgeId: group.knowledgeId || chunk.knowledge_id || '',
-        title: group.title || '',
-        chunkId: chunk.id || '',
-        chunkIndex: chunk.chunk_index || 0,
-        excerpt: chunk.content || '',
-        body: buildFeedbackBody(chunk),
-    };
-    feedbackVisible.value = true;
 };
 
 const getWebSearchUrl = (item) => {
