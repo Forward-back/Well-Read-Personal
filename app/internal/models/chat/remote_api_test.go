@@ -270,8 +270,6 @@ func TestConvertMessages_ReasoningContentRoundTrip(t *testing.T) {
 	})
 }
 
-
-
 // TestRemoteAPIChat 综合测试 Remote API Chat 的所有功能
 func TestRemoteAPIChat(t *testing.T) {
 	// 获取环境变量

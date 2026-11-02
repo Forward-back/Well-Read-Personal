@@ -110,15 +110,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	logger.Debugf(ctx, "[Container] Registering repositories...")
 	must(container.Provide(repository.NewTenantRepository))
 	must(container.Provide(repository.NewTenantAPIKeyRepository))
-	must(container.Provide(repository.NewTenantMemberRepository))
-	must(container.Provide(repository.NewDepartmentRepository))
-	must(container.Provide(repository.NewTenantInvitationRepository))
-	must(container.Provide(repository.NewAuditLogRepository))
 	must(container.Provide(repository.NewKnowledgeBaseRepository))
-	must(container.Provide(repository.NewPortalSessionRepository))
 	must(container.Provide(repository.NewKnowledgeRepository))
 	must(container.Provide(repository.NewKnowledgeFolderRepository))
-	must(container.Provide(repository.NewKBAclRepository))
 	must(container.Provide(repository.NewKnowledgeSpanRepository))
 	must(container.Provide(repository.NewChunkRepository))
 	must(container.Provide(repository.NewKnowledgeTagRepository))
@@ -134,20 +128,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewMCPOAuthRepository))
 	must(container.Provide(repository.NewTenantSandboxConfigRepository))
 	must(container.Provide(repository.NewTenantSkillRepository))
-	must(container.Provide(repository.NewSkillEditorGrantRepository))
 	must(container.Provide(repository.NewRetrievalAuditRepository))
 	must(container.Provide(repository.NewReadingRunRepository))
-	must(container.Provide(repository.NewGovernanceRepository))
 	must(container.Provide(repository.NewCustomAgentRepository))
-	must(container.Provide(repository.NewOrganizationRepository))
-	must(container.Provide(repository.NewKBShareRepository))
-	must(container.Provide(repository.NewAgentShareRepository))
-	must(container.Provide(repository.NewTenantDisabledSharedAgentRepository))
 	must(container.Provide(service.NewWebSearchStateService))
 	must(container.Provide(repository.NewDataSourceRepository))
 	must(container.Provide(repository.NewSyncLogRepository))
 	must(container.Provide(repository.NewGazePageRepository))
-	must(container.Provide(repository.NewCollaborationRepository))
+	must(container.Provide(repository.NewDocumentVersionRepository))
 	must(container.Provide(repository.NewMemoryRepository))
 	must(container.Provide(repository.NewTaskPendingOpsRepository))
 	must(container.Provide(repository.NewTaskDeadLetterRepository))
@@ -171,17 +159,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	logger.Debugf(ctx, "[Container] Registering business services...")
 	must(container.Provide(service.NewTenantService))
 	must(container.Provide(service.NewTenantAPIKeyService))
-	must(container.Provide(service.NewTenantMemberService))
-	must(container.Provide(service.NewDepartmentService))
-	must(container.Provide(service.NewTenantInvitationService))
-	must(container.Provide(service.NewAuditLogService))
-	must(container.Provide(service.NewAuditLogRetentionRunner))
 	must(container.Provide(service.NewRetrievalAuditRetentionRunner))
 	must(container.Provide(service.NewKnowledgeBaseService))
 	must(container.Provide(service.NewKnowledgeFolderService))
-	must(container.Provide(service.NewKBAclService))
-	must(container.Provide(service.NewKBShareService)) // KBShareService must be registered before KnowledgeService and KnowledgeTagService
-	must(container.Provide(service.NewAgentShareService))
 	must(container.Provide(service.NewKnowledgeService))
 	must(container.Provide(service.NewSpanTracker))
 	must(container.Provide(service.NewChunkService))
@@ -219,7 +199,6 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewCustomAgentService))
 	must(container.Provide(service.NewGazePageService))
 	must(container.Provide(service.NewDocumentVersionService))
-	must(container.Provide(service.NewCollaborationService))
 	must(container.Provide(service.NewEngineSyncService))
 	must(container.Provide(service.NewGazeIngestService, dig.Name("gazeIngest")))
 	// Web search service (needed by AgentService)
@@ -277,9 +256,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	must(container.Provide(service.NewSessionService))
 	must(container.Provide(service.NewTenantSkillService))
-	must(container.Provide(service.NewSkillEditorGrantService))
 	must(container.Provide(service.NewReadingRunService))
-	must(container.Provide(service.NewGovernanceService))
 	// The member-facing half of env vars is its own service because its
 	// authority is different in kind: it derives the identity from the context
 	// and touches only that identity's rows.
@@ -343,13 +320,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewDataSourceService))
 	must(container.Invoke(startDataSourceScheduler))
 	logger.Debugf(ctx, "[Container] Data source sync framework registered")
-	must(container.Invoke(startAuditLogRetention))
-	logger.Debugf(ctx, "[Container] Audit log retention runner registered")
 	must(container.Invoke(startRetrievalAuditRetention))
 	logger.Debugf(ctx, "[Container] Retrieval audit retention runner registered")
-	must(container.Provide(service.NewPortalSessionRetentionRunner))
-	must(container.Invoke(startPortalSessionRetention))
-	logger.Debugf(ctx, "[Container] Portal session retention runner registered")
 	must(container.Provide(service.NewHousekeepingService))
 	must(container.Invoke(startHousekeepingService))
 	logger.Debugf(ctx, "[Container] Knowledge housekeeping runner registered")
@@ -366,16 +338,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 	// HTTP handlers layer
 	logger.Debugf(ctx, "[Container] Registering HTTP handlers...")
-	must(container.Provide(handler.NewTenantHandler))
-	must(container.Provide(handler.NewTenantMemberHandler))
-	must(container.Provide(handler.NewDepartmentHandler))
+	must(container.Provide(handler.NewSettingsHandler))
 	must(container.Provide(handler.NewAgentRuntimeHandler))
 	must(container.Provide(handler.NewMemoryRuntimeHandler))
 	must(container.Provide(handler.NewWebSearchRuntimeHandler))
-	must(container.Provide(handler.NewTenantInvitationHandler))
-	must(container.Provide(handler.NewAuditLogHandler))
 	must(container.Provide(handler.NewKnowledgeBaseHandler))
-	must(container.Provide(handler.NewPortalHandler))
 	must(container.Provide(handler.NewKnowledgeHandler))
 	must(container.Provide(handler.NewChunkHandler))
 	must(container.Provide(handler.NewTagHandler))
@@ -389,20 +356,15 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewModelCredentialsHandler))
 	must(container.Provide(handler.NewDataSourceCredentialsHandler))
 	must(container.Provide(handler.NewStorageBackendHandler))
-	must(container.Provide(func(s *service.TenantSkillService, grants interfaces.SkillEditorGrantService) *handler.SkillHandler {
-		return handler.NewSkillHandler(s, s, grants)
+	must(container.Provide(func(s *service.TenantSkillService) *handler.SkillHandler {
+		return handler.NewSkillHandler(s, s)
 	}))
-	must(container.Provide(handler.NewSkillGrantHandler))
 	must(container.Provide(handler.NewReadingHandler))
-	must(container.Provide(handler.NewGovernanceHandler))
 
 	// Data source handler
 	must(container.Provide(handler.NewDataSourceHandler))
 	// Gaze page handler
 	must(container.Provide(handler.NewGazePageHandler))
-	// 需求一：Git 式文档协作
-	must(container.Provide(handler.NewCollaborationHandler))
-	must(container.Provide(handler.NewEngineSyncHandler))
 	// IM integration
 	logger.Debugf(ctx, "[Container] Registering IM integration...")
 	logger.Debugf(ctx, "[Container] HTTP handlers registered")
@@ -1310,25 +1272,6 @@ func startTemporaryDocumentCleanup(svc interfaces.TemporaryDocumentService, clea
 	})
 }
 
-// startAuditLogRetention spins up the daily audit_logs purge sweep
-// and registers shutdown cleanup. Mirrors the data-source-scheduler
-// pattern: container init kicks the goroutine, ResourceCleaner stops
-// it during graceful shutdown so a SIGTERM during a sweep doesn't
-// orphan the goroutine.
-//
-// retention_days <= 0 is the configured way to disable retention;
-// the runner short-circuits Start() on that path so we don't need
-// to gate the wiring here.
-func startAuditLogRetention(
-	runner *service.AuditLogRetentionRunner, cleaner interfaces.ResourceCleaner,
-) {
-	runner.Start(context.Background())
-	cleaner.RegisterWithName("AuditLogRetentionRunner", func() error {
-		runner.Stop()
-		return nil
-	})
-}
-
 // startPortalSessionRetention spins up the daily portal_sessions purge
 // sweep and registers shutdown cleanup (§2.13 P3-7). Mirrors the
 // audit-retention wiring.
@@ -1337,16 +1280,6 @@ func startRetrievalAuditRetention(
 ) {
 	runner.Start(context.Background())
 	cleaner.RegisterWithName("RetrievalAuditRetentionRunner", func() error {
-		runner.Stop()
-		return nil
-	})
-}
-
-func startPortalSessionRetention(
-	runner *service.PortalSessionRetentionRunner, cleaner interfaces.ResourceCleaner,
-) {
-	runner.Start(context.Background())
-	cleaner.RegisterWithName("PortalSessionRetentionRunner", func() error {
 		runner.Stop()
 		return nil
 	})

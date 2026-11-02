@@ -24,7 +24,6 @@ var (
 type knowledgeFolderService struct {
 	repo      interfaces.KnowledgeFolderRepository
 	kbService interfaces.KnowledgeBaseService
-	audit     interfaces.AuditLogService
 }
 
 // NewKnowledgeFolderService wires real folder CRUD. Handler routes still own
@@ -32,9 +31,8 @@ type knowledgeFolderService struct {
 func NewKnowledgeFolderService(
 	repo interfaces.KnowledgeFolderRepository,
 	kbService interfaces.KnowledgeBaseService,
-	audit interfaces.AuditLogService,
 ) interfaces.KnowledgeFolderService {
-	return &knowledgeFolderService{repo: repo, kbService: kbService, audit: audit}
+	return &knowledgeFolderService{repo: repo, kbService: kbService}
 }
 
 func (s *knowledgeFolderService) authorizeWrite(ctx context.Context, kbID string) (*types.KnowledgeBase, error) {
@@ -131,9 +129,6 @@ func (s *knowledgeFolderService) Create(
 	if err := s.repo.Create(ctx, folder); err != nil {
 		return nil, err
 	}
-	recordKBActivity(ctx, s.audit, kb.TenantID, kbID, types.AuditActionKnowledgeFolderCreated,
-		"knowledge_folder", folder.ID, types.AuditOutcomeSuccess,
-		map[string]any{"name": folder.Name, "parent_id": folder.ParentID})
 	return folder, nil
 }
 
@@ -152,9 +147,6 @@ func (s *knowledgeFolderService) Rename(
 	if err != nil {
 		return nil, err
 	}
-	recordKBActivity(ctx, s.audit, kb.TenantID, kbID, types.AuditActionKnowledgeFolderUpdated,
-		"knowledge_folder", folder.ID, types.AuditOutcomeSuccess,
-		map[string]any{"operation": "rename", "name": folder.Name})
 	return folder, nil
 }
 
@@ -176,9 +168,6 @@ func (s *knowledgeFolderService) Move(
 	if err != nil {
 		return nil, err
 	}
-	recordKBActivity(ctx, s.audit, kb.TenantID, kbID, types.AuditActionKnowledgeFolderUpdated,
-		"knowledge_folder", folder.ID, types.AuditOutcomeSuccess,
-		map[string]any{"operation": "move", "parent_id": folder.ParentID})
 	return folder, nil
 }
 
@@ -190,8 +179,6 @@ func (s *knowledgeFolderService) Delete(ctx context.Context, kbID, folderID stri
 	if err := s.repo.Delete(ctx, kb.TenantID, kbID, folderID); err != nil {
 		return err
 	}
-	recordKBActivity(ctx, s.audit, kb.TenantID, kbID, types.AuditActionKnowledgeFolderDeleted,
-		"knowledge_folder", folderID, types.AuditOutcomeSuccess, nil)
 	return nil
 }
 

@@ -42,13 +42,13 @@ func (s *knowledgeBaseService) fetchKnowledgeDataWithShared(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	permissions := kbReadPermissions(ctx, s.kbShareService)
+	permissions := kbReadPermissions(ctx)
 	knowledgeMap := make(map[string]*types.Knowledge, len(rows))
 	appendAllowed := func(k *types.Knowledge) {
 		if k == nil {
 			return
 		}
-		allowed, err := permissions.Check(k.KnowledgeBaseID, k.TenantID, types.OrgRoleViewer)
+		allowed, err := permissions.Check(k.KnowledgeBaseID, k.TenantID)
 		if err == nil && allowed {
 			knowledgeMap[k.ID] = k
 		}
@@ -80,14 +80,14 @@ func (s *knowledgeBaseService) listChunksByIDWithShared(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	permissions := kbReadPermissions(ctx, s.kbShareService)
+	permissions := kbReadPermissions(ctx)
 	chunks := make([]*types.Chunk, 0, len(rows))
 	foundSet := make(map[string]bool)
 	appendAllowed := func(c *types.Chunk) {
 		if c == nil || foundSet[c.ID] {
 			return
 		}
-		allowed, err := permissions.Check(c.KnowledgeBaseID, c.TenantID, types.OrgRoleViewer)
+		allowed, err := permissions.Check(c.KnowledgeBaseID, c.TenantID)
 		if err == nil && allowed {
 			chunks = append(chunks, c)
 			foundSet[c.ID] = true

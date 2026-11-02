@@ -784,30 +784,13 @@ func TestRetrieveFromStores_PerGroupTimeout(t *testing.T) {
 // authorizeKBAccess — per-KB authorization on multi-KB search scope
 // ---------------------------------------------------------------------------
 
-// fakeKBShareForAuth implements just enough of KBShareService for the
-// authorizeKBAccess test matrix. Only CheckTenantKBPermission is exercised;
-// the embedded interface keeps the type assignable.
-type fakeKBShareForAuth struct {
-	// allowed maps kbID → tenantID → allowed. Mirrors the Plan 3 (#1303)
-	// per-tenant permission model.
-	allowed map[string]map[uint64]bool
-	err     error
-	interfaces.KBShareService
-}
-
-func (f *fakeKBShareForAuth) CheckTenantKBPermission(
-	_ context.Context, kbID string, callerTenantID uint64, _ types.TenantRole,
-) (types.OrgMemberRole, bool, error) {
-	return types.OrgRoleViewer, f.allowed[kbID][callerTenantID], f.err
-}
-
 func ctxWithTenantForAuth(tenantID uint64) context.Context {
 	return context.WithValue(context.Background(), types.TenantIDContextKey, tenantID)
 }
 
 func TestAuthorizeKBAccess_SameTenantAllPass(t *testing.T) {
 	t.Parallel()
-	s := &knowledgeBaseService{kbShareService: &fakeKBShareForAuth{}}
+	s := &knowledgeBaseService{}
 	kbs := []*types.KnowledgeBase{
 		{ID: "kb-1", TenantID: 7},
 		{ID: "kb-2", TenantID: 7},
@@ -816,30 +799,9 @@ func TestAuthorizeKBAccess_SameTenantAllPass(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestAuthorizeKBAccess_ForeignTenantWithShare_OK(t *testing.T) {
+func TestAuthorizeKBAccess_ForeignTenant_NotFound(t *testing.T) {
 	t.Parallel()
-	share := &fakeKBShareForAuth{
-		allowed: map[string]map[uint64]bool{
-			"kb-foreign": {7: true},
-		},
-	}
-	s := &knowledgeBaseService{kbShareService: share}
-	kbs := []*types.KnowledgeBase{
-		{ID: "kb-own", TenantID: 7},
-		{ID: "kb-foreign", TenantID: 99},
-	}
-	err := s.authorizeKBAccess(ctxWithTenantForAuth(7), kbs)
-	require.NoError(t, err)
-}
-
-func TestAuthorizeKBAccess_ForeignTenantNoShare_NotFound(t *testing.T) {
-	t.Parallel()
-	share := &fakeKBShareForAuth{
-		allowed: map[string]map[uint64]bool{
-			// kb-foreign explicitly NOT in allowed map
-		},
-	}
-	s := &knowledgeBaseService{kbShareService: share}
+	s := &knowledgeBaseService{}
 	kbs := []*types.KnowledgeBase{
 		{ID: "kb-foreign", TenantID: 99},
 	}
@@ -851,21 +813,9 @@ func TestAuthorizeKBAccess_ForeignTenantNoShare_NotFound(t *testing.T) {
 		"reject must surface as NotFound to avoid leaking foreign KB existence")
 }
 
-func TestAuthorizeKBAccess_PermissionLookupError_500(t *testing.T) {
-	t.Parallel()
-	share := &fakeKBShareForAuth{err: stderrors.New("share infra down")}
-	s := &knowledgeBaseService{kbShareService: share}
-	kbs := []*types.KnowledgeBase{{ID: "kb-foreign", TenantID: 99}}
-	err := s.authorizeKBAccess(ctxWithTenantForAuth(7), kbs)
-	require.Error(t, err)
-	app, ok := apperrors.IsAppError(err)
-	require.True(t, ok)
-	assert.Equal(t, apperrors.ErrInternalServer, app.Code)
-}
-
 func TestAuthorizeKBAccess_EmptyKBs_OK(t *testing.T) {
 	t.Parallel()
-	s := &knowledgeBaseService{kbShareService: &fakeKBShareForAuth{}}
+	s := &knowledgeBaseService{}
 	err := s.authorizeKBAccess(ctxWithTenantForAuth(7), nil)
 	require.NoError(t, err)
 }

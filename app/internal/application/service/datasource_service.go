@@ -34,7 +34,6 @@ type DataSourceService struct {
 	scheduler         *datasource.Scheduler
 	tenantRepo        interfaces.TenantRepository
 	tagService        interfaces.KnowledgeTagService
-	audit             interfaces.AuditLogService
 }
 
 // NewDataSourceService creates a new data source service
@@ -48,7 +47,6 @@ func NewDataSourceService(
 	scheduler *datasource.Scheduler,
 	tenantRepo interfaces.TenantRepository,
 	tagService interfaces.KnowledgeTagService,
-	audit interfaces.AuditLogService,
 ) interfaces.DataSourceService {
 	return &DataSourceService{
 		dsRepo:            dsRepo,
@@ -60,7 +58,6 @@ func NewDataSourceService(
 		scheduler:         scheduler,
 		tenantRepo:        tenantRepo,
 		tagService:        tagService,
-		audit:             audit,
 	}
 }
 
@@ -110,9 +107,6 @@ func (s *DataSourceService) CreateDataSource(ctx context.Context, ds *types.Data
 	}
 
 	logger.Infof(ctx, "data source created: id=%s type=%s kb=%s", ds.ID, ds.Type, ds.KnowledgeBaseID)
-	recordKBActivity(ctx, s.audit, ds.TenantID, ds.KnowledgeBaseID, types.AuditActionDataSourceCreated,
-		"data_source", ds.ID, types.AuditOutcomeSuccess,
-		map[string]any{"name": ds.Name, "type": ds.Type})
 	return ds, nil
 }
 
@@ -226,9 +220,6 @@ func (s *DataSourceService) UpdateDataSource(ctx context.Context, ds *types.Data
 	}
 
 	logger.Infof(ctx, "data source updated: id=%s", ds.ID)
-	recordKBActivity(ctx, s.audit, ds.TenantID, ds.KnowledgeBaseID, types.AuditActionDataSourceUpdated,
-		"data_source", ds.ID, types.AuditOutcomeSuccess,
-		map[string]any{"name": ds.Name, "type": ds.Type, "changed_fields": []string{"settings"}})
 	return ds, nil
 }
 
@@ -272,9 +263,6 @@ func (s *DataSourceService) UpdateDataSourceCredentials(
 		return nil, err
 	}
 	logger.Infof(ctx, "DataSource credentials updated: id=%s", secutils.SanitizeForLog(id))
-	recordKBActivity(ctx, s.audit, existing.TenantID, existing.KnowledgeBaseID, types.AuditActionDataSourceUpdated,
-		"data_source", existing.ID, types.AuditOutcomeSuccess,
-		map[string]any{"name": existing.Name, "type": existing.Type, "changed_fields": []string{"credentials"}})
 	return existing, nil
 }
 
@@ -314,17 +302,13 @@ func (s *DataSourceService) ClearDataSourceCredentials(ctx context.Context, id s
 		return err
 	}
 	logger.Infof(ctx, "DataSource credentials cleared by user: id=%s", secutils.SanitizeForLog(id))
-	recordKBActivity(ctx, s.audit, existing.TenantID, existing.KnowledgeBaseID, types.AuditActionDataSourceUpdated,
-		"data_source", existing.ID, types.AuditOutcomeSuccess,
-		map[string]any{"name": existing.Name, "type": existing.Type, "changed_fields": []string{"credentials"}})
 	return nil
 }
 
 // DeleteDataSource deletes a data source (soft delete)
 func (s *DataSourceService) DeleteDataSource(ctx context.Context, id string) error {
 	// Verify data source exists
-	existing, err := s.dsRepo.FindByID(ctx, id)
-	if err != nil {
+	if _, err := s.dsRepo.FindByID(ctx, id); err != nil {
 		return err
 	}
 
@@ -342,9 +326,6 @@ func (s *DataSourceService) DeleteDataSource(ctx context.Context, id string) err
 	}
 
 	logger.Infof(ctx, "data source deleted: id=%s", id)
-	recordKBActivity(ctx, s.audit, existing.TenantID, existing.KnowledgeBaseID, types.AuditActionDataSourceDeleted,
-		"data_source", existing.ID, types.AuditOutcomeSuccess,
-		map[string]any{"name": existing.Name, "type": existing.Type})
 	return nil
 }
 
@@ -493,7 +474,7 @@ func (s *DataSourceService) ManualSync(ctx context.Context, dsID string) (*types
 	task := asynq.NewTask(types.TypeDataSourceSync, payloadJSON,
 		asynq.Queue(types.QueueSync), asynq.MaxRetry(5), asynq.Timeout(2*time.Hour))
 
-	info, err := s.taskEnqueuer.Enqueue(task)
+	_, err = s.taskEnqueuer.Enqueue(task)
 	if err != nil {
 		logger.Errorf(ctx, "failed to enqueue sync task: %v", err)
 		syncLog.Status = types.SyncLogStatusFailed
@@ -505,19 +486,10 @@ func (s *DataSourceService) ManualSync(ctx context.Context, dsID string) (*types
 		}
 		ds.ErrorMessage = fmt.Sprintf("Failed to enqueue sync: %v", err)
 		_ = s.dsRepo.Update(ctx, ds)
-		recordKBActivity(ctx, s.audit, ds.TenantID, ds.KnowledgeBaseID, types.AuditActionDataSourceSyncFailed,
-			"data_source", ds.ID, types.AuditOutcomeFailed,
-			map[string]any{"name": ds.Name, "type": ds.Type, "sync_log_id": syncLog.ID, "trigger": "manual"})
 		return nil, err
 	}
 
 	logger.Infof(ctx, "sync task enqueued: ds=%s syncLog=%s", dsID, syncLog.ID)
-	recordKBActivity(ctx, s.audit, ds.TenantID, ds.KnowledgeBaseID, types.AuditActionDataSourceSyncStarted,
-		"data_source", ds.ID, types.AuditOutcomeAccepted,
-		map[string]any{
-			"name": ds.Name, "type": ds.Type, "sync_log_id": syncLog.ID,
-			"task_id": info.ID, "trigger": "manual", "processing_status": "pending",
-		})
 	return syncLog, nil
 }
 
@@ -538,8 +510,6 @@ func (s *DataSourceService) PauseDataSource(ctx context.Context, id string) erro
 	s.scheduler.Remove(id)
 
 	logger.Infof(ctx, "data source paused: id=%s", id)
-	recordKBActivity(ctx, s.audit, ds.TenantID, ds.KnowledgeBaseID, types.AuditActionDataSourcePaused,
-		"data_source", ds.ID, types.AuditOutcomeSuccess, map[string]any{"name": ds.Name, "type": ds.Type})
 	return nil
 }
 
@@ -562,8 +532,6 @@ func (s *DataSourceService) ResumeDataSource(ctx context.Context, id string) err
 	}
 
 	logger.Infof(ctx, "data source resumed: id=%s", id)
-	recordKBActivity(ctx, s.audit, ds.TenantID, ds.KnowledgeBaseID, types.AuditActionDataSourceResumed,
-		"data_source", ds.ID, types.AuditOutcomeSuccess, map[string]any{"name": ds.Name, "type": ds.Type})
 	return nil
 }
 
@@ -594,8 +562,6 @@ func (s *DataSourceService) ProcessSync(ctx context.Context, task *asynq.Task) e
 		return err
 	}
 	ctx = payload.Initiator.Apply(ctx)
-	taskID, _ := asynq.GetTaskID(ctx)
-	ctx = withKBActivityTask(ctx, taskID, payload.Trigger)
 
 	logger.Infof(ctx, "processing data source sync: ds=%s syncLog=%s", payload.DataSourceID, payload.SyncLogID)
 
@@ -754,7 +720,7 @@ func (s *DataSourceService) ProcessSync(ctx context.Context, task *asynq.Task) e
 
 	for _, item := range items {
 		item := item
-		s.applyFetchedItem(withKBActivitySuppressed(ctx), ds, &item, autoTagIDs, result)
+		s.applyFetchedItem(ctx, ds, &item, autoTagIDs, result)
 	}
 
 	resultJSON, _ := result.ToJSON()
@@ -1005,7 +971,7 @@ func (h *streamSyncHandler) Emit(ctx context.Context, item types.FetchedItem) er
 		return err
 	}
 	h.result.Total++
-	h.svc.applyFetchedItem(withKBActivitySuppressed(ctx), h.ds, &item, h.tagIDs, h.result)
+	h.svc.applyFetchedItem(ctx, h.ds, &item, h.tagIDs, h.result)
 	return nil
 }
 
@@ -1159,21 +1125,6 @@ func (s *DataSourceService) updateSyncRunResult(
 	if err := s.dsRepo.UpdateSyncState(ctx, ds); err != nil {
 		logger.Errorf(ctx, "failed to update data source: %v", err)
 	}
-	action := types.AuditActionDataSourceSyncCompleted
-	outcome := types.AuditOutcomeSuccess
-	if status == types.SyncLogStatusFailed {
-		action = types.AuditActionDataSourceSyncFailed
-		outcome = types.AuditOutcomeFailed
-	} else if status == types.SyncLogStatusPartial {
-		outcome = types.AuditOutcomePartial
-	}
-	recordKBActivity(ctx, s.audit, ds.TenantID, ds.KnowledgeBaseID, action,
-		"data_source", ds.ID, outcome,
-		map[string]any{
-			"name": ds.Name, "type": ds.Type, "sync_log_id": syncLog.ID,
-			"total": result.Total, "created": result.Created, "updated": result.Updated,
-			"deleted": result.Deleted, "skipped": result.Skipped, "failed": result.Failed,
-		})
 }
 
 func allFetchedItemsFailedError(result *types.SyncResult) error {

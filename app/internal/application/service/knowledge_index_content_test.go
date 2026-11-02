@@ -6,7 +6,6 @@ import (
 	"errors"
 	"testing"
 
-	"gaze/internal/application/access"
 	"gaze/internal/types"
 	"gaze/internal/types/interfaces"
 	"github.com/hibiken/asynq"
@@ -115,17 +114,6 @@ func TestUpdateKnowledgeMetadataDoesNotReindexChunks(t *testing.T) {
 		repo: repo, chunkRepo: chunkRepo, kbService: metadataUpdateKBService{}, task: taskEnqueuer,
 	}
 	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(7))
-	ctx = (&access.KBAccess{
-		KnowledgeBase: &types.KnowledgeBase{
-			ID:       "kb-1",
-			TenantID: 7,
-		},
-		Caller:            types.CallerFromContext(ctx),
-		EffectiveTenantID: 7,
-		Permission:        types.OrgRoleEditor,
-	}).Context(
-		ctx,
-	)
 
 	err := service.UpdateKnowledge(ctx, &types.Knowledge{
 		ID:             "knowledge-1",
@@ -155,17 +143,6 @@ func TestUpdateKnowledgeMetadataDoesNotLeaveTasklessPendingStatus(t *testing.T) 
 		task: &metadataUpdateTaskEnqueuer{err: errors.New("queue unavailable")},
 	}
 	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(7))
-	ctx = (&access.KBAccess{
-		KnowledgeBase: &types.KnowledgeBase{
-			ID:       "kb-1",
-			TenantID: 7,
-		},
-		Caller:            types.CallerFromContext(ctx),
-		EffectiveTenantID: 7,
-		Permission:        types.OrgRoleEditor,
-	}).Context(
-		ctx,
-	)
 
 	require.NoError(t, service.UpdateKnowledge(ctx, &types.Knowledge{
 		ID: "knowledge-1", CustomMetadata: types.JSON(`{"region":"Shanghai"}`),
@@ -185,17 +162,6 @@ func TestUpdateKnowledgeUnchangedMetadataDoesNotRefreshSummary(t *testing.T) {
 		repo: repo, chunkRepo: &metadataUpdateChunkRepo{}, kbService: metadataUpdateKBService{}, task: taskEnqueuer,
 	}
 	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(7))
-	ctx = (&access.KBAccess{
-		KnowledgeBase: &types.KnowledgeBase{
-			ID:       "kb-1",
-			TenantID: 7,
-		},
-		Caller:            types.CallerFromContext(ctx),
-		EffectiveTenantID: 7,
-		Permission:        types.OrgRoleEditor,
-	}).Context(
-		ctx,
-	)
 
 	require.NoError(t, service.UpdateKnowledge(ctx, &types.Knowledge{
 		ID:             "knowledge-1",

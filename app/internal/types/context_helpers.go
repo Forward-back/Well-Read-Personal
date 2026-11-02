@@ -130,28 +130,13 @@ func IsSyntheticUserID(id string) bool {
 }
 
 // TenantRoleFromContext extracts the caller's TenantRole in the currently
-// active tenant. Returns TenantRoleViewer when the key is absent so that
-// callers fail closed (least privilege) if the auth middleware did not
-// populate the role for some reason.
+// active tenant. The personal edition has a single owner principal, so a
+// missing key resolves to owner.
 func TenantRoleFromContext(ctx context.Context) TenantRole {
 	v, ok := ctx.Value(TenantRoleContextKey).(TenantRole)
 	if !ok || !v.IsValid() {
-		return TenantRoleViewer
+		return TenantRoleOwner
 	}
-	return v
-}
-
-// DepartmentIDFromContext returns the caller's department in the active
-// tenant. Empty means no department (company administrator) or missing auth.
-func DepartmentIDFromContext(ctx context.Context) string {
-	v, _ := ctx.Value(DepartmentIDContextKey).(string)
-	return v
-}
-
-// DepartmentRoleFromContext returns the caller's department role. Empty when
-// no department is assigned; callers must fail closed when it is empty.
-func DepartmentRoleFromContext(ctx context.Context) DepartmentRole {
-	v, _ := ctx.Value(DepartmentRoleContextKey).(DepartmentRole)
 	return v
 }
 

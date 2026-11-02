@@ -6,17 +6,16 @@ import "context"
 // tenant and role do not change when queries execute in a resource's tenant.
 // Machine capabilities remain in TenantAPIKeyScope; Principal is separate.
 type Caller struct {
-	TenantID       uint64
-	UserID         string
-	Role           TenantRole
-	DepartmentID   string
-	DepartmentRole DepartmentRole
+	TenantID uint64
+	UserID   string
+	Role     TenantRole
 }
 
-// Normalize defaults an invalid tenant role to Viewer.
+// Normalize defaults an invalid tenant role to owner: the personal edition
+// has exactly one principal.
 func (caller Caller) Normalize() Caller {
 	if !caller.Role.IsValid() {
-		caller.Role = TenantRoleViewer
+		caller.Role = TenantRoleOwner
 	}
 	return caller
 }
@@ -35,11 +34,9 @@ func CallerFromContext(ctx context.Context) Caller {
 	tenantID, _ := TenantIDFromContext(ctx)
 	userID, _ := UserIDFromContext(ctx)
 	return Caller{
-		TenantID:       tenantID,
-		UserID:         userID,
-		Role:           TenantRoleFromContext(ctx),
-		DepartmentID:   DepartmentIDFromContext(ctx),
-		DepartmentRole: DepartmentRoleFromContext(ctx),
+		TenantID: tenantID,
+		UserID:   userID,
+		Role:     TenantRoleFromContext(ctx),
 	}
 }
 

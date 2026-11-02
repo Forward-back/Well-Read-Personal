@@ -616,33 +616,6 @@ func (s *knowledgeService) executeKnowledgeDelete(plan *knowledgeDeletePlan, sin
 	if err := s.tenantRepo.AdjustStorageUsed(ctx, tenantInfo.ID, storageAdjust); err != nil {
 		logger.GetLogger(ctx).WithField("error", err).Errorf("DeleteKnowledge update tenant storage used failed")
 	}
-	byKB := make(map[string][]*types.Knowledge)
-	for i := range knowledgeList {
-		knowledge := knowledgeList[i]
-		byKB[knowledge.KnowledgeBaseID] = append(byKB[knowledge.KnowledgeBaseID], knowledge)
-	}
-	for kbID, knowledges := range byKB {
-		knowledgeIDs := make([]string, 0, len(knowledges))
-		titles := make([]string, 0, len(knowledges))
-		for _, knowledge := range knowledges {
-			knowledgeIDs = append(knowledgeIDs, knowledge.ID)
-			titles = append(titles, knowledge.Title)
-		}
-		details := map[string]any{"count": len(knowledgeIDs)}
-		if len(knowledgeIDs) <= 20 {
-			details["knowledge_ids"] = knowledgeIDs
-		}
-		kbActivityAppendSampleTitles(details, titles...)
-		if single {
-			knowledge := knowledges[0]
-			recordKBActivity(ctx, s.audit, tenantInfo.ID, kbID, types.AuditActionKnowledgeDeleted,
-				"knowledge", knowledge.ID, types.AuditOutcomeSuccess,
-				map[string]any{"title": knowledge.Title, "type": knowledge.Type})
-			continue
-		}
-		recordKBActivity(ctx, s.audit, tenantInfo.ID, kbID, types.AuditActionKnowledgeBatchDeleted,
-			"knowledge", "", types.AuditOutcomeSuccess, details)
-	}
 	return nil
 }
 
@@ -733,8 +706,6 @@ func (s *knowledgeService) ProcessKnowledgeListDelete(ctx context.Context, t *as
 		return err
 	}
 	ctx = payload.Initiator.Apply(ctx)
-	taskID, _ := asynq.GetTaskID(ctx)
-	ctx = withKBActivityTask(ctx, taskID, kbActivityTrigger(ctx))
 
 	logger.Infof(ctx, "Processing knowledge list delete task for %d knowledge items", len(payload.KnowledgeIDs))
 

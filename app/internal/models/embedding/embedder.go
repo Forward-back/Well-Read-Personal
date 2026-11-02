@@ -56,7 +56,7 @@ type Config struct {
 	ExtraConfig    map[string]string `json:"extra_config"`
 	// CustomHeaders 允许在调用远程 API 时附加自定义 HTTP 请求头（类似 OpenAI Python SDK 的 extra_headers）。
 	CustomHeaders map[string]string `json:"custom_headers"`
-	AppSecret     string // 加密值，工厂函数调用方传入，使用前已解密
+	AppSecret     string            // 加密值，工厂函数调用方传入，使用前已解密
 }
 
 // ConfigFromModel 根据 types.Model 构造 embedding.Config。

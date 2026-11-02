@@ -192,9 +192,9 @@ export function deleteMemoryDocument(id: string) {
 // ---------------------------------------------------------------------------
 
 export function getTenantMemoryConfig() {
-  return get<{ success: boolean; data: MemoryConfig }>('/api/v1/tenants/kv/memory-config')
+  return get<{ success: boolean; data: MemoryConfig }>('/api/v1/settings/kv/memory-config')
 }
 
 export function updateTenantMemoryConfig(config: MemoryConfig) {
-  return put<{ success: boolean; data: MemoryConfig }>('/api/v1/tenants/kv/memory-config', config)
+  return put<{ success: boolean; data: MemoryConfig }>('/api/v1/settings/kv/memory-config', config)
 }

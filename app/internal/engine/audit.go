@@ -23,13 +23,12 @@ func (e *auditedEngine) StreamChat(
 	knowledgeBaseIDs []string,
 	aclScope *types.ACLScope,
 	skill *types.SkillInjection,
-	allowedSensitivities []string,
 	onDelta func(string),
 	onReferences func([]*types.SearchResult),
 	onStage func(stage string, counts map[string]int, tMs int64, detail map[string]interface{}),
 ) (string, []*types.SearchResult, error) {
 	answer, refs, err := e.inner.StreamChat(
-		ctx, question, knowledgeBaseIDs, aclScope, skill, allowedSensitivities,
+		ctx, question, knowledgeBaseIDs, aclScope, skill,
 		onDelta, onReferences, onStage,
 	)
 	e.emit(ctx, question, knowledgeBaseIDs, aclScope, refs, err)
@@ -104,9 +103,6 @@ func (e *auditedEngine) emit(
 	}
 	caller := types.CallerFromContext(ctx).Normalize()
 	principal := "member"
-	if caller.Role == types.TenantRoleCompanyAdmin {
-		principal = "company_admin"
-	}
 	if strings.TrimSpace(caller.UserID) == "" {
 		principal = "portal"
 	}

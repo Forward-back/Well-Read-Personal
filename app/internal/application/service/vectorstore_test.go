@@ -963,10 +963,6 @@ func (r *realKBRepo) ListKnowledgeBases(_ context.Context) ([]*types.KnowledgeBa
 	return nil, nil
 }
 
-// ListPublicKnowledgeBases is a portal stub: no public KBs in these tests.
-func (r *realKBRepo) ListPublicKnowledgeBases(context.Context) ([]*types.KnowledgeBase, error) {
-	return nil, nil
-}
 func (r *realKBRepo) ListKnowledgeBasesByTenantID(_ context.Context, _ uint64) ([]*types.KnowledgeBase, error) {
 	return nil, nil
 }

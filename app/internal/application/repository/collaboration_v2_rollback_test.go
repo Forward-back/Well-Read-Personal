@@ -18,7 +18,7 @@ func TestApplyDocVersionRollbackRestoresSoftDeletedChunk(t *testing.T) {
 	if err := db.AutoMigrate(&types.Chunk{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	repo := NewCollaborationRepository(db)
+	repo := NewDocumentVersionRepository(db)
 	ctx := context.Background()
 	now := time.Now()
 	softDeleted := &types.Chunk{

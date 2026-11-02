@@ -321,10 +321,9 @@ var registry = map[string]settingSpec{
 // edits still take effect (since Update does write the local cache
 // inline). This is the right behaviour for single-replica deployments.
 type systemSettingService struct {
-	repo  interfaces.SystemSettingRepository
-	audit interfaces.AuditLogService
-	rdb   *redis.Client // may be nil in lite mode
-	cfg   *config.Config
+	repo interfaces.SystemSettingRepository
+	rdb  *redis.Client // may be nil in lite mode
+	cfg  *config.Config
 
 	// instanceID disambiguates this replica from its peers in the
 	// pubsub stream. Generated once at construction; never changes.
@@ -355,13 +354,11 @@ type systemSettingService struct {
 // but skips cross-replica pubsub invalidation.
 func NewSystemSettingService(
 	repo interfaces.SystemSettingRepository,
-	audit interfaces.AuditLogService,
 	rdb *redis.Client,
 	cfg *config.Config,
 ) interfaces.SystemSettingService {
 	s := &systemSettingService{
 		repo:       repo,
-		audit:      audit,
 		rdb:        rdb,
 		cfg:        cfg,
 		instanceID: uuid.NewString(),
@@ -963,15 +960,12 @@ func (s *systemSettingService) Update(ctx context.Context, key string, rawValue 
 		return nil, fmt.Errorf("invalid value for %q: %w", key, err)
 	}
 
-	// Capture pre-image for the audit log — pulled fresh, not from
-	// any cache, so concurrent admin edits race-fairly (last writer
-	// wins, audit reflects what was actually replaced).
+	// Capture pre-image — pulled fresh, not from any cache, so concurrent
+	// admin edits race-fairly (last writer wins).
 	prev, _ := s.repo.Get(ctx, key)
-	var oldValue types.JSON
 	var category, description string
 	var isSecret, requiresRestart bool
 	if prev != nil {
-		oldValue = prev.Value
 		category = prev.Category
 		description = prev.Description
 		isSecret = prev.IsSecret
@@ -988,6 +982,7 @@ func (s *systemSettingService) Update(ctx context.Context, key string, rawValue 
 		requiresRestart = spec.RequiresRestart
 	}
 
+	actorID, _ := types.UserIDFromContext(ctx)
 	row := &types.SystemSetting{
 		Key:             key,
 		Value:           encoded,
@@ -996,7 +991,7 @@ func (s *systemSettingService) Update(ctx context.Context, key string, rawValue 
 		Description:     description,
 		IsSecret:        isSecret,
 		RequiresRestart: requiresRestart,
-		LastModifiedBy:  auditActor(ctx),
+		LastModifiedBy:  actorID,
 	}
 	if err := s.repo.Upsert(ctx, row); err != nil {
 		return nil, fmt.Errorf("upsert system setting %q: %w", key, err)
@@ -1030,7 +1025,6 @@ func (s *systemSettingService) Update(ctx context.Context, key string, rawValue 
 	s.dispatchSideEffects(ctx, key)
 
 	s.publishChange(ctx, key)
-	s.emitChangeAudit(ctx, key, spec.Type, oldValue, encoded)
 	return persisted, nil
 }
 
@@ -1044,15 +1038,11 @@ func (s *systemSettingService) Update(ctx context.Context, key string, rawValue 
 // Unknown keys still 400 — we don't want a typo on the URL to silently
 // pretend it cleared something.
 func (s *systemSettingService) Reset(ctx context.Context, key string) error {
-	spec, ok := registry[key]
-	if !ok {
+	if _, ok := registry[key]; !ok {
 		return fmt.Errorf("unknown setting key %q", key)
 	}
 
-	// Capture pre-image for the audit log before the row vanishes.
-	prev, _ := s.repo.Get(ctx, key)
-
-	deleted, err := s.repo.Delete(ctx, key)
+	_, err := s.repo.Delete(ctx, key)
 	if err != nil {
 		return fmt.Errorf("delete system setting %q: %w", key, err)
 	}
@@ -1071,12 +1061,6 @@ func (s *systemSettingService) Reset(ctx context.Context, key string) error {
 	s.dispatchSideEffects(ctx, key)
 	s.publishChange(ctx, key)
 
-	// Only emit an audit row on real deletions. The new_value field
-	// is intentionally null to flag this as a reset (vs an Update
-	// which always writes a concrete new_value).
-	if deleted && prev != nil {
-		s.emitChangeAudit(ctx, key, spec.Type, prev.Value, nil)
-	}
 	return nil
 }
 
@@ -1175,33 +1159,6 @@ func (s *systemSettingService) consumeMessages(ctx context.Context, ch <-chan *r
 // effort — a nil audit service or a write failure does not bubble up.
 // This mirrors tenantMemberService.emitAudit's failure semantics: the
 // business op (config update) succeeds even if audit is broken.
-func (s *systemSettingService) emitChangeAudit(
-	ctx context.Context, key, valueType string, oldValue, newValue types.JSON,
-) {
-	if s.audit == nil {
-		return
-	}
-	details, _ := json.Marshal(map[string]any{
-		"key":        key,
-		"value_type": valueType,
-		"old_value":  json.RawMessage(oldValue),
-		"new_value":  json.RawMessage(newValue),
-	})
-	_ = s.audit.Log(ctx, &types.AuditLog{
-		// tenant_id=0 marks the row as system-scope (the audit_logs
-		// table itself is tenant-scoped; 0 is the convention for
-		// platform-wide events).
-		TenantID:    0,
-		ActorUserID: auditActor(ctx),
-		ActorRole:   "system_admin",
-		Action:      types.AuditActionSystemSettingChanged,
-		TargetType:  "system_setting",
-		TargetID:    key,
-		Outcome:     types.AuditOutcomeSuccess,
-		Details:     types.JSON(details),
-	})
-}
-
 // encodeForType validates rawValue against the declared type and
 // returns the canonical JSON encoding for the DB. Rejects type
 // mismatches (e.g. passing "abc" for an int field) with a clear error

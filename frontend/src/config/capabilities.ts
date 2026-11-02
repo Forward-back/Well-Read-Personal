@@ -1,10 +1,7 @@
-import contract from '../../../app/contracts/capabilities.json'
-
+// Personal edition: the owner has every capability. These helpers remain so
+// existing views that gate buttons on capability names keep working; there is
+// no role matrix anymore and no server-side capability contract to mirror.
 export type CapabilityKey = string
-
-export const CAPABILITY_KEYS: readonly CapabilityKey[] = contract.keys
-
-export const CAPABILITY_ROLES: Record<string, readonly CapabilityKey[]> = contract.roles
 
 export const CAPABILITY_LABELS: Record<CapabilityKey, string> = {
   'kb:read': '阅读知识库',
@@ -33,42 +30,31 @@ export const CAPABILITY_LABELS: Record<CapabilityKey, string> = {
   'audit:company_read': '查看公司审计',
 }
 
+export const CAPABILITY_KEYS: readonly CapabilityKey[] =
+  Object.keys(CAPABILITY_LABELS) as CapabilityKey[]
+
+export const CAPABILITY_ROLES: Record<string, readonly CapabilityKey[]> = {
+  owner: CAPABILITY_KEYS,
+}
+
 const KEY_SET = new Set<string>(CAPABILITY_KEYS)
 
 export function isKnownCapability(key: string): key is CapabilityKey {
   return KEY_SET.has(key)
 }
 
-function normalizeCompanyRole(role: string): string {
-  if (role === 'company_admin' || role === 'owner' || role === 'admin') return 'company_admin'
-  if (role === 'member' || role === 'contributor' || role === 'viewer') return 'member'
-  return ''
-}
-
-/** Mirrors the server-side union of company-role and department-role caps. */
 export function capsForRoles(
-  companyRole: string,
-  departmentRole: string,
-  systemAdmin = false,
+  _companyRole?: string,
+  _departmentRole?: string,
+  _systemAdmin?: boolean,
 ): CapabilityKey[] {
-  const roles: string[] = []
-  const company = normalizeCompanyRole(companyRole)
-  if (company) roles.push(company)
-  if (company !== 'company_admin' && ['manager', 'knowledge_admin', 'editor', 'viewer'].includes(departmentRole)) {
-    roles.push(departmentRole)
-  }
-  if (systemAdmin) roles.push('system_admin')
-  const granted = new Set<string>()
-  for (const role of roles) {
-    for (const cap of CAPABILITY_ROLES[role] ?? []) granted.add(cap)
-  }
-  return CAPABILITY_KEYS.filter((key) => granted.has(key))
+  return [...CAPABILITY_KEYS]
 }
 
-export function hasCapability(caps: readonly string[], key: CapabilityKey): boolean {
-  return caps.includes(key)
+export function hasCapability(_caps: readonly string[], _key: CapabilityKey): boolean {
+  return true
 }
 
-export function hasCapabilities(caps: readonly string[], required: readonly CapabilityKey[]): boolean {
-  return required.every((key) => caps.includes(key))
+export function hasCapabilities(_caps: readonly string[], _required: readonly CapabilityKey[]): boolean {
+  return true
 }

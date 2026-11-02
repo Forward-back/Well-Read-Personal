@@ -6,7 +6,6 @@ import (
 
 	"gaze/internal/application/service"
 	"gaze/internal/types"
-	"gaze/internal/types/interfaces"
 	"github.com/gin-gonic/gin"
 )
 
@@ -21,7 +20,6 @@ type usableSkillLister interface {
 type SkillHandler struct {
 	usableSkills usableSkillLister
 	catalog      skillCatalogService
-	grants       interfaces.SkillEditorGrantService
 }
 
 type skillCatalogService interface {
@@ -40,12 +38,8 @@ type skillCatalogService interface {
 
 // NewSkillHandler creates a new skill handler. catalog may be nil in tests
 // that only exercise the chat picker.
-func NewSkillHandler(usableSkills usableSkillLister, catalog skillCatalogService, grants ...interfaces.SkillEditorGrantService) *SkillHandler {
-	h := &SkillHandler{usableSkills: usableSkills, catalog: catalog}
-	if len(grants) > 0 {
-		h.grants = grants[0]
-	}
-	return h
+func NewSkillHandler(usableSkills usableSkillLister, catalog skillCatalogService) *SkillHandler {
+	return &SkillHandler{usableSkills: usableSkills, catalog: catalog}
 }
 
 // SkillInfoResponse represents the skill info returned to frontend

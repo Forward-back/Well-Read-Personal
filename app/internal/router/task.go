@@ -294,9 +294,6 @@ func RunAsynqServer(params AsynqTaskParams) *asynq.ServeMux {
 	// Register YLSW dual-write push retry handler (§2.2 ③)
 	mux.HandleFunc(types.TypeEnginePushRetry, params.KnowledgeService.ProcessEnginePushRetry)
 
-	// Register enterprise metadata LLM extraction handler (§2.14)
-	mux.HandleFunc(types.TypeMetadataExtract, params.KnowledgeService.ProcessMetadataExtract)
-
 	// Register index delete handler
 	mux.HandleFunc(types.TypeIndexDelete, params.TagService.ProcessIndexDelete)
 

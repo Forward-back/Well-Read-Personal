@@ -438,7 +438,6 @@ func (s *knowledgeService) ProcessKBClone(ctx context.Context, t *asynq.Task) er
 		return fmt.Errorf("failed to unmarshal KB clone payload: %w", err)
 	}
 	ctx = payload.Initiator.Apply(ctx)
-	ctx = withKBActivityTask(ctx, payload.TaskID, kbActivityTrigger(ctx))
 
 	if payload.TenantID == 0 || payload.SourceID == "" || payload.TaskID == "" {
 		return fmt.Errorf("invalid clone task: %w", asynq.SkipRetry)
@@ -534,9 +533,6 @@ func (s *knowledgeService) ProcessKBClone(ctx context.Context, t *asynq.Task) er
 			progress.Message = message
 			progress.UpdatedAt = time.Now().Unix()
 			_ = s.saveKBCloneProgress(ctx, progress)
-			recordKBActivity(ctx, s.audit, payload.TenantID, payload.TargetID, types.AuditActionKBCloneFailed,
-				"knowledge_base", payload.TargetID, types.AuditOutcomeFailed,
-				map[string]any{"source_kb_id": payload.SourceID, "task_id": payload.TaskID})
 		}
 	}
 
@@ -555,9 +551,6 @@ func (s *knowledgeService) ProcessKBClone(ctx context.Context, t *asynq.Task) er
 	}
 
 	if retryCount == 0 {
-		recordKBActivity(ctx, s.audit, payload.TenantID, payload.TargetID, types.AuditActionKBCloneStarted,
-			"knowledge_base", payload.TargetID, types.AuditOutcomeAccepted,
-			map[string]any{"source_kb_id": payload.SourceID, "task_id": payload.TaskID})
 	}
 
 	// Use different sync strategies based on knowledge base type
@@ -565,9 +558,6 @@ func (s *knowledgeService) ProcessKBClone(ctx context.Context, t *asynq.Task) er
 		if err := s.cloneFAQKnowledgeBase(ctx, srcKB, dstKB, progress, handleError); err != nil {
 			return err
 		}
-		recordKBActivity(ctx, s.audit, payload.TenantID, payload.TargetID, types.AuditActionKBCloneCompleted,
-			"knowledge_base", payload.TargetID, types.AuditOutcomeSuccess,
-			map[string]any{"source_kb_id": payload.SourceID, "task_id": payload.TaskID, "total": progress.Total})
 		return nil
 	}
 
@@ -598,9 +588,6 @@ func (s *knowledgeService) ProcessKBClone(ctx context.Context, t *asynq.Task) er
 	}
 
 	logger.Infof(ctx, "KB clone task completed: %s", payload.TaskID)
-	recordKBActivity(ctx, s.audit, payload.TenantID, payload.TargetID, types.AuditActionKBCloneCompleted,
-		"knowledge_base", payload.TargetID, types.AuditOutcomeSuccess,
-		map[string]any{"source_kb_id": payload.SourceID, "task_id": payload.TaskID, "total": totalOperations})
 	return nil
 }
 
@@ -1056,7 +1043,6 @@ func (s *knowledgeService) ProcessKnowledgeMove(ctx context.Context, t *asynq.Ta
 		return fmt.Errorf("invalid move scope: %w", asynq.SkipRetry)
 	}
 	ctx = payload.Initiator.Apply(ctx)
-	ctx = withKBActivityTask(ctx, payload.TaskID, kbActivityTrigger(ctx))
 	ctx = types.WithExecutionTenant(ctx, payload.TenantID)
 	sourceKB, err := s.kbService.GetKnowledgeBaseByID(ctx, payload.SourceKBID)
 	if err != nil {
@@ -1121,30 +1107,6 @@ func (s *knowledgeService) ProcessKnowledgeMove(ctx context.Context, t *asynq.Ta
 		Total:      len(items),
 		UpdatedAt:  time.Now().Unix(),
 	}
-	record := func(action types.AuditAction, outcome types.AuditOutcome) {
-		for _, kbID := range []string{sourceKB.ID, targetKB.ID} {
-			recordKBActivity(
-				ctx,
-				s.audit,
-				payload.TenantID,
-				kbID,
-				action,
-				"knowledge_move",
-				payload.TaskID,
-				outcome,
-				map[string]any{
-					"source_kb_id": sourceKB.ID,
-					"target_kb_id": targetKB.ID,
-					"task_id":      payload.TaskID,
-					"count":        len(items),
-					"mode":         payload.Mode,
-				},
-			)
-		}
-	}
-	if retry == 0 {
-		record(types.AuditActionKnowledgeMoveStarted, types.AuditOutcomeAccepted)
-	}
 	var failures error
 	for _, item := range items {
 		if err := s.moveOneKnowledge(ctx, item.ID, sourceKB, targetKB, payload.Mode); err != nil {
@@ -1168,11 +1130,6 @@ func (s *knowledgeService) ProcessKnowledgeMove(ctx context.Context, t *asynq.Ta
 		progress.Error = failures.Error()
 		if retry >= maxRetry {
 			progress.Status = types.KBCloneStatusFailed
-			outcome := types.AuditOutcomeFailed
-			if progress.Failed < progress.Total {
-				outcome = types.AuditOutcomePartial
-			}
-			record(types.AuditActionKnowledgeMoveFailed, outcome)
 		}
 		_ = s.saveKnowledgeMoveProgress(ctx, progress)
 		// Return an error for partial failures too. Completed items are recognized
@@ -1183,7 +1140,6 @@ func (s *knowledgeService) ProcessKnowledgeMove(ctx context.Context, t *asynq.Ta
 	progress.Progress = 100
 	progress.Error = ""
 	_ = s.saveKnowledgeMoveProgress(ctx, progress)
-	record(types.AuditActionKnowledgeMoveCompleted, types.AuditOutcomeSuccess)
 	return nil
 }
 

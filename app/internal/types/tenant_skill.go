@@ -143,7 +143,6 @@ func (e *TenantSkillSnapshotEntity) TableName() string { return "tenant_skill_sn
 type TenantSkillCatalogEntity struct {
 	ID           string `gorm:"type:varchar(36);primaryKey"`
 	TenantID     uint64
-	DepartmentID string `gorm:"type:varchar(36);not null;default:'';index"`
 	Name         string `gorm:"type:varchar(255);not null"`
 	Version      string `gorm:"type:varchar(64)"`
 	Description  string `gorm:"type:text"`

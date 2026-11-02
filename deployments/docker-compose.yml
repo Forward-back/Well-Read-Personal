@@ -9,8 +9,6 @@ services:
     image: gaze-ui:${GAZE_VERSION:-latest}
     build:
       context: ../frontend
-      additional_contexts:
-        contracts: ../app/contracts
       args:
         VITE_FRONTEND_COMMIT: ${VITE_FRONTEND_COMMIT:-unknown}
         NPM_REGISTRY: ${NPM_REGISTRY:-}

@@ -98,7 +98,7 @@ export function getSystemInfo(): Promise<{ data: SystemInfo }> {
 }
 
 export function getPromptTemplates(): Promise<{ data: PromptTemplatesConfig }> {
-  return get('/api/v1/tenants/kv/prompt-templates')
+  return get('/api/v1/settings/kv/prompt-templates')
 }
 
 export interface ParserEngineInfo {
@@ -160,11 +160,11 @@ export function checkParserEngines(config: ParserEngineConfig): Promise<ParserEn
 }
 
 export function getParserEngineConfig(): Promise<{ data: ParserEngineConfig }> {
-  return get('/api/v1/tenants/kv/parser-engine-config')
+  return get('/api/v1/settings/kv/parser-engine-config')
 }
 
 export function updateParserEngineConfig(config: ParserEngineConfig): Promise<{ data: ParserEngineConfig }> {
-  return put('/api/v1/tenants/kv/parser-engine-config', config)
+  return put('/api/v1/settings/kv/parser-engine-config', config)
 }
 
 export function reconnectDocReader(addr: string): Promise<ParserEnginesResponse & { msg?: string }> {
@@ -244,11 +244,11 @@ export interface GetStorageEngineStatusResponse {
 }
 
 export function getStorageEngineConfig(): Promise<{ data: StorageEngineConfig }> {
-  return get('/api/v1/tenants/kv/storage-engine-config')
+  return get('/api/v1/settings/kv/storage-engine-config')
 }
 
 export function updateStorageEngineConfig(config: StorageEngineConfig): Promise<{ data: StorageEngineConfig }> {
-  return put('/api/v1/tenants/kv/storage-engine-config', config)
+  return put('/api/v1/settings/kv/storage-engine-config', config)
 }
 
 export function getStorageEngineStatus(): Promise<{ data: GetStorageEngineStatusResponse }> {

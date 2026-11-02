@@ -365,11 +365,6 @@ func (s *readingRunService) structuredStep(
 	); err != nil {
 		return nil, err
 	}
-	s.logAudit(ctx, caller, types.AuditActionReadingSectionRead, run.ID, map[string]any{
-		"section_id": section.ID, "knowledge_id": section.KnowledgeID,
-		"round": run.StepCount, "questions": len(outcome.Questions),
-		"conclusions": len(outcome.Conclusions), "contradictions": len(outcome.Contradictions),
-	})
 	return s.Get(ctx, run.ID)
 }
 
@@ -1382,11 +1377,7 @@ func (s *readingRunService) readingSemanticScope(
 	if s.ragEngine == nil || plan == nil || strings.TrimSpace(plan.KnowledgeBaseID) == "" {
 		return nil
 	}
-	scope, err := s.aclService.RetrievalScope(ctx, []string{plan.KnowledgeBaseID})
-	if err != nil || scope == nil || !scope.Valid() {
-		return nil
-	}
-	return scope
+	return types.TenantWideScope()
 }
 
 // searchReadingEvidenceMerged combines YLSW semantic retrieval with the local
@@ -1670,10 +1661,6 @@ func (s *readingRunService) finishStructured(
 	if err := s.repo.SaveRound(ctx, run, nil, nil, nil, nil, step); err != nil {
 		return nil, err
 	}
-	s.logAudit(ctx, caller, types.AuditActionReadingRunFinished, run.ID, map[string]any{
-		"step_count": run.StepCount, "token_usage": run.TokenUsage,
-		"confirmed_conclusions": len(confirmed), "open_questions": len(openQuestions),
-	})
 	return s.Get(ctx, run.ID)
 }
 
@@ -1810,9 +1797,6 @@ func (s *readingRunService) structuredFeedback(
 	if err := s.repo.SaveFeedback(ctx, run, target, conclusion); err != nil {
 		return nil, err
 	}
-	s.logAudit(ctx, caller, types.AuditActionReadingFeedbackReceived, run.ID, map[string]any{
-		"question_id": target.ID, "skip": req.Skip,
-	})
 	return s.Get(ctx, run.ID)
 }
 
@@ -2104,9 +2088,5 @@ func (s *readingRunService) exportStructuredReading(
 		}
 		result.Filename = fmt.Sprintf("wellread-reading-%s.md", run.ID)
 	}
-	s.logAudit(ctx, caller, types.AuditActionReadingRunExported, run.ID, map[string]any{
-		"format": format, "documents": len(documentIDs), "report_edited": edited,
-		"read_sections": coverage.ReadSections, "total_sections": len(plan.Sections),
-	})
 	return result, nil
 }

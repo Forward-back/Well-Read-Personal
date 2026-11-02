@@ -75,7 +75,7 @@ func NewModelResponse(ctx context.Context, m *types.Model) *ModelResponse {
 		MaxConcurrency:      m.Parameters.MaxConcurrency,
 		AppID:               m.Parameters.AppID,
 	}
-	canManageBuiltin := m.IsBuiltin && types.IsSystemAdminFromContext(ctx)
+	canManageBuiltin := m.IsBuiltin
 	if !CanViewIntegrationSecrets(ctx) && !canManageBuiltin {
 		params.ExtraConfig = nil
 		params.CustomHeaders = nil

@@ -24,6 +24,12 @@ func (r *failingSharedKnowledgeRepo) GetKnowledgeByIDOnly(context.Context, strin
 	return nil, r.err
 }
 
+func newSharedAccessContext() context.Context {
+	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1))
+	ctx = context.WithValue(ctx, types.UserIDContextKey, "user-1")
+	return ctx
+}
+
 func TestSharedDocumentReadsPropagateStorageFailure(t *testing.T) {
 	for _, failure := range []error{errors.New("database unavailable"), repository.ErrKnowledgeNotFound} {
 		repo := &failingSharedKnowledgeRepo{err: failure}

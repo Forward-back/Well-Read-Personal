@@ -47,11 +47,6 @@ RUN if [ -n "$NPM_REGISTRY" ]; then \
       npm ci; \
     fi
 
-# The capability contract is imported by src/config/capabilities.ts from
-# app/contracts. Pass it as a named build context:
-#   docker build --build-context contracts=../app/contracts frontend/
-COPY --from=contracts capabilities.json /app/contracts/capabilities.json
-
 COPY . .
 # After npm ci so a new commit hash does not bust the dependency layer.
 ARG VITE_FRONTEND_COMMIT=unknown

@@ -10,7 +10,7 @@ func deploymentCapabilitiesFromRouter(params RouterParams) handler.DeploymentCap
 		Organizations: false,
 		Agents:        false,
 		IM:            false,
-		API:           params.TenantHandler != nil && params.TenantAPIKeyService != nil,
+		API:           params.TenantAPIKeyService != nil,
 		MCP:           false,
 		WebSearch:     false,
 		VectorStore:   false,

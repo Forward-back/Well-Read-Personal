@@ -8,12 +8,12 @@ import (
 
 func adminContext() context.Context {
 	ctx := context.Background()
-	return context.WithValue(ctx, types.TenantRoleContextKey, types.TenantRoleAdmin)
+	return context.WithValue(ctx, types.TenantRoleContextKey, types.TenantRoleOwner)
 }
 
 func viewerContext() context.Context {
 	ctx := context.Background()
-	return context.WithValue(ctx, types.TenantRoleContextKey, types.TenantRoleViewer)
+	return context.WithValue(ctx, types.TenantRoleContextKey, types.TenantRoleOwner)
 }
 
 func ownerContext() context.Context {

@@ -155,12 +155,6 @@ func applyKnowledgeListFilter(query *gorm.DB, filter types.KnowledgeListFilter) 
 	if !filter.UpdatedTo.IsZero() {
 		query = query.Where("updated_at <= ?", filter.UpdatedTo)
 	}
-	if filter.ACLActive {
-		if len(filter.AllowedKnowledgeIDs) == 0 {
-			return query.Where("1 = 0")
-		}
-		query = query.Where("id IN ?", filter.AllowedKnowledgeIDs)
-	}
 	if len(filter.FolderIDs) > 0 {
 		query = query.Where("folder_id IN ?", filter.FolderIDs)
 	} else {
@@ -427,21 +421,6 @@ func (r *knowledgeRepository) ListKnowledgeByEngineSyncStatus(
 	}
 	var rows []*types.Knowledge
 	if err := q.Order("engine_sync_requested_at ASC").Find(&rows).Error; err != nil {
-		return nil, err
-	}
-	return rows, nil
-}
-
-// ListLifecycleScheduled returns documents whose lifecycle can advance by date.
-func (r *knowledgeRepository) ListLifecycleScheduled(ctx context.Context) ([]*types.Knowledge, error) {
-	var rows []*types.Knowledge
-	err := r.db.WithContext(ctx).
-		Where("deleted_at IS NULL").
-		Where("lifecycle_status IN ?", []string{"draft", "effective"}).
-		Where("(COALESCE(effective_date, '') <> '' OR COALESCE(expiry_date, '') <> '')").
-		Order("updated_at ASC").
-		Find(&rows).Error
-	if err != nil {
 		return nil, err
 	}
 	return rows, nil

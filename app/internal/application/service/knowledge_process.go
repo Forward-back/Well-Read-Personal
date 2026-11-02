@@ -491,12 +491,6 @@ func (s *knowledgeService) processChunks(ctx context.Context,
 		textChunk.DocType = knowledge.DocType
 		textChunk.OrgName = knowledge.OrgName
 		textChunk.ProductName = knowledge.ProductName
-		// 企业级元数据反范式（§2.14 检索过滤/降权免 JOIN；superseded_by 不进 chunks）
-		textChunk.LifecycleStatus = knowledge.LifecycleStatus
-		textChunk.EffectiveDate = knowledge.EffectiveDate
-		textChunk.ExpiryDate = knowledge.ExpiryDate
-		textChunk.Sensitivity = knowledge.Sensitivity
-		textChunk.Department = knowledge.Department
 		if options.Metadata != nil {
 			if textChunk.DocType == "" {
 				textChunk.DocType = options.Metadata["doc_type"]
@@ -2482,8 +2476,6 @@ func (s *knowledgeService) ReparseKnowledge(
 		return nil, err
 	}
 
-	tenantID := existing.TenantID
-
 	// 重新解析会删除旧 chunk 并生成新 chunk ID；先留一份版本快照，事后可回滚。
 	if s.docVersions != nil &&
 		(existing.ParseStatus == types.ParseStatusCompleted || existing.ParseStatus == types.ParseStatusFinalizing) {
@@ -2540,9 +2532,6 @@ func (s *knowledgeService) ReparseKnowledge(
 		s.prepareGazeForReparse(ctx, existing)
 	}
 	recordReparseStarted := func() {
-		recordKBActivity(ctx, s.audit, tenantID, existing.KnowledgeBaseID, types.AuditActionKnowledgeReparseStarted,
-			"knowledge", existing.ID, types.AuditOutcomeAccepted,
-			map[string]any{"title": existing.Title, "type": existing.Type, "attempt": reparseAttempt})
 	}
 
 	// For manual knowledge, use async manual processing (cleanup + re-indexing in worker)
@@ -2875,9 +2864,6 @@ func (s *knowledgeService) CancelKnowledgeParse(
 	// at isGazeKnowledgeAborted anyway, but scrubbing avoids waking the
 	// batch in the first place.
 	s.scrubGazePendingIngest(ctx, existing.KnowledgeBaseID, knowledgeID, "cancel")
-	recordKBActivity(ctx, s.audit, tenantID, existing.KnowledgeBaseID, types.AuditActionKnowledgeParseCanceled,
-		"knowledge", existing.ID, types.AuditOutcomeCanceled,
-		map[string]any{"title": existing.Title, "type": existing.Type})
 	return existing, nil
 }
 
@@ -3769,10 +3755,6 @@ func (s *knowledgeService) ProcessDocument(ctx context.Context, t *asynq.Task) e
 		s.enqueueEnginePushRetry(ctx, knowledge)
 	}
 
-	// Step 6: Enqueue LLM enterprise-metadata extraction (§2.14 赋值双路之二)。
-	// 默认值(internal/effective)已随上面推送;抽取完成后由 worker 补更新。
-	s.enqueueMetadataExtract(ctx, knowledge, knowledge.Title, convertResult.MarkdownContent)
-
 	return nil
 }
 
@@ -3853,13 +3835,6 @@ func buildEngineDocumentMetadata(knowledge *types.Knowledge) *engine.DocumentMet
 		meta.DocDate = ums.DocDate
 		meta.ProductName = ums.ProductName
 	}
-	// 企业级元数据（§2.14）：knowledge 行字段（人工表单/LLM 异步抽取写入）
-	meta.LifecycleStatus = knowledge.LifecycleStatus
-	meta.EffectiveDate = knowledge.EffectiveDate
-	meta.ExpiryDate = knowledge.ExpiryDate
-	meta.SupersededBy = knowledge.SupersededBy
-	meta.Sensitivity = knowledge.Sensitivity
-	meta.Department = knowledge.Department
 	if len(knowledge.CustomMetadata) > 0 {
 		var cm map[string]any
 		if json.Unmarshal(knowledge.CustomMetadata, &cm) == nil {
@@ -4346,8 +4321,6 @@ func (s *knowledgeService) ProcessKnowledgeListReparse(ctx context.Context, t *a
 		return err
 	}
 	ctx = payload.Initiator.Apply(ctx)
-	taskID, _ := asynq.GetTaskID(ctx)
-	ctx = withKBActivityTask(ctx, taskID, kbActivityTrigger(ctx))
 
 	logger.Infof(ctx, "Processing knowledge list reparse task for %d knowledge items", len(payload.KnowledgeIDs))
 

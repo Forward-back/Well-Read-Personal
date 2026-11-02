@@ -63,4 +63,3 @@ func TestSessionOwnerIDFromContextIsolatesTenantAPIKeys(t *testing.T) {
 		t.Fatalf("SessionOwnerIDFromContext() = %q, want per-key isolation", got)
 	}
 }
-

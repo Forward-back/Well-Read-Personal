@@ -115,7 +115,6 @@ type agentService struct {
 	sandboxPinner        *SessionSandboxPinner
 	sandboxPolicy        WorkspaceSandboxPolicy
 	ragEngine            engine.RAGEngine
-	aclService           interfaces.KBAclService
 }
 
 // NewAgentService creates a new agent service
@@ -143,7 +142,6 @@ func NewAgentService(
 	sandboxPinner *SessionSandboxPinner,
 	sandboxPolicy WorkspaceSandboxPolicy,
 	ragEngine engine.RAGEngine,
-	aclService interfaces.KBAclService,
 ) interfaces.AgentService {
 	return &agentService{
 		cfg:                  cfg,
@@ -169,7 +167,6 @@ func NewAgentService(
 		sandboxPinner:        sandboxPinner,
 		sandboxPolicy:        sandboxPolicy,
 		ragEngine:            ragEngine,
-		aclService:           aclService,
 	}
 }
 
@@ -1016,7 +1013,6 @@ func (s *agentService) registerTools(
 				s.chunkService,
 				config.SearchTargets,
 				s.ragEngine,
-				s.aclService,
 				s.cfg,
 			)
 		case tools.ToolGrepChunks:

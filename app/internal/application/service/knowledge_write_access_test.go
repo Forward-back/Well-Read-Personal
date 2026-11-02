@@ -121,15 +121,9 @@ func newFAQWriteFixture(t *testing.T) *faqWriteFixture {
 	}
 	base := types.WithCaller(
 		context.Background(),
-		types.Caller{TenantID: 1, UserID: "caller", Role: types.TenantRoleAdmin},
+		types.Caller{TenantID: 7, UserID: "owner", Role: types.TenantRoleOwner},
 	)
-	grant := &access.KBAccess{
-		KnowledgeBase:     kb,
-		Caller:            types.CallerFromContext(base),
-		EffectiveTenantID: 7,
-		Permission:        types.OrgRoleEditor,
-	}
-	ctx := context.WithValue(grant.Context(base), types.TenantInfoContextKey, &types.Tenant{ID: 7})
+	ctx := context.WithValue(base, types.TenantInfoContextKey, &types.Tenant{ID: 7})
 	for _, tag := range []*types.KnowledgeTag{
 		{ID: "tag", SeqID: 11, TenantID: 7, KnowledgeBaseID: "kb", Name: "tag"},
 		{ID: "next", SeqID: 12, TenantID: 7, KnowledgeBaseID: "kb", Name: "next"},

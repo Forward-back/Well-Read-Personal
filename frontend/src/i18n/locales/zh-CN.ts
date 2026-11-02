@@ -7842,6 +7842,7 @@ export default {
     sessionInProgress: '会话进行中',
     knowledgeBase: '知识库',
     reading: '精读',
+    skills: '技能',
     governance: '治理',
     management: '管理',
     platformAdmin: '平台管理',

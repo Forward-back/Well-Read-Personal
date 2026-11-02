@@ -102,5 +102,3 @@ func (s *stubModelService) GetVLMModel(context.Context, string) (vlm.VLM, error)
 func (s *stubModelService) GetASRModel(context.Context, string) (asr.ASR, error) {
 	return nil, nil
 }
-
-

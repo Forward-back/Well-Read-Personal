@@ -94,7 +94,6 @@ type tenantSandboxResolver struct {
 	deps             TenantSandboxResolverDeps
 	transport        *http.Transport
 	privateTransport *http.Transport
-
 }
 
 // NewTenantSandboxResolver validates the wiring and returns a resolver.
@@ -116,9 +115,9 @@ func NewTenantSandboxResolver(deps TenantSandboxResolverDeps) (TenantSandboxReso
 		transport = NewGuardedTransport()
 	}
 	return &tenantSandboxResolver{
-		deps:                     deps,
-		transport:                transport,
-		privateTransport:         NewGuardedTransportWithPolicy(OutboundURLPolicy{AllowPrivate: true}),
+		deps:             deps,
+		transport:        transport,
+		privateTransport: NewGuardedTransportWithPolicy(OutboundURLPolicy{AllowPrivate: true}),
 	}, nil
 }
 

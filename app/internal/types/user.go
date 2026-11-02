@@ -99,8 +99,6 @@ type User struct {
 	CanAccessAllTenants bool `json:"can_access_all_tenants" gorm:"default:false"`
 	// Whether the user is a system administrator (independent of workspace roles)
 	IsSystemAdmin bool `json:"is_system_admin" gorm:"default:false;index"`
-	// Whether the user is a 银联商务 employee (validated via 工号 at registration)
-	IsEmployee bool `json:"is_employee" gorm:"default:false"`
 	// Per-user UI/feature preferences.
 	// Stored as JSON (jsonb on Postgres, TEXT on SQLite) via the
 	// driver.Valuer / sql.Scanner methods on UserPreferences.
@@ -173,12 +171,10 @@ type OIDCCallbackResponse struct {
 	// Memberships mirrors LoginResponse.Memberships so the OIDC flow
 	// produces the same role information available to password logins.
 	// Always populated (length >= 1 for an authenticated user).
-	Memberships []Membership `json:"memberships"`
-	// Caps is the active tenant's flattened capability set.
-	Caps         []string `json:"caps"`
-	Token        string   `json:"token,omitempty"`
-	RefreshToken string   `json:"refresh_token,omitempty"`
-	IsNewUser    bool     `json:"is_new_user,omitempty"`
+	Memberships  []Membership `json:"memberships"`
+	Token        string       `json:"token,omitempty"`
+	RefreshToken string       `json:"refresh_token,omitempty"`
+	IsNewUser    bool         `json:"is_new_user,omitempty"`
 }
 
 type OIDCUserInfo struct {
@@ -193,68 +189,16 @@ type RegisterRequest struct {
 	Username string `json:"username" binding:"required,min=2,max=50"`
 	Email    string `json:"email"    binding:"required,email"`
 	Password string `json:"password" binding:"required,min=6"`
-
-	// EmpNo is the optional 银联商务 employee ID. When provided and present
-	// in the business MySQL employees table, the account is marked as an
-	// employee (IsEmployee=true); otherwise it is a public account.
-	EmpNo string `json:"emp_no"`
-
-	// TenantProvisioning is server-controlled registration context. It is
-	// deliberately excluded from JSON so a public caller cannot choose its
-	// own tenancy semantics. Empty preserves the historical behaviour and is
-	// treated as create_personal by UserService.Register.
-	TenantProvisioning TenantProvisioningMode `json:"-"`
-}
-
-// AdminCreateUserRequest is the payload for a SystemAdmin provisioning a
-// new local user via POST /api/v1/system/admin/users/create.
-//
-// Password is optional: when absent (or null), the service generates a
-// random one and returns it exactly once. Any provided value, the
-// empty string included, is subject to the password policy.
-type AdminCreateUserRequest struct {
-	Username string  `json:"username" binding:"required,min=2,max=50"`
-	Email    string  `json:"email"    binding:"required,email"`
-	Password *string `json:"password"`
-}
-
-// TenantProvisioningMode controls what UserService.Register does after it
-// has validated the identity fields. Joining an existing tenant is
-// orchestrated by the invitation handler because the invitation token is the
-// authority for the target tenant and role.
-type TenantProvisioningMode string
-
-const (
-	TenantProvisioningCreatePersonal TenantProvisioningMode = "create_personal"
-	TenantProvisioningTenantless     TenantProvisioningMode = "tenantless"
-)
-
-func (m TenantProvisioningMode) IsValid() bool {
-	return m == TenantProvisioningCreatePersonal || m == TenantProvisioningTenantless
 }
 
 // LoginResponse represents a login response
 type LoginResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message,omitempty"`
-	User    *User  `json:"user,omitempty"`
-	// ActiveTenant is the workspace whose ID is encoded in the issued JWT;
-	// future requests are scoped to it until the client calls /auth/switch-tenant.
-	// Defaults to the user's home workspace on a fresh login.
-	ActiveTenant *Tenant `json:"active_tenant,omitempty"`
-	// Memberships lists every workspace the user can authenticate into,
-	// along with their role in each. Always populated (length 1 for users
-	// who only belong to their home workspace) so frontends can render a
-	// workspace switcher without a follow-up request. Serialised without
-	// omitempty so the field is always present as a JSON array (possibly
-	// empty) — the "always populated" contract relies on the server side
-	// guaranteeing a non-nil slice.
-	Memberships []Membership `json:"memberships"`
-	// Caps is the active tenant's flattened capability set, mirroring the
-	// active membership's Caps. Empty when there is no active membership.
-	Caps         []string `json:"caps"`
-	Token        string   `json:"token,omitempty"`
-	RefreshToken string   `json:"refresh_token,omitempty"`
+	Success      bool    `json:"success"`
+	Message      string  `json:"message,omitempty"`
+	User         *User   `json:"user,omitempty"`
+	Tenant       *Tenant `json:"tenant,omitempty"`
+	Token        string  `json:"token,omitempty"`
+	RefreshToken string  `json:"refresh_token,omitempty"`
 }
 
 // RegisterResponse represents a registration response
@@ -275,7 +219,6 @@ type UserInfo struct {
 	IsActive            bool            `json:"is_active"`
 	CanAccessAllTenants bool            `json:"can_access_all_tenants"`
 	IsSystemAdmin       bool            `json:"is_system_admin"`
-	IsEmployee          bool            `json:"is_employee"`
 	Preferences         UserPreferences `json:"preferences"`
 	CreatedAt           time.Time       `json:"created_at"`
 	UpdatedAt           time.Time       `json:"updated_at"`
@@ -292,7 +235,6 @@ func (u *User) ToUserInfo() *UserInfo {
 		IsActive:            u.IsActive,
 		CanAccessAllTenants: u.CanAccessAllTenants,
 		IsSystemAdmin:       u.IsSystemAdmin,
-		IsEmployee:          u.IsEmployee,
 		Preferences:         u.Preferences,
 		CreatedAt:           u.CreatedAt,
 		UpdatedAt:           u.UpdatedAt,

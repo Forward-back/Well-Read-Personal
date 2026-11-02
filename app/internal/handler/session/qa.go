@@ -15,7 +15,6 @@ import (
 	"sync"
 	"time"
 
-	"gaze/internal/application/access"
 	"gaze/internal/errors"
 	"gaze/internal/event"
 	"gaze/internal/logger"
@@ -190,7 +189,7 @@ func (h *Handler) parseQARequest(c *gin.Context, logPrefix string) (*qaRequestCo
 		return nil, nil, errors.NewNotFoundError("Session not found")
 	}
 
-	// Get custom agent if agent_id is provided. Backend resolves shared agent from share relation (no client-provided tenant).
+	// Get custom agent if agent_id is provided.
 	customAgent, effectiveTenantID, sharedAgentReadOnly := h.resolveAgent(ctx, c, request.AgentID, request.AgentSourceTenantID)
 	if request.AgentSourceTenantID != 0 && customAgent == nil {
 		return nil, nil, errors.NewNotFoundError("Shared agent not found")
@@ -200,24 +199,6 @@ func (h *Handler) parseQARequest(c *gin.Context, logPrefix string) (*qaRequestCo
 	kbIDs, knowledgeIDs := mergeKnowledgeTargets(request.KnowledgeBaseIDs, request.KnowledgeIds, request.MentionedItems)
 	if err := types.AuthorizeTenantAPIKeyKnowledgeTargets(ctx, kbIDs, knowledgeIDs); err != nil {
 		return nil, nil, err
-	}
-
-	// The built-in gaze fixer is invoked from a KB page, not from a tenant's
-	// regular agent picker. When the KB is shared, run it in the source tenant
-	// only if the caller has edit permission, so KB-scoped models/tools resolve
-	// without granting viewers write capability.
-	if customAgent != nil && customAgent.ID == types.BuiltinGazeFixerID {
-		if scopedAgent, scopedTenantID := h.resolveGazeFixerTenantScope(
-			ctx,
-			customAgent,
-			c.GetUint64(types.TenantIDContextKey.String()),
-			types.TenantRoleFromContext(ctx),
-			kbIDs,
-		); scopedTenantID != 0 {
-			customAgent = scopedAgent
-			effectiveTenantID = scopedTenantID
-			sharedAgentReadOnly = false
-		}
 	}
 
 	// Log merge results for debugging
@@ -543,58 +524,29 @@ func cloneTagScopes(scopes []types.TagScope) []types.TagScope {
 	return cloned
 }
 
-// resolveAgent resolves the custom agent by ID, trying shared agent first, then own agent.
-// Returns (nil, 0) if agentID is empty or not found.
+// resolveAgent resolves the caller's own custom agent by ID.
+// Returns (nil, 0, false) if agentID is empty or not found.
 func (h *Handler) resolveAgent(
 	ctx context.Context,
 	c *gin.Context,
 	agentID string,
 	sourceTenantID uint64,
 ) (*types.CustomAgent, uint64, bool) {
-	if agentID == "" {
+	if agentID == "" || sourceTenantID != 0 {
 		return nil, 0, false
 	}
 
 	logger.Infof(ctx, "Resolving agent, agent ID: %s", secutils.SanitizeForLog(agentID))
 
-	// Try shared agent first
-	var customAgent *types.CustomAgent
-	var effectiveTenantID uint64
-	var sharedAgentReadOnly bool
-	userIDVal, _ := c.Get(types.UserIDContextKey.String())
-	currentTenantID := c.GetUint64(types.TenantIDContextKey.String())
-	if h.agentShareService != nil && userIDVal != nil && currentTenantID != 0 {
-		callerTenantRole := types.TenantRoleFromContext(ctx)
-		var agent *types.CustomAgent
-		var err error
-		agent, err = h.agentShareService.GetSharedAgentForTenant(ctx, currentTenantID, callerTenantRole, agentID, sourceTenantID)
-		if err == nil && agent != nil {
-			effectiveTenantID = agent.TenantID
-			customAgent = agent
-			sharedAgentReadOnly = true
-			logger.Infof(ctx, "Using shared agent: ID=%s, Name=%s, effectiveTenantID=%d (retrieval scope)",
-				customAgent.ID, customAgent.Name, effectiveTenantID)
-		}
+	agent, err := h.customAgentService.GetAgentByID(ctx, agentID)
+	if err != nil {
+		logger.Warnf(ctx, "Failed to get custom agent, agent ID: %s, error: %v, using default config",
+			secutils.SanitizeForLog(agentID), err)
+		return nil, 0, false
 	}
-
-	// Fall back to an own agent only when no source workspace was requested.
-	// A rejected shared selector must not silently run a same-ID local builtin.
-	if customAgent == nil && sourceTenantID == 0 {
-		agent, err := h.customAgentService.GetAgentByID(ctx, agentID)
-		if err == nil {
-			customAgent = agent
-			logger.Infof(ctx, "Using own agent: ID=%s, Name=%s, AgentMode=%s",
-				customAgent.ID, customAgent.Name, customAgent.Config.AgentMode)
-		} else {
-			logger.Warnf(ctx, "Failed to get custom agent, agent ID: %s, error: %v, using default config",
-				secutils.SanitizeForLog(agentID), err)
-		}
-	} else if customAgent != nil {
-		logger.Infof(ctx, "Using custom agent: ID=%s, Name=%s, IsBuiltin=%v, AgentMode=%s, effectiveTenantID=%d",
-			customAgent.ID, customAgent.Name, customAgent.IsBuiltin, customAgent.Config.AgentMode, effectiveTenantID)
-	}
-
-	return customAgent, effectiveTenantID, sharedAgentReadOnly
+	logger.Infof(ctx, "Using own agent: ID=%s, Name=%s, AgentMode=%s",
+		agent.ID, agent.Name, agent.Config.AgentMode)
+	return agent, 0, false
 }
 
 // mergeKnowledgeTargets merges request KB/knowledge IDs with @mentioned items into deduplicated slices.
@@ -659,10 +611,6 @@ func (h *Handler) setupSSEStream(reqCtx *qaRequestContext, generateTitle bool, m
 	baseCtx := reqCtx.ctx
 	if reqCtx.effectiveTenantID != 0 && h.tenantService != nil {
 		if tenant, err := h.tenantService.GetTenantByID(reqCtx.ctx, reqCtx.effectiveTenantID); err == nil && tenant != nil {
-			baseCtx = types.WithExecutionTenant(reqCtx.ctx, reqCtx.effectiveTenantID)
-			if reqCtx.customAgent != nil {
-				baseCtx = access.WithSharedAgent(baseCtx, reqCtx.customAgent)
-			}
 			baseCtx = context.WithValue(baseCtx, types.TenantInfoContextKey, tenant)
 			logger.Infof(
 				reqCtx.ctx,
@@ -860,16 +808,7 @@ func (h *Handler) SearchKnowledge(c *gin.Context) {
 	// Pure retrieval through the YLSW engine (§2.15). Tag scopes and
 	// knowledge-ID filters are not supported by the engine and are ignored;
 	// the only frontend caller (GlobalCommandPalette) sends query + KB IDs.
-	if h.aclService == nil {
-		c.Error(errors.NewInternalServerError("acl service is not configured"))
-		return
-	}
-	aclScope, scopeErr := h.aclService.RetrievalScope(ctx, knowledgeBaseIDs)
-	if scopeErr != nil {
-		c.Error(errors.NewInternalServerError(scopeErr.Error()))
-		return
-	}
-	searchResults, err := h.ragEngine.Search(ctx, []string{request.Query}, knowledgeBaseIDs, aclScope, types.DefaultRetrievalTopK)
+	searchResults, err := h.ragEngine.Search(ctx, []string{request.Query}, knowledgeBaseIDs, types.TenantWideScope(), types.DefaultRetrievalTopK)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, nil)
 		c.Error(errors.NewInternalServerError(err.Error()))

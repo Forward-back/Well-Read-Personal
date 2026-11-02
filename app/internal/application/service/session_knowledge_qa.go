@@ -9,7 +9,6 @@ import (
 	"gaze/internal/types"
 )
 
-
 // selectChatModelID selects the appropriate chat model ID with priority for Remote models
 // Priority order:
 // 1. Session's SummaryModelID if it's a Remote model
@@ -149,46 +148,12 @@ func (s *sessionService) resolveKnowledgeBasesFromAgent(
 			kbIDSet[kb.ID] = true
 		}
 
-		// For shared agents (session tenant != agent tenant), only use the agent
-		// tenant's own KBs. Including the current user's shared KBs would leak
-		// unrelated KBs from other organisations into the agent's retrieval scope.
-		isSharedAgent := sessionTenantID != 0 && sessionTenantID != customAgent.TenantID
-		sharedSkipped := 0
-		if !isSharedAgent {
-			tenantID := types.MustTenantIDFromContext(ctx)
-			userIDVal := ctx.Value(types.UserIDContextKey)
-			if userIDVal != nil {
-				if userID, ok := userIDVal.(string); ok && userID != "" && s.kbShareService != nil {
-					callerTenantRole := types.TenantRoleFromContext(ctx)
-					sharedList, err := s.kbShareService.ListSharedKnowledgeBases(ctx, tenantID, callerTenantRole)
-					if err != nil {
-						logger.Warnf(ctx, "Failed to list shared knowledge bases: %v", err)
-					} else {
-						for _, info := range sharedList {
-							if info == nil || info.KnowledgeBase == nil || kbIDSet[info.KnowledgeBase.ID] {
-								continue
-							}
-							if !accept(info.KnowledgeBase) {
-								sharedSkipped++
-								continue
-							}
-							kbIDs = append(kbIDs, info.KnowledgeBase.ID)
-							kbIDSet[info.KnowledgeBase.ID] = true
-						}
-					}
-				}
-			}
-		} else {
-			logger.Infof(ctx, "Shared agent detected (session tenant %d != agent tenant %d): skipping user's shared KBs",
-				sessionTenantID, customAgent.TenantID)
-		}
-
-		if ownSkipped+sharedSkipped > 0 {
+		if ownSkipped > 0 {
 			logger.Infof(ctx,
-				"KBSelectionMode=all: tool-capability filter removed %d own + %d shared KBs (agent=%s, tools=%v)",
-				ownSkipped, sharedSkipped, customAgent.ID, customAgent.Config.AllowedTools)
+				"KBSelectionMode=all: tool-capability filter removed %d KBs (agent=%s, tools=%v)",
+				ownSkipped, customAgent.ID, customAgent.Config.AllowedTools)
 		}
-		logger.Infof(ctx, "KBSelectionMode=all: loaded %d knowledge bases (own + shared)", len(kbIDs))
+		logger.Infof(ctx, "KBSelectionMode=all: loaded %d knowledge bases", len(kbIDs))
 		return kbIDs
 	case "selected":
 		logger.Infof(ctx, "KBSelectionMode=selected: using %d configured knowledge bases", len(customAgent.Config.KnowledgeBases))
@@ -229,7 +194,7 @@ func (s *sessionService) buildSearchTargets(
 	fullKBSet := make(map[string]bool)
 
 	// First pass: batch-fetch KBs, then resolve tenant per ID (tenant scope already set by caller)
-	permissions := kbReadPermissions(ctx, s.kbShareService)
+	permissions := kbReadPermissions(ctx)
 	kbIDsToFetch := append([]string(nil), knowledgeBaseIDs...)
 	for kbID := range tagIDsByKB {
 		kbIDsToFetch = append(kbIDsToFetch, kbID)
@@ -256,7 +221,7 @@ func (s *sessionService) buildSearchTargets(
 		kbTenantMap[kbID] = caller.TenantID
 		if kb != nil {
 			kbTenantMap[kbID] = 0
-			if allowed, err := permissions.Check(kbID, kb.TenantID, types.OrgRoleViewer); err == nil && allowed {
+			if allowed, err := permissions.Check(kbID, kb.TenantID); err == nil && allowed {
 				kbTenantMap[kbID] = kb.TenantID
 			}
 		}
@@ -437,6 +402,3 @@ func intersectStrings(left []string, right []string) []string {
 	}
 	return out
 }
-
-
-

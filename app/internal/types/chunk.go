@@ -158,12 +158,6 @@ type Chunk struct {
 	DocType     string `json:"doc_type"                 gorm:"type:varchar(50);index"`
 	ProductName string `json:"product_name"             gorm:"type:varchar(100);index"`
 	OrgName     string `json:"org_name"                 gorm:"type:varchar(255);index"`
-	// 企业级元数据反范式（§2.14 检索过滤/降权免 JOIN，迁移 000098；superseded_by 不进 chunks）
-	LifecycleStatus string `json:"lifecycle_status" gorm:"type:varchar(20);default:'effective'"`
-	EffectiveDate   string `json:"effective_date"   gorm:"type:varchar(50)"`
-	ExpiryDate      string `json:"expiry_date"      gorm:"type:varchar(50)"`
-	Sensitivity     string `json:"sensitivity"      gorm:"type:varchar(20);default:'internal'"`
-	Department      string `json:"department"       gorm:"type:varchar(100)"`
 	// 关系 Chunk ID，用于关联关系 Chunk 和原始文本 Chunk
 	RelationChunks JSON `json:"relation_chunks"          gorm:"type:json"`
 	// 间接关系 Chunk ID，用于关联间接关系 Chunk 和原始文本 Chunk

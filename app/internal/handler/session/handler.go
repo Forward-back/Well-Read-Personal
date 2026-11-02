@@ -25,9 +25,7 @@ type Handler struct {
 	config               *config.Config                  // Application configuration
 	knowledgebaseService interfaces.KnowledgeBaseService // Service for managing knowledge bases
 	customAgentService   interfaces.CustomAgentService   // Service for managing custom agents
-	tenantService        interfaces.TenantService        // Service for loading tenant (shared agent context)
-	agentShareService    interfaces.AgentShareService    // Service for resolving shared agents (KB scope in retrieval)
-	kbShareService       interfaces.KBShareService       // Service for resolving shared KB permissions
+	tenantService        interfaces.TenantService        // Service for loading tenant settings
 	fileService          interfaces.FileService          // Service for file storage (image uploads)
 	resourceCatalog      interfaces.ResourceCatalog
 	storageResolver      interfaces.StorageBackendResolver
@@ -39,18 +37,16 @@ type Handler struct {
 	// not support artifact collection; handlers must check before using.
 	artifactCollector *service.ArtifactCollector
 	memoryService     interfaces.MemoryService // Service for cross-session long-term memory
-	// userService / memberService back the sandbox terminal's self-contained
-	// handshake (browser WebSocket upgrades cannot send Authorization).
-	userService   interfaces.UserService
-	memberService interfaces.TenantMemberService
+	// userService backs the sandbox terminal's self-contained handshake
+	// (browser WebSocket upgrades cannot send Authorization).
+	userService interfaces.UserService
 	// terminalService opens PTYs on the sandbox bound to a session. It also
 	// owns first-use provisioning: the WS handshake carries the chat page's
 	// selected agent so the sandbox is created with the same config a
 	// conversation turn would use.
 	terminalService *service.SandboxTerminalService
 	// ragEngine backs the /knowledge-search pure-retrieval endpoint (§2.15).
-	ragEngine  engine.RAGEngine
-	aclService interfaces.KBAclService
+	ragEngine engine.RAGEngine
 	// docVersions binds citations to the document version current at answer time.
 	docVersions interfaces.DocumentVersionService
 }
@@ -65,8 +61,6 @@ func NewHandler(
 	knowledgebaseService interfaces.KnowledgeBaseService,
 	customAgentService interfaces.CustomAgentService,
 	tenantService interfaces.TenantService,
-	agentShareService interfaces.AgentShareService,
-	kbShareService interfaces.KBShareService,
 	fileService interfaces.FileService,
 	resourceCatalog interfaces.ResourceCatalog,
 	storageResolver interfaces.StorageBackendResolver,
@@ -77,10 +71,8 @@ func NewHandler(
 	artifactCollector *service.ArtifactCollector,
 	memoryService interfaces.MemoryService,
 	userService interfaces.UserService,
-	memberService interfaces.TenantMemberService,
 	terminalService *service.SandboxTerminalService,
 	ragEngine engine.RAGEngine,
-	aclService interfaces.KBAclService,
 	docVersions interfaces.DocumentVersionService,
 ) *Handler {
 	return &Handler{
@@ -92,8 +84,6 @@ func NewHandler(
 		knowledgebaseService: knowledgebaseService,
 		customAgentService:   customAgentService,
 		tenantService:        tenantService,
-		agentShareService:    agentShareService,
-		kbShareService:       kbShareService,
 		fileService:          fileService,
 		resourceCatalog:      resourceCatalog,
 		storageResolver:      storageResolver,
@@ -102,10 +92,8 @@ func NewHandler(
 		artifactCollector:    artifactCollector,
 		memoryService:        memoryService,
 		userService:          userService,
-		memberService:        memberService,
 		terminalService:      terminalService,
 		ragEngine:            ragEngine,
-		aclService:           aclService,
 		docVersions:          docVersions,
 		attachmentProcessor: NewAttachmentProcessor(
 			fileService,

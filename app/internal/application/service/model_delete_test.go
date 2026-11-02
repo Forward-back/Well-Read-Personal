@@ -25,10 +25,6 @@ func (s *stubKBRepoForModelDelete) CreateKnowledgeBase(context.Context, *types.K
 	return nil
 }
 
-// ListPublicKnowledgeBases is a portal stub: no public KBs in these tests.
-func (s *stubKBRepoForModelDelete) ListPublicKnowledgeBases(context.Context) ([]*types.KnowledgeBase, error) {
-	return nil, nil
-}
 func (s *stubKBRepoForModelDelete) GetKnowledgeBaseByID(context.Context, string) (*types.KnowledgeBase, error) {
 	return nil, nil
 }

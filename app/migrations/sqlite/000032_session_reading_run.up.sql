@@ -1,1 +1,0 @@
-ALTER TABLE sessions ADD COLUMN reading_run_id VARCHAR(36) NOT NULL DEFAULT '';

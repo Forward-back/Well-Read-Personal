@@ -111,11 +111,6 @@ func (r *fakeKBRepo) ListKnowledgeBases(_ context.Context) ([]*types.KnowledgeBa
 	return nil, nil
 }
 
-// ListPublicKnowledgeBases is a portal stub: no public KBs in these tests.
-func (r *fakeKBRepo) ListPublicKnowledgeBases(context.Context) ([]*types.KnowledgeBase, error) {
-	return nil, nil
-}
-
 func (r *fakeKBRepo) ListKnowledgeBasesByTenantID(_ context.Context, tenantID uint64) ([]*types.KnowledgeBase, error) {
 	rows := make([]*types.KnowledgeBase, 0, len(r.rows))
 	for _, kb := range r.rows {
@@ -570,58 +565,4 @@ func copyTaskTestContext(t *testing.T, repo *fakeKBRepo, dst string) context.Con
 	)
 	require.NoError(t, err)
 	return ctx
-}
-
-// ---------------------------------------------------------------------------
-// SetKnowledgeBaseVisibility — 发布生命周期(§2.13 P3-6)
-//
-// 语义锁定: 下架即时生效(portal 每次请求实时查 public 列表,此处锁定的是
-// 状态写入路径),同一值幂等,非法值归一为 internal(默认 deny)。
-// ---------------------------------------------------------------------------
-
-func TestSetKnowledgeBaseVisibility_Transitions(t *testing.T) {
-	repo := newFakeKBRepo()
-	repo.rows["kb-1"] = &types.KnowledgeBase{
-		ID: "kb-1", Name: "kb", TenantID: 1, Visibility: types.KBVisibilityInternal,
-	}
-	svc := newPR3KBService(repo, &fakeRegistry{}, &fakeOwnership{})
-
-	// 发布: internal → public
-	kb, err := svc.SetKnowledgeBaseVisibility(ctxWithTenant(1), "kb-1", types.KBVisibilityPublic)
-	require.NoError(t, err)
-	assert.Equal(t, types.KBVisibilityPublic, kb.Visibility)
-	assert.Equal(t, types.KBVisibilityPublic, repo.rows["kb-1"].Visibility)
-
-	// 下架即时生效: public → private
-	kb, err = svc.SetKnowledgeBaseVisibility(ctxWithTenant(1), "kb-1", types.KBVisibilityPrivate)
-	require.NoError(t, err)
-	assert.Equal(t, types.KBVisibilityPrivate, kb.Visibility)
-	assert.Equal(t, types.KBVisibilityPrivate, repo.rows["kb-1"].Visibility)
-}
-
-func TestSetKnowledgeBaseVisibility_IdempotentSameValue(t *testing.T) {
-	repo := newFakeKBRepo()
-	repo.rows["kb-1"] = &types.KnowledgeBase{
-		ID: "kb-1", Name: "kb", TenantID: 1, Visibility: types.KBVisibilityPublic,
-	}
-	svc := newPR3KBService(repo, &fakeRegistry{}, &fakeOwnership{})
-
-	before := repo.rows["kb-1"].UpdatedAt
-	kb, err := svc.SetKnowledgeBaseVisibility(ctxWithTenant(1), "kb-1", types.KBVisibilityPublic)
-	require.NoError(t, err)
-	assert.Equal(t, types.KBVisibilityPublic, kb.Visibility)
-	assert.Equal(t, before, repo.rows["kb-1"].UpdatedAt, "同值更新不应触碰行")
-}
-
-func TestSetKnowledgeBaseVisibility_NormalizesInvalidToInternal(t *testing.T) {
-	repo := newFakeKBRepo()
-	repo.rows["kb-1"] = &types.KnowledgeBase{
-		ID: "kb-1", Name: "kb", TenantID: 1, Visibility: types.KBVisibilityPublic,
-	}
-	svc := newPR3KBService(repo, &fakeRegistry{}, &fakeOwnership{})
-
-	// service 层归一: 未知值默认 deny(internal);handler 层另有显式白名单校验
-	kb, err := svc.SetKnowledgeBaseVisibility(ctxWithTenant(1), "kb-1", types.KBVisibility("world-readable"))
-	require.NoError(t, err)
-	assert.Equal(t, types.KBVisibilityInternal, kb.Visibility)
 }

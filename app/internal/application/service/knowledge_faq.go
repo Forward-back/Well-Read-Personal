@@ -32,7 +32,7 @@ func (s *knowledgeService) ListFAQEntries(ctx context.Context,
 		return nil, err
 	}
 
-	effectiveTenantID, err := resolveKBReadTenant(ctx, kb, s.kbShareService)
+	effectiveTenantID, err := resolveKBReadTenant(ctx, kb)
 	if err != nil {
 		return nil, err
 	}
@@ -248,10 +248,6 @@ func (s *knowledgeService) CreateFAQEntry(ctx context.Context,
 			entry.TagName = tag.Name
 		}
 	}
-	recordKBActivity(ctx, s.audit, tenantID, kb.ID, types.AuditActionKnowledgeCreated,
-		"faq_entry", chunk.ID, types.AuditOutcomeSuccess,
-		map[string]any{"entry_id": chunk.SeqID, "source_type": "faq"})
-
 	return entry, nil
 }
 
@@ -471,10 +467,6 @@ func (s *knowledgeService) UpdateFAQEntry(ctx context.Context,
 			entry.TagName = tag.Name
 		}
 	}
-	recordKBActivity(ctx, s.audit, tenantID, kb.ID, types.AuditActionKnowledgeUpdated,
-		"faq_entry", chunk.ID, types.AuditOutcomeSuccess,
-		map[string]any{"entry_id": chunk.SeqID, "source_type": "faq"})
-
 	return entry, nil
 }
 
@@ -663,10 +655,6 @@ func (s *knowledgeService) UpdateFAQEntryStatus(ctx context.Context,
 	if err := retrieveEngine.BatchUpdateChunkEnabledStatus(ctx, chunkStatusMap); err != nil {
 		return err
 	}
-	recordKBActivity(ctx, s.audit, tenantID, kb.ID, types.AuditActionKnowledgeUpdated,
-		"faq_entry", chunk.ID, types.AuditOutcomeSuccess,
-		map[string]any{"entry_id": chunk.SeqID, "changed_fields": []string{"enabled"}})
-
 	return nil
 }
 
@@ -849,10 +837,6 @@ func (s *knowledgeService) UpdateFAQEntryFieldsBatch(ctx context.Context,
 			}
 		}
 	}
-	recordKBActivity(ctx, s.audit, tenantID, kb.ID, types.AuditActionKnowledgeUpdated,
-		"faq_entry", "", types.AuditOutcomeSuccess,
-		map[string]any{"count": len(req.ByID), "tag_groups": len(req.ByTag), "batch": true})
-
 	return nil
 }
 
@@ -1299,14 +1283,6 @@ func (s *knowledgeService) DeleteFAQEntries(ctx context.Context,
 		}
 	}
 
-	details := map[string]any{"count": len(chunksToRemove), "source_type": "faq"}
-	titles := make([]string, 0, len(chunksToRemove))
-	for _, chunk := range chunksToRemove {
-		titles = append(titles, faqChunkQuestion(chunk))
-	}
-	kbActivityAppendSampleTitles(details, titles...)
-	recordKBActivity(ctx, s.audit, tenantID, kb.ID, types.AuditActionKnowledgeBatchDeleted,
-		"faq_entry", "", types.AuditOutcomeSuccess, details)
 	return nil
 }
 

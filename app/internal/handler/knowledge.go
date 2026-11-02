@@ -13,11 +13,9 @@ import (
 	"gaze/internal/application/access"
 	"gaze/internal/application/repository"
 	appservice "gaze/internal/application/service"
-	"gaze/internal/config"
 	"gaze/internal/errors"
 	"gaze/internal/filetransport"
 	"gaze/internal/logger"
-	"gaze/internal/middleware"
 	"gaze/internal/tracing/langfuse"
 	"gaze/internal/types"
 	"gaze/internal/types/interfaces"
@@ -29,125 +27,91 @@ import (
 
 // KnowledgeHandler processes HTTP requests related to knowledge resources
 type KnowledgeHandler struct {
-	cfg               *config.Config
-	kgService         interfaces.KnowledgeService
-	kbService         interfaces.KnowledgeBaseService
-	kbShareService    interfaces.KBShareService
-	agentShareService interfaces.AgentShareService
-	asynqClient       interfaces.TaskEnqueuer
-	spanRepo          repository.KnowledgeSpanRepository
-	knowledgeRepo     interfaces.KnowledgeRepository
-	folderService     interfaces.KnowledgeFolderService
-	aclService        interfaces.KBAclService
+	kgService     interfaces.KnowledgeService
+	kbService     interfaces.KnowledgeBaseService
+	agentService  interfaces.CustomAgentService
+	asynqClient   interfaces.TaskEnqueuer
+	spanRepo      repository.KnowledgeSpanRepository
+	knowledgeRepo interfaces.KnowledgeRepository
+	folderService interfaces.KnowledgeFolderService
 }
 
 // NewKnowledgeHandler creates a new knowledge handler instance
 func NewKnowledgeHandler(
-	cfg *config.Config,
 	kgService interfaces.KnowledgeService,
 	kbService interfaces.KnowledgeBaseService,
-	kbShareService interfaces.KBShareService,
-	agentShareService interfaces.AgentShareService,
+	agentService interfaces.CustomAgentService,
 	asynqClient interfaces.TaskEnqueuer,
 	spanRepo repository.KnowledgeSpanRepository,
 	knowledgeRepo interfaces.KnowledgeRepository,
 	folderService interfaces.KnowledgeFolderService,
-	aclService interfaces.KBAclService,
 ) *KnowledgeHandler {
 	return &KnowledgeHandler{
-		cfg:               cfg,
-		kgService:         kgService,
-		kbService:         kbService,
-		kbShareService:    kbShareService,
-		agentShareService: agentShareService,
-		asynqClient:       asynqClient,
-		spanRepo:          spanRepo,
-		knowledgeRepo:     knowledgeRepo,
-		folderService:     folderService,
-		aclService:        aclService,
+		kgService:     kgService,
+		kbService:     kbService,
+		agentService:  agentService,
+		asynqClient:   asynqClient,
+		spanRepo:      spanRepo,
+		knowledgeRepo: knowledgeRepo,
+		folderService: folderService,
 	}
 }
 
-// requireKBOwnershipOrAdmin enforces the same "KB creator OR Admin+" matrix
-// used by OwnedKBOrAdmin for routes whose KB id comes from the request body.
-func (h *KnowledgeHandler) requireKBOwnershipOrAdmin(c *gin.Context, kbID string) error {
-	evalErr := middleware.EvaluateOwnershipOrRole(
-		c.Request.Context(),
-		h.cfg,
-		types.TenantRoleAdmin,
-		func() (string, error) { return resolveKBCreatorByKBID(c, h.kbService, kbID) },
-	)
-	if evalErr == nil {
-		return nil
-	}
-	if goerrors.Is(evalErr, middleware.ErrResourceNotFound) {
-		return errors.NewNotFoundError("knowledge base not found")
-	}
-	if goerrors.Is(evalErr, middleware.ErrOwnershipForbidden) {
-		return errors.NewForbiddenError("No permission to operate on this knowledge base")
-	}
-	logger.ErrorWithFields(c.Request.Context(), evalErr, map[string]interface{}{
-		"kb_id": secutils.SanitizeForLog(kbID),
-	})
-	return errors.NewInternalServerError("cannot verify knowledge base ownership")
-}
-
-// validateKnowledgeBaseAccess validates access permissions to a knowledge base
-// using the ":id" URL path parameter. It delegates to validateKnowledgeBaseAccessWithKBID.
-func (h *KnowledgeHandler) validateKnowledgeBaseAccess(c *gin.Context) (*types.KnowledgeBase, string, uint64, types.OrgMemberRole, error) {
+// validateKnowledgeBaseAccess validates access to a knowledge base using the
+// ":id" URL path parameter. The personal edition has a single owner, so the
+// only remaining check is the API key's knowledge-base scope.
+func (h *KnowledgeHandler) validateKnowledgeBaseAccess(c *gin.Context) (*types.KnowledgeBase, string, uint64, error) {
 	kbID := secutils.SanitizeForLog(c.Param("id"))
 	return h.validateKnowledgeBaseAccessWithKBID(c, kbID)
 }
 
-// validateKnowledgeBaseAccessWithKBID validates access to the given knowledge base ID (e.g. from query or body).
-// Enforces per-API-key KB scope before tenant/share/agent resolution.
-// Returns the knowledge base, kbID, effective tenant ID, permission, and error.
+// validateKnowledgeBaseAccessWithKBID validates access to the given knowledge
+// base ID (e.g. from query or body). Enforces per-API-key KB scope.
 func (h *KnowledgeHandler) validateKnowledgeBaseAccessWithKBID(
 	c *gin.Context,
 	kbID string,
-) (*types.KnowledgeBase, string, uint64, types.OrgMemberRole, error) {
+) (*types.KnowledgeBase, string, uint64, error) {
 	kbID = secutils.SanitizeForLog(kbID)
-	grant, err := resolveHandlerKBAccess(c, kbID, h.kbService, h.kbShareService, h.agentShareService)
+	kb, err := h.lookupKnowledgeBase(c, kbID)
 	if err != nil {
-		return nil, kbID, 0, "", err
+		return nil, kbID, 0, err
 	}
-	return grant.KnowledgeBase, kbID, grant.EffectiveTenantID, grant.Permission, nil
+	return kb, kbID, kb.TenantID, nil
 }
 
 func (h *KnowledgeHandler) validateKnowledgeBaseWriteAccessWithKBID(
 	c *gin.Context,
 	kbID string,
-) (*types.KnowledgeBase, string, uint64, types.OrgMemberRole, error) {
-	grant, err := resolveHandlerKBAccessFor(
-		c,
-		kbID,
-		h.kbService,
-		h.kbShareService,
-		h.agentShareService,
-		types.OrgRoleEditor,
-	)
-	if err != nil {
-		return nil, kbID, 0, "", err
-	}
-	if err := access.RequireKBWrite(grant.Context(c.Request.Context()), grant.KnowledgeBase); err != nil {
-		return nil, kbID, 0, "", kbAccessHTTPError(err)
-	}
-	return grant.KnowledgeBase, kbID, grant.EffectiveTenantID, grant.Permission, nil
+) (*types.KnowledgeBase, string, uint64, error) {
+	return h.validateKnowledgeBaseAccessWithKBID(c, kbID)
 }
 
-// resolveKnowledgeAndValidateKBAccess resolves a document and checks its parent
-// KB using the same policy as KB routes. The persisted document supplies the KB
-// and owner reference, so unguarded callers do not need an additional KB lookup.
+func (h *KnowledgeHandler) lookupKnowledgeBase(c *gin.Context, kbID string) (*types.KnowledgeBase, error) {
+	ctx := c.Request.Context()
+	if err := requireTenantAPIKeyKnowledgeBase(ctx, kbID); err != nil {
+		return nil, err
+	}
+	kb, err := h.kbService.GetKnowledgeBaseByID(ctx, kbID)
+	if err != nil {
+		if goerrors.Is(err, repository.ErrKnowledgeBaseNotFound) {
+			return nil, errors.NewNotFoundError("knowledge base not found")
+		}
+		logger.ErrorWithFields(ctx, err, nil)
+		return nil, errors.NewInternalServerError(err.Error())
+	}
+	if kb == nil {
+		return nil, errors.NewNotFoundError("knowledge base not found")
+	}
+	return kb, nil
+}
+
+// resolveKnowledgeAndValidateKBAccess resolves a document and checks the
+// caller's API-key scope.
 func (h *KnowledgeHandler) resolveKnowledgeAndValidateKBAccess(
 	c *gin.Context,
 	knowledgeID string,
-	requiredPermission types.OrgMemberRole,
 ) (*types.Knowledge, context.Context, error) {
 	ctx := c.Request.Context()
-	request := middleware.KBAccessRequest(c)
-	if request.Caller.TenantID == 0 {
-		return nil, ctx, errors.NewUnauthorizedError("Unauthorized")
-	}
 	knowledge, err := h.kgService.GetKnowledgeByIDOnly(ctx, knowledgeID)
 	if err != nil || knowledge == nil {
 		return nil, ctx, errors.NewNotFoundError("Knowledge not found")
@@ -155,30 +119,7 @@ func (h *KnowledgeHandler) resolveKnowledgeAndValidateKBAccess(
 	if err := requireTenantAPIKeyKnowledgeBase(ctx, knowledge.KnowledgeBaseID); err != nil {
 		return nil, ctx, err
 	}
-	if grant, ok := resolvedKBAccess(c, knowledge.KnowledgeBaseID, requiredPermission); ok {
-		if grant.EffectiveTenantID != knowledge.TenantID {
-			return nil, ctx, errors.NewForbiddenError("Permission denied to access this knowledge")
-		}
-		return knowledge, grant.Context(ctx), nil
-	}
-	kb, err := h.kbService.GetKnowledgeBaseByID(ctx, knowledge.KnowledgeBaseID)
-	if err != nil || kb == nil {
-		return nil, ctx, errors.NewNotFoundError("Knowledge base not found")
-	}
-	if kb.TenantID != knowledge.TenantID {
-		return nil, ctx, errors.NewForbiddenError("Permission denied to access this knowledge")
-	}
-	grant, err := access.ResolveKB(
-		ctx, request, kb, requiredPermission, h.kbShareService, h.agentShareService,
-		departmentShareLookup(h.kbService),
-	)
-	if goerrors.Is(err, access.ErrForbidden) {
-		return nil, ctx, errors.NewForbiddenError("Permission denied to access this knowledge")
-	}
-	if err != nil {
-		return nil, ctx, kbAccessHTTPError(err)
-	}
-	return knowledge, grant.Context(ctx), nil
+	return knowledge, ctx, nil
 }
 
 // handleDuplicateKnowledgeError handles cases where duplicate knowledge is detected
@@ -275,7 +216,7 @@ func (h *KnowledgeHandler) CreateKnowledgeFromFile(c *gin.Context) {
 	logger.Info(ctx, "Start creating knowledge from file")
 
 	// Validate access to the knowledge base (only owner or admin/editor can create)
-	_, kbID, effectiveTenantID, permission, err := h.validateKnowledgeBaseAccess(c)
+	_, kbID, effectiveTenantID, err := h.validateKnowledgeBaseAccess(c)
 	if err != nil {
 		c.Error(err)
 		return
@@ -283,10 +224,6 @@ func (h *KnowledgeHandler) CreateKnowledgeFromFile(c *gin.Context) {
 	ctx = types.WithExecutionTenant(c.Request.Context(), effectiveTenantID)
 
 	// Check write permission
-	if permission != types.OrgRoleAdmin && permission != types.OrgRoleEditor {
-		c.Error(errors.NewForbiddenError("No permission to create knowledge"))
-		return
-	}
 
 	// Validate file size — read MAX_FILE_SIZE_MB env (50MB default).
 	// Deliberately not a runtime system_setting; see filesize.go for the
@@ -424,7 +361,7 @@ func (h *KnowledgeHandler) CreateKnowledgeFromURL(c *gin.Context) {
 	logger.Info(ctx, "Start creating knowledge from URL")
 
 	// Validate access to the knowledge base (only owner or admin/editor can create)
-	_, kbID, effectiveTenantID, permission, err := h.validateKnowledgeBaseAccess(c)
+	_, kbID, effectiveTenantID, err := h.validateKnowledgeBaseAccess(c)
 	if err != nil {
 		c.Error(err)
 		return
@@ -432,10 +369,6 @@ func (h *KnowledgeHandler) CreateKnowledgeFromURL(c *gin.Context) {
 	ctx = types.WithExecutionTenant(c.Request.Context(), effectiveTenantID)
 
 	// Check write permission
-	if permission != types.OrgRoleAdmin && permission != types.OrgRoleEditor {
-		c.Error(errors.NewForbiddenError("No permission to create knowledge"))
-		return
-	}
 
 	// Parse URL from request body
 	var req struct {
@@ -521,7 +454,7 @@ func (h *KnowledgeHandler) CreateManualKnowledge(c *gin.Context) {
 	logger.Info(ctx, "Start creating manual knowledge")
 
 	// Validate access to the knowledge base (only owner or admin/editor can create)
-	_, kbID, effectiveTenantID, permission, err := h.validateKnowledgeBaseAccess(c)
+	_, kbID, effectiveTenantID, err := h.validateKnowledgeBaseAccess(c)
 	if err != nil {
 		c.Error(err)
 		return
@@ -529,10 +462,6 @@ func (h *KnowledgeHandler) CreateManualKnowledge(c *gin.Context) {
 	ctx = types.WithExecutionTenant(c.Request.Context(), effectiveTenantID)
 
 	// Check write permission
-	if permission != types.OrgRoleAdmin && permission != types.OrgRoleEditor {
-		c.Error(errors.NewForbiddenError("No permission to create knowledge"))
-		return
-	}
 
 	var req types.ManualKnowledgePayload
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -588,7 +517,7 @@ func (h *KnowledgeHandler) GetKnowledge(c *gin.Context) {
 	}
 
 	// Resolve knowledge and validate KB access (at least viewer)
-	knowledge, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id, types.OrgRoleViewer)
+	knowledge, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id)
 	if err != nil {
 		c.Error(err)
 		return
@@ -600,10 +529,6 @@ func (h *KnowledgeHandler) GetKnowledge(c *gin.Context) {
 		c.Error(errors.NewNotFoundError("Knowledge not found"))
 		return
 	}
-	if err := h.ensureKnowledgeACL(effCtx, knowledge); err != nil {
-		c.Error(err)
-		return
-	}
 
 	logger.Infof(ctx, "Knowledge retrieved successfully, ID: %s, title: %s",
 		secutils.SanitizeForLog(knowledge.ID), secutils.SanitizeForLog(knowledge.Title))
@@ -611,23 +536,6 @@ func (h *KnowledgeHandler) GetKnowledge(c *gin.Context) {
 		"success": true,
 		"data":    knowledge,
 	})
-}
-
-func (h *KnowledgeHandler) ensureKnowledgeACL(ctx context.Context, knowledge *types.Knowledge) error {
-	if h.aclService == nil || knowledge == nil {
-		return nil
-	}
-	allowed, reason, err := h.aclService.Evaluate(
-		ctx, knowledge.KnowledgeBaseID, string(types.KBAclResourceFile), knowledge.ID, knowledge.FolderID,
-	)
-	if err != nil {
-		return errors.NewInternalServerError(err.Error())
-	}
-	if !allowed {
-		logger.Warnf(ctx, "ACL denied knowledge read: id=%s reason=%s", knowledge.ID, reason)
-		return errors.NewForbiddenError("access denied by knowledge base ACL")
-	}
-	return nil
 }
 
 // GetKnowledgeSpans godoc
@@ -654,7 +562,7 @@ func (h *KnowledgeHandler) GetKnowledgeSpans(c *gin.Context) {
 		return
 	}
 
-	knowledge, _, err := h.resolveKnowledgeAndValidateKBAccess(c, id, types.OrgRoleViewer)
+	knowledge, _, err := h.resolveKnowledgeAndValidateKBAccess(c, id)
 	if err != nil {
 		c.Error(err)
 		return
@@ -926,7 +834,7 @@ func (h *KnowledgeHandler) ListKnowledge(c *gin.Context) {
 	logger.Info(ctx, "Start retrieving knowledge list")
 
 	// Validate access to the knowledge base (read access - any permission level)
-	_, kbID, effectiveTenantID, _, err := h.validateKnowledgeBaseAccess(c)
+	_, kbID, effectiveTenantID, err := h.validateKnowledgeBaseAccess(c)
 	if err != nil {
 		c.Error(err)
 		return
@@ -987,17 +895,6 @@ func (h *KnowledgeHandler) ListKnowledge(c *gin.Context) {
 		filter.FolderIDs = ids
 		filter.FolderScope = types.FolderScopeAny
 	}
-	if h.aclService != nil {
-		scope, err := h.aclService.Scope(ctx, kbID)
-		if err != nil {
-			c.Error(h.aclHTTPError(err))
-			return
-		}
-		if scope.Active {
-			filter.ACLActive = true
-			filter.AllowedKnowledgeIDs = scope.AllowedKnowledgeIDs
-		}
-	}
 
 	logger.Infof(
 		ctx,
@@ -1057,7 +954,7 @@ func (h *KnowledgeHandler) ListKnowledgeFolders(c *gin.Context) {
 
 	// Read access mirrors ListKnowledge so the sidebar tree is available to
 	// every viewer of a shared knowledge base.
-	_, kbID, effectiveTenantID, _, err := h.validateKnowledgeBaseAccess(c)
+	_, kbID, effectiveTenantID, err := h.validateKnowledgeBaseAccess(c)
 	if err != nil {
 		c.Error(err)
 		return
@@ -1075,16 +972,6 @@ func (h *KnowledgeHandler) ListKnowledgeFolders(c *gin.Context) {
 		c.Error(h.knowledgeFolderHTTPError(err))
 		return
 	}
-	if h.aclService != nil {
-		scope, err := h.aclService.Scope(ctx, kbID)
-		if err != nil {
-			c.Error(h.aclHTTPError(err))
-			return
-		}
-		if scope.Active {
-			tree = filterFolderTreeByACL(tree, scope)
-		}
-	}
 
 	logger.Infof(ctx, "Knowledge folder tree retrieved, kb_id=%s folders=%d",
 		secutils.SanitizeForLog(kbID), len(tree.Folders))
@@ -1092,46 +979,6 @@ func (h *KnowledgeHandler) ListKnowledgeFolders(c *gin.Context) {
 		"success": true,
 		"data":    tree,
 	})
-}
-
-func filterFolderTreeByACL(tree *types.KnowledgeFolderTree, scope *types.KBAclScope) *types.KnowledgeFolderTree {
-	if tree == nil || scope == nil || !scope.Active {
-		return tree
-	}
-	allowed := make(map[string]struct{}, len(scope.AllowedFolderIDs))
-	for _, id := range scope.AllowedFolderIDs {
-		allowed[id] = struct{}{}
-	}
-	counts := scope.FolderDocumentCounts
-	var filter func(nodes []*types.KnowledgeFolderNode) []*types.KnowledgeFolderNode
-	filter = func(nodes []*types.KnowledgeFolderNode) []*types.KnowledgeFolderNode {
-		out := make([]*types.KnowledgeFolderNode, 0, len(nodes))
-		for _, node := range nodes {
-			if node == nil {
-				continue
-			}
-			if _, ok := allowed[node.ID]; !ok {
-				continue
-			}
-			node.DocumentCount = counts[node.ID]
-			node.Children = filter(node.Children)
-			total := node.DocumentCount
-			for _, child := range node.Children {
-				total += child.TotalCount
-			}
-			node.TotalCount = total
-			out = append(out, node)
-		}
-		return out
-	}
-	tree.Folders = filter(tree.Folders)
-	tree.RootFolderID = scope.RootFolderID
-	tree.RootDocumentCount = counts[scope.RootFolderID]
-	tree.TotalDocumentCount = tree.RootDocumentCount
-	for _, folder := range tree.Folders {
-		tree.TotalDocumentCount += folder.TotalCount
-	}
-	return tree
 }
 
 type createKnowledgeFolderRequest struct {
@@ -1145,13 +992,9 @@ type updateKnowledgeFolderRequest struct {
 }
 
 func (h *KnowledgeHandler) knowledgeFolderWriteAccess(c *gin.Context) (string, context.Context, bool) {
-	_, kbID, effectiveTenantID, permission, err := h.validateKnowledgeBaseWriteAccessWithKBID(c, c.Param("id"))
+	_, kbID, effectiveTenantID, err := h.validateKnowledgeBaseWriteAccessWithKBID(c, c.Param("id"))
 	if err != nil {
 		c.Error(err)
-		return "", nil, false
-	}
-	if permission != types.OrgRoleAdmin && permission != types.OrgRoleEditor {
-		c.Error(errors.NewForbiddenError("No permission to modify knowledge folders"))
 		return "", nil, false
 	}
 	return kbID, types.WithExecutionTenant(c.Request.Context(), effectiveTenantID), true
@@ -1385,21 +1228,9 @@ func (h *KnowledgeHandler) RenameKnowledgeFolder(c *gin.Context) {
 		return
 	}
 
-	_, kbID, effectiveTenantID, permission, err := h.validateKnowledgeBaseWriteAccessWithKBID(c, c.Param("id"))
+	_, kbID, effectiveTenantID, err := h.validateKnowledgeBaseWriteAccessWithKBID(c, c.Param("id"))
 	if err != nil {
 		c.Error(err)
-		return
-	}
-	if permission != types.OrgRoleAdmin && permission != types.OrgRoleEditor {
-		c.Error(errors.NewForbiddenError("No permission to modify knowledge"))
-		return
-	}
-	if err := h.requireKBOwnershipOrAdmin(c, kbID); err != nil {
-		c.Error(err)
-		return
-	}
-	if !canDeleteKnowledgeDocuments(ctx) {
-		c.Error(errors.NewForbiddenError("editor cannot delete knowledge documents"))
 		return
 	}
 	ctx = types.WithExecutionTenant(c.Request.Context(), effectiveTenantID)
@@ -1422,134 +1253,6 @@ func (h *KnowledgeHandler) RenameKnowledgeFolder(c *gin.Context) {
 			"folder_path": types.NormalizeKnowledgeFolderPath(req.To),
 		},
 	})
-}
-
-func (h *KnowledgeHandler) aclHTTPError(err error) error {
-	switch {
-	case goerrors.Is(err, appservice.ErrACLForbidden):
-		return errors.NewForbiddenError(err.Error())
-	case goerrors.Is(err, appservice.ErrACLFileAllow),
-		goerrors.Is(err, appservice.ErrACLInvalidRule),
-		goerrors.Is(err, appservice.ErrACLDepartment):
-		return errors.NewBadRequestError(err.Error())
-	case goerrors.Is(err, appservice.ErrACLAlreadyExists):
-		return errors.NewConflictError(err.Error())
-	case goerrors.Is(err, appservice.ErrACLRuleNotFound):
-		return errors.NewNotFoundError(err.Error())
-	default:
-		if appErr, ok := errors.IsAppError(err); ok {
-			return appErr
-		}
-		return errors.NewInternalServerError(err.Error())
-	}
-}
-
-// ListKBAcl returns the in-KB ACL rules and the current tenant ACL epoch.
-func (h *KnowledgeHandler) ListKBAcl(c *gin.Context) {
-	if h.aclService == nil {
-		c.Error(errors.NewInternalServerError("acl service unavailable"))
-		return
-	}
-	kbs, _, _, _, err := h.validateKnowledgeBaseAccess(c)
-	if err != nil {
-		c.Error(err)
-		return
-	}
-	rules, epoch, err := h.aclService.List(c.Request.Context(), kbs.ID)
-	if err != nil {
-		c.Error(h.aclHTTPError(err))
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"rules": rules, "epoch": epoch}})
-}
-
-func (h *KnowledgeHandler) CreateKBAcl(c *gin.Context) {
-	if h.aclService == nil {
-		c.Error(errors.NewInternalServerError("acl service unavailable"))
-		return
-	}
-	var req types.KBAclRuleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.Error(errors.NewBadRequestError("invalid request body: " + err.Error()))
-		return
-	}
-	kb, _, effectiveTenantID, permission, err := h.validateKnowledgeBaseWriteAccessWithKBID(c, c.Param("id"))
-	if err != nil {
-		c.Error(err)
-		return
-	}
-	if permission != types.OrgRoleAdmin && permission != types.OrgRoleEditor {
-		c.Error(errors.NewForbiddenError("no permission to modify knowledge base ACL"))
-		return
-	}
-	ctx := types.WithExecutionTenant(c.Request.Context(), effectiveTenantID)
-	rule, err := h.aclService.Create(ctx, kb.ID, req)
-	if err != nil {
-		c.Error(h.aclHTTPError(err))
-		return
-	}
-	c.JSON(http.StatusCreated, gin.H{"success": true, "data": rule})
-}
-
-func (h *KnowledgeHandler) DeleteKBAcl(c *gin.Context) {
-	if h.aclService == nil {
-		c.Error(errors.NewInternalServerError("acl service unavailable"))
-		return
-	}
-	kb, _, effectiveTenantID, permission, err := h.validateKnowledgeBaseWriteAccessWithKBID(c, c.Param("id"))
-	if err != nil {
-		c.Error(err)
-		return
-	}
-	if permission != types.OrgRoleAdmin && permission != types.OrgRoleEditor {
-		c.Error(errors.NewForbiddenError("no permission to modify knowledge base ACL"))
-		return
-	}
-	ctx := types.WithExecutionTenant(c.Request.Context(), effectiveTenantID)
-	if err := h.aclService.Delete(ctx, kb.ID, strings.TrimSpace(c.Param("rule_id"))); err != nil {
-		c.Error(h.aclHTTPError(err))
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"success": true})
-}
-
-func (h *KnowledgeHandler) GetKBAclEffective(c *gin.Context) {
-	if h.aclService == nil {
-		c.Error(errors.NewInternalServerError("acl service unavailable"))
-		return
-	}
-	kbs, _, _, _, err := h.validateKnowledgeBaseAccess(c)
-	if err != nil {
-		c.Error(err)
-		return
-	}
-	resourceType := strings.TrimSpace(c.Query("resource_type"))
-	resourceID := strings.TrimSpace(c.Query("resource_id"))
-	folderID := strings.TrimSpace(c.Query("folder_id"))
-	allowed, reason, err := h.aclService.Evaluate(c.Request.Context(), kbs.ID, resourceType, resourceID, folderID)
-	if err != nil {
-		c.Error(h.aclHTTPError(err))
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"allowed": allowed, "reason": reason}})
-}
-
-func (h *KnowledgeHandler) GetKBAclEpoch(c *gin.Context) {
-	if h.aclService == nil {
-		c.Error(errors.NewInternalServerError("acl service unavailable"))
-		return
-	}
-	kbs, _, _, _, err := h.validateKnowledgeBaseAccess(c)
-	if err != nil {
-		c.Error(err)
-		return
-	}
-	epoch, err := h.aclService.Epoch(c.Request.Context(), kbs.ID)
-	if err != nil {
-		c.Error(h.aclHTTPError(err))
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"epoch": epoch}})
 }
 
 // dedupeKnowledgeIDs trims, drops empty and de-duplicates a batch of IDs while
@@ -1577,14 +1280,8 @@ func (h *KnowledgeHandler) requireKnowledgeWriteAccess(
 	c *gin.Context,
 	requestedKBID string,
 ) (string, uint64, error) {
-	_, kbID, effectiveTenantID, permission, err := h.validateKnowledgeBaseWriteAccessWithKBID(c, requestedKBID)
+	_, kbID, effectiveTenantID, err := h.validateKnowledgeBaseWriteAccessWithKBID(c, requestedKBID)
 	if err != nil {
-		return "", 0, err
-	}
-	if permission != types.OrgRoleAdmin && permission != types.OrgRoleEditor {
-		return "", 0, errors.NewForbiddenError("No permission to modify knowledge")
-	}
-	if err := h.requireKBOwnershipOrAdmin(c, kbID); err != nil {
 		return "", 0, err
 	}
 	return kbID, effectiveTenantID, nil
@@ -1629,15 +1326,6 @@ func (h *KnowledgeHandler) requireKnowledgeInKB(
 // @Security     Bearer
 // @Security     ApiKeyAuth
 // @Router       /knowledge/{id} [delete]
-func canDeleteKnowledgeDocuments(ctx context.Context) bool {
-	if _, ok := types.TenantAPIKeyScopeFromContext(ctx); ok {
-		return true
-	}
-	caller := types.CallerFromContext(ctx).Normalize()
-	return caller.DepartmentID != "" &&
-		caller.DepartmentRole.HasPermission(types.DepartmentRoleKnowledgeAdmin)
-}
-
 func (h *KnowledgeHandler) DeleteKnowledge(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -1650,13 +1338,9 @@ func (h *KnowledgeHandler) DeleteKnowledge(c *gin.Context) {
 		return
 	}
 
-	knowledge, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id, types.OrgRoleEditor)
+	knowledge, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id)
 	if err != nil {
 		c.Error(err)
-		return
-	}
-	if !canDeleteKnowledgeDocuments(ctx) {
-		c.Error(errors.NewForbiddenError("editor cannot delete knowledge documents"))
 		return
 	}
 
@@ -1733,16 +1417,8 @@ func (h *KnowledgeHandler) BatchDeleteKnowledge(c *gin.Context) {
 	}
 
 	// Validate KB access (editor or admin) using the kb_id from body.
-	_, kbID, effectiveTenantID, permission, err := h.validateKnowledgeBaseWriteAccessWithKBID(c, req.KBID)
+	_, kbID, effectiveTenantID, err := h.validateKnowledgeBaseWriteAccessWithKBID(c, req.KBID)
 	if err != nil {
-		c.Error(err)
-		return
-	}
-	if permission != types.OrgRoleAdmin && permission != types.OrgRoleEditor {
-		c.Error(errors.NewForbiddenError("No permission to delete knowledge"))
-		return
-	}
-	if err := h.requireKBOwnershipOrAdmin(c, kbID); err != nil {
 		c.Error(err)
 		return
 	}
@@ -1810,15 +1486,15 @@ func (h *KnowledgeHandler) ClearKnowledgeBaseContents(c *gin.Context) {
 	ctx := c.Request.Context()
 	logger.Info(ctx, "Start clearing knowledge base contents")
 
-	kb, kbID, effectiveTenantID, permission, err := h.validateKnowledgeBaseWriteAccessWithKBID(c, c.Param("id"))
+	kb, kbID, effectiveTenantID, err := h.validateKnowledgeBaseWriteAccessWithKBID(c, c.Param("id"))
 	if err != nil {
 		c.Error(err)
 		return
 	}
 
-	// Only owner (admin with matching tenant) can clear knowledge base contents
+	// Only the owner tenant can clear knowledge base contents.
 	tenantID := c.GetUint64(types.TenantIDContextKey.String())
-	if kb.TenantID != tenantID || permission != types.OrgRoleAdmin {
+	if kb.TenantID != tenantID {
 		c.Error(errors.NewForbiddenError("Only knowledge base owner can clear contents"))
 		return
 	}
@@ -1895,12 +1571,8 @@ func (h *KnowledgeHandler) DownloadKnowledgeFile(c *gin.Context) {
 	// Keep a handler-level Editor check in addition to the route guard. The
 	// original file is more sensitive than parsed-content reads and must not
 	// be downloadable through a read-only organization share.
-	knowledge, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id, types.OrgRoleEditor)
+	_, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id)
 	if err != nil {
-		c.Error(err)
-		return
-	}
-	if err := h.ensureKnowledgeACL(effCtx, knowledge); err != nil {
 		c.Error(err)
 		return
 	}
@@ -1949,12 +1621,8 @@ func (h *KnowledgeHandler) PreviewKnowledgeFile(c *gin.Context) {
 		return
 	}
 
-	knowledge, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id, types.OrgRoleViewer)
+	_, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id)
 	if err != nil {
-		c.Error(err)
-		return
-	}
-	if err := h.ensureKnowledgeACL(effCtx, knowledge); err != nil {
 		c.Error(err)
 		return
 	}
@@ -1997,7 +1665,7 @@ type GetKnowledgeBatchRequest struct {
 func (h *KnowledgeHandler) GetKnowledgeBatch(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	effectiveTenantID := middleware.KBAccessRequest(c).Caller.TenantID
+	effectiveTenantID := c.GetUint64(types.TenantIDContextKey.String())
 	if effectiveTenantID == 0 {
 		c.Error(errors.NewUnauthorizedError("Unauthorized"))
 		return
@@ -2009,21 +1677,15 @@ func (h *KnowledgeHandler) GetKnowledgeBatch(c *gin.Context) {
 		c.Error(errors.NewBadRequestError("Invalid request parameters").WithDetails(err.Error()))
 		return
 	}
-	if _, parseErr := types.ParseAgentSourceTenantID(c.Query(types.AgentSourceTenantIDParam)); parseErr != nil {
-		c.Error(errors.NewBadRequestError(parseErr.Error()))
-		return
-	}
-
 	// A nil scope means no agent selector. Every resolved scope, including
 	// mode=all, binds results to the authorized agent's source tenant.
 	var agentScope *types.SharedAgentKBScope
 	if agentID := secutils.SanitizeForLog(req.AgentID); agentID != "" {
-		agent, err := resolveSharedAgentForRequest(c, agentID, h.agentShareService)
+		agent, err := resolveAgentForRequest(ctx, agentID, h.agentService)
 		if err != nil {
 			_ = c.Error(err)
 			return
 		}
-		ctx = access.WithSharedAgent(ctx, agent)
 		scope := types.NewSharedAgentKBScope(agent)
 		agentScope = &scope
 		effectiveTenantID = agent.TenantID
@@ -2041,7 +1703,7 @@ func (h *KnowledgeHandler) GetKnowledgeBatch(c *gin.Context) {
 
 	// Optional kb_id: validate KB access and use effective tenant for shared KB
 	if kbID := secutils.SanitizeForLog(req.KBID); kbID != "" {
-		_, _, effID, _, accessErr := h.validateKnowledgeBaseAccessWithKBID(c, kbID)
+		_, _, effID, accessErr := h.validateKnowledgeBaseAccessWithKBID(c, kbID)
 		if accessErr != nil {
 			_ = c.Error(accessErr)
 			return
@@ -2087,14 +1749,6 @@ func (h *KnowledgeHandler) GetKnowledgeBatch(c *gin.Context) {
 	if allowedKBSet != nil {
 		knowledges = filterKnowledgesByKBAllowSet(knowledges, allowedKBSet)
 	}
-	if h.aclService != nil {
-		filtered, aclErr := h.filterKnowledgesByACL(ctx, knowledges)
-		if aclErr != nil {
-			c.Error(aclErr)
-			return
-		}
-		knowledges = filtered
-	}
 
 	logger.Infof(ctx, "Batch knowledge retrieval successful, requested count: %d, returned count: %d",
 		len(req.IDs), len(knowledges))
@@ -2103,40 +1757,6 @@ func (h *KnowledgeHandler) GetKnowledgeBatch(c *gin.Context) {
 		"success": true,
 		"data":    knowledges,
 	})
-}
-
-func (h *KnowledgeHandler) filterKnowledgesByACL(ctx context.Context, rows []*types.Knowledge) ([]*types.Knowledge, error) {
-	scopes := map[string]*types.KBAclScope{}
-	out := make([]*types.Knowledge, 0, len(rows))
-	for _, row := range rows {
-		if row == nil {
-			continue
-		}
-		scope, ok := scopes[row.KnowledgeBaseID]
-		if !ok {
-			var err error
-			scope, err = h.aclService.Scope(ctx, row.KnowledgeBaseID)
-			if err != nil {
-				return nil, h.aclHTTPError(err)
-			}
-			scopes[row.KnowledgeBaseID] = scope
-		}
-		if !scope.Active {
-			out = append(out, row)
-			continue
-		}
-		allowed := false
-		for _, id := range scope.AllowedKnowledgeIDs {
-			if id == row.ID {
-				allowed = true
-				break
-			}
-		}
-		if allowed {
-			out = append(out, row)
-		}
-	}
-	return out, nil
 }
 
 // UpdateKnowledgeRequest defines the partial-update body for PUT /knowledge/:id.
@@ -2170,7 +1790,7 @@ func (h *KnowledgeHandler) UpdateKnowledge(c *gin.Context) {
 		return
 	}
 
-	_, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id, types.OrgRoleEditor)
+	_, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id)
 	if err != nil {
 		c.Error(err)
 		return
@@ -2214,58 +1834,6 @@ func (h *KnowledgeHandler) UpdateKnowledge(c *gin.Context) {
 	})
 }
 
-type UpdateKnowledgeLifecycleRequest struct {
-	Status        string `json:"status"`
-	EffectiveDate string `json:"effective_date"`
-	ExpiryDate    string `json:"expiry_date"`
-	SupersededBy  string `json:"superseded_by"`
-	Reason        string `json:"reason"`
-}
-
-// SetKnowledgeLifecycle marks a document draft/effective/expired. The service
-// restricts it to department managers and re-pushes the document to the
-// retrieval engine so retired material stops being cited.
-func (h *KnowledgeHandler) SetKnowledgeLifecycle(c *gin.Context) {
-	ctx := c.Request.Context()
-	id := secutils.SanitizeForLog(c.Param("id"))
-	if id == "" {
-		c.Error(errors.NewBadRequestError("Knowledge ID cannot be empty"))
-		return
-	}
-	_, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id, types.OrgRoleViewer)
-	if err != nil {
-		c.Error(err)
-		return
-	}
-	var req UpdateKnowledgeLifecycleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.Error(errors.NewBadRequestError(err.Error()))
-		return
-	}
-	updated, err := h.kgService.SetKnowledgeLifecycle(effCtx, id, &types.KnowledgeLifecycleRequest{
-		Status:        req.Status,
-		EffectiveDate: req.EffectiveDate,
-		ExpiryDate:    req.ExpiryDate,
-		SupersededBy:  req.SupersededBy,
-		Reason:        req.Reason,
-	})
-	if err != nil {
-		logger.ErrorWithFields(ctx, err, nil)
-		var appErr *errors.AppError
-		if goerrors.As(err, &appErr) {
-			_ = c.Error(appErr)
-		} else {
-			_ = c.Error(errors.NewInternalServerError(err.Error()))
-		}
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Knowledge lifecycle updated",
-		"data":    updated,
-	})
-}
-
 // RegenerateKnowledgeSummary refreshes a stale summary after chunk or metadata edits.
 func (h *KnowledgeHandler) RegenerateKnowledgeSummary(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -2274,7 +1842,7 @@ func (h *KnowledgeHandler) RegenerateKnowledgeSummary(c *gin.Context) {
 		c.Error(errors.NewBadRequestError("Knowledge ID cannot be empty"))
 		return
 	}
-	_, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id, types.OrgRoleEditor)
+	_, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id)
 	if err != nil {
 		c.Error(err)
 		return
@@ -2335,7 +1903,7 @@ func (h *KnowledgeHandler) UpdateManualKnowledge(c *gin.Context) {
 		return
 	}
 
-	_, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id, types.OrgRoleEditor)
+	_, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id)
 	if err != nil {
 		c.Error(err)
 		return
@@ -2394,7 +1962,7 @@ func (h *KnowledgeHandler) ReparseKnowledge(c *gin.Context) {
 	}
 
 	// Validate KB access with editor permission (reparse requires write access)
-	_, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id, types.OrgRoleEditor)
+	_, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id)
 	if err != nil {
 		c.Error(err)
 		return
@@ -2463,7 +2031,7 @@ func (h *KnowledgeHandler) CancelKnowledgeParse(c *gin.Context) {
 	}
 
 	// Editor permission — same gate as ReparseKnowledge / DeleteKnowledge.
-	_, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id, types.OrgRoleEditor)
+	_, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id)
 	if err != nil {
 		c.Error(err)
 		return
@@ -2527,13 +2095,9 @@ func (h *KnowledgeHandler) UpdateKnowledgeTagBatch(c *gin.Context) {
 	// Resolve effective tenant and the authorized KB scope.
 	var authorizedKBID string
 	if kbID := secutils.SanitizeForLog(req.KBID); kbID != "" {
-		_, _, effID, permission, err := h.validateKnowledgeBaseWriteAccessWithKBID(c, kbID)
+		_, _, effID, err := h.validateKnowledgeBaseWriteAccessWithKBID(c, kbID)
 		if err != nil {
 			c.Error(err)
-			return
-		}
-		if permission != types.OrgRoleAdmin && permission != types.OrgRoleEditor {
-			c.Error(errors.NewForbiddenError("No permission to update knowledge tags"))
 			return
 		}
 		authorizedKBID = kbID
@@ -2546,7 +2110,7 @@ func (h *KnowledgeHandler) UpdateKnowledgeTagBatch(c *gin.Context) {
 			break
 		}
 		if firstKnowledgeID != "" {
-			knowledge, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, firstKnowledgeID, types.OrgRoleEditor)
+			knowledge, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, firstKnowledgeID)
 			if err != nil {
 				c.Error(err)
 				return
@@ -2554,10 +2118,6 @@ func (h *KnowledgeHandler) UpdateKnowledgeTagBatch(c *gin.Context) {
 			authorizedKBID = knowledge.KnowledgeBaseID
 			ctx = effCtx
 		}
-	}
-	if err := h.requireKBOwnershipOrAdmin(c, authorizedKBID); err != nil {
-		_ = c.Error(err)
-		return
 	}
 
 	if err := h.kgService.UpdateKnowledgeTagBatch(ctx, authorizedKBID, req.Updates); err != nil {
@@ -2601,7 +2161,7 @@ func (h *KnowledgeHandler) UpdateImageInfo(c *gin.Context) {
 		return
 	}
 
-	_, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id, types.OrgRoleEditor)
+	_, effCtx, err := h.resolveKnowledgeAndValidateKBAccess(c, id)
 	if err != nil {
 		c.Error(err)
 		return
@@ -2690,13 +2250,12 @@ func (h *KnowledgeHandler) SearchKnowledge(c *gin.Context) {
 
 	agentID := c.Query("agent_id")
 	if agentID != "" {
-		agent, err := resolveSharedAgentForRequest(c, agentID, h.agentShareService)
+		agent, err := resolveAgentForRequest(ctx, agentID, h.agentService)
 		if err != nil {
 			_ = c.Error(err)
 			return
 		}
 		sourceTenantID := agent.TenantID
-		ctx = access.WithSharedAgent(ctx, agent)
 		scope := types.NewSharedAgentKBScope(agent)
 		if scope.IsEmpty() {
 			c.JSON(http.StatusOK, gin.H{
@@ -2865,10 +2424,6 @@ func (h *KnowledgeHandler) MoveKnowledge(c *gin.Context) {
 		c.Error(errors.NewForbiddenError("No permission to access source knowledge base"))
 		return
 	}
-	if err := h.requireKBOwnershipOrAdmin(c, req.SourceKBID); err != nil {
-		c.Error(err)
-		return
-	}
 
 	// Validate target KB
 	targetKB, err := h.kbService.GetKnowledgeBaseByID(ctx, req.TargetKBID)
@@ -2884,24 +2439,16 @@ func (h *KnowledgeHandler) MoveKnowledge(c *gin.Context) {
 		c.Error(errors.NewForbiddenError("No permission to access target knowledge base"))
 		return
 	}
-	if err := h.requireKBOwnershipOrAdmin(c, req.TargetKBID); err != nil {
-		c.Error(err)
-		return
-	}
 
-	// Resolve explicit write grants independently for both body IDs.
-	if _, err := resolveHandlerKBAccessFor(c, req.SourceKBID, h.kbService, nil, nil, types.OrgRoleEditor); err != nil {
-		_ = c.Error(err)
-		return
-	}
-	if _, err := resolveHandlerKBAccessFor(c, req.TargetKBID, h.kbService, nil, nil, types.OrgRoleEditor); err != nil {
+	// Enforce the API key's knowledge-base scope for both body IDs.
+	if err := requireTenantAPIKeyKnowledgeBases(ctx, req.SourceKBID, req.TargetKBID); err != nil {
 		_ = c.Error(err)
 		return
 	}
 	taskID := utils.GenerateTaskID("kg_move", tenantID.(uint64), req.SourceKBID)
 	ctx, err = access.WithKBTransfer(c.Request.Context(), sourceKB, targetKB, access.KBTransferMove, taskID, false)
 	if err != nil {
-		_ = c.Error(kbAccessHTTPError(err))
+		_ = c.Error(errors.NewInternalServerError(err.Error()))
 		return
 	}
 	tenant, _ := ctx.Value(types.TenantInfoContextKey).(*types.Tenant)
@@ -3157,17 +2704,9 @@ func (h *KnowledgeHandler) BatchReparseKnowledge(c *gin.Context) {
 		return
 	}
 
-	_, kbID, effectiveTenantID, permission, err := h.validateKnowledgeBaseWriteAccessWithKBID(c, req.KBID)
+	_, kbID, effectiveTenantID, err := h.validateKnowledgeBaseWriteAccessWithKBID(c, req.KBID)
 	if err != nil {
 		c.Error(err)
-		return
-	}
-	if permission != types.OrgRoleAdmin && permission != types.OrgRoleEditor {
-		c.Error(errors.NewForbiddenError("no permission to reparse knowledge in this kb"))
-		return
-	}
-	if err := h.requireKBOwnershipOrAdmin(c, kbID); err != nil {
-		_ = c.Error(err)
 		return
 	}
 	ctx = types.WithExecutionTenant(c.Request.Context(), effectiveTenantID)
@@ -3292,26 +2831,4 @@ func tenantAPIKeySearchScopes(ctx context.Context) ([]types.KnowledgeSearchScope
 		scopes = append(scopes, types.KnowledgeSearchScope{TenantID: tenantID, KBID: kbID})
 	}
 	return scopes, true
-}
-
-// ListMetadataFieldDefs godoc
-// @Summary      元数据字段定义
-// @Description  返回租户可见的元数据字段定义(部门枚举 + 自定义字段), 上传表单下拉数据源
-// @Tags         知识
-// @Security     Bearer
-// @Security     ApiKeyAuth
-// @Router       /knowledge/metadata-fields [get]
-func (h *KnowledgeHandler) ListMetadataFieldDefs(c *gin.Context) {
-	ctx := logger.CloneContext(c.Request.Context())
-	tenantID := types.MustTenantIDFromContext(ctx)
-	defs, err := h.knowledgeRepo.ListCustomFieldDefs(ctx, tenantID)
-	if err != nil {
-		logger.ErrorWithFields(ctx, err, nil)
-		c.Error(errors.NewInternalServerError(err.Error()))
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    defs,
-	})
 }

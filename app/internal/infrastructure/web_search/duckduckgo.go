@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PuerkitoBio/goquery"
 	"gaze/internal/logger"
 	"gaze/internal/types"
 	"gaze/internal/types/interfaces"
 	secutils "gaze/internal/utils"
+	"github.com/PuerkitoBio/goquery"
 )
 
 // DuckDuckGoProvider implements web search using DuckDuckGo (HTML first, API fallback)

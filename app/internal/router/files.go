@@ -2,7 +2,6 @@ package router
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -10,10 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gaze/internal/application/access"
 	filesvc "gaze/internal/application/service/file"
-	"gaze/internal/config"
-	apperrors "gaze/internal/errors"
 	"gaze/internal/filetransport"
 	"gaze/internal/logger"
 	"gaze/internal/middleware"
@@ -23,19 +19,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// files.go hosts every file-proxy surface the router exposes:
+// files.go hosts the file-proxy surface the personal router exposes:
 //
-//   - /files                              tenant-scoped raw storage proxy
-//   - /api/v1/knowledge-bases/:id/files   KB-scoped proxy (shared-KB images)
-//   - /api/v1/sessions/:id/messages/:message_id/files
-//                                          message-scoped proxy (shared-agent output)
-//   - /api/v1/files/presigned             HMAC-signed anonymous access (IM)
-//   - /api/v1/files/presigned-preview     Admin-only URL diagnostics
-//   - /r/:token                           short-lived capability URLs
+//   - /files                           authenticated raw storage proxy
+//   - /api/v1/files/presigned          HMAC-signed anonymous access (IM)
+//   - /api/v1/files/presigned-preview  presigned URL diagnostics
 //
-// The handlers differ in how they authenticate and which tenant owns the
-// object, but share the same storage plumbing — the helpers directly below
-// are that shared plumbing.
+// Every surface shares the same storage plumbing — the helpers below are
+// that shared plumbing.
 
 // getRouteRegistrar is the minimal registration surface serveFiles* needs;
 // both *gin.Engine and *gin.RouterGroup satisfy it, which keeps the file
@@ -43,12 +34,6 @@ import (
 type getRouteRegistrar interface {
 	GET(string, ...gin.HandlerFunc) gin.IRoutes
 }
-
-type (
-	messageFileLookup        = access.MessageFileLookup
-	sharedAgentFileLookup    = access.SharedAgentFileLookup
-	messageKBShareAuthorizer = access.MessageKBShareAuthorizer
-)
 
 // localStorageBaseDir resolves LOCAL_STORAGE_BASE_DIR with the container
 // default.
@@ -153,11 +138,9 @@ func streamStoredFile(c *gin.Context, reader io.ReadCloser, contentType string, 
 	}
 }
 
-// newFileServeHandler builds the file-proxy handler. It reads the tenant from
-// the request context (set by whichever auth middleware precedes it), so the
-// same handler backs both the authenticated /files route and the embed route
-// (where EmbedAuth injects the channel's tenant). Tenant ownership of the
-// requested path is enforced via ValidateStoragePathTenant either way.
+// newFileServeHandler builds the file-proxy handler. It reads the owner tenant
+// from the request context set by the auth middleware. Tenant ownership of the
+// requested path is enforced via ValidateStoragePathTenant.
 func newFileServeHandler(
 	globalFileService interfaces.FileService,
 	storageResolver interfaces.StorageBackendResolver,
@@ -229,9 +212,7 @@ func serveFiles(r getRouteRegistrar, globalFileService interfaces.FileService, r
 	serveFilesWithResources(r, globalFileService, storageResolver, nil)
 }
 
-// serveFilesWithResources registers the tenant-scoped storage proxy.
-// It is registered after auth middleware, so tenant context comes from
-// authentication.
+// serveFilesWithResources registers the authenticated storage proxy.
 //
 // Route:
 //   - GET /files?file_path=<provider://...>
@@ -243,107 +224,12 @@ func serveFilesWithResources(
 ) {
 	logger.Infof(context.Background(), "[Router] Serving files from /files")
 	// /files sits outside the /api/v1 APIKeyGate, so it carries its own
-	// API-key guard. A KB-restricted key is denied (a raw storage path cannot
-	// be bounded to its allow-list); full-access keys and tenant-wide retrieve
-	// keys pass, since the handler still enforces same-tenant paths
-	// (ValidateStoragePathTenant). Embed routes use their own
-	// /embed/.../files handler.
+	// API-key guard: a raw storage path cannot be bounded to a KB allow-list,
+	// so keys with a narrower scope are denied here.
 	r.GET(
 		"/files",
 		middleware.AllowFileServeAPIKey(),
 		newFileServeHandler(globalFileService, storageResolver, resourceCatalog),
-	)
-}
-
-// serveResourceGrants exposes short, revocable capability URLs for clients
-// such as IM platforms that cannot attach a Gaze bearer/embed token.
-func serveResourceGrants(
-	r *gin.Engine,
-	resourceCatalog interfaces.ResourceCatalog,
-	tenantService interfaces.TenantService,
-	globalFileService interfaces.FileService,
-	storageResolver interfaces.StorageBackendResolver,
-) {
-	if resourceCatalog == nil || tenantService == nil {
-		return
-	}
-	handler := func(c *gin.Context) {
-		ctx := c.Request.Context()
-		resource, err := resourceCatalog.ResolveAccessGrant(ctx, c.Param("token"))
-		if err != nil || resource == nil {
-			c.Status(http.StatusNotFound)
-			return
-		}
-		tenant, err := tenantService.GetTenantByID(ctx, resource.TenantID)
-		if err != nil || tenant == nil {
-			c.Status(http.StatusNotFound)
-			return
-		}
-
-		// The grant row carries its own backend ID; only the provider scheme
-		// comes from the physical path.
-		_, provider := parseStorageTarget(resource.PhysicalPath)
-		var fileSvc interfaces.FileService
-		if storageResolver != nil {
-			fileSvc, _, err = storageResolver.ResolveFileService(
-				ctx, tenant, resource.StorageBackendID, provider, localStorageBaseDir())
-		} else {
-			fileSvc = globalFileService
-		}
-		if err != nil || fileSvc == nil {
-			logger.Warnf(ctx, "[Router] resource grant storage resolution failed: resource_id=%s err=%v", resource.ID, err)
-			c.Status(http.StatusNotFound)
-			return
-		}
-		reader, err := fileSvc.GetFile(ctx, resource.PhysicalPath)
-		if err != nil {
-			c.Status(http.StatusNotFound)
-			return
-		}
-
-		fileName := resource.OriginalName
-		if fileName == "" {
-			fileName = resource.PhysicalPath
-		}
-		contentType, inline := secutils.SafeContentTypeByFilename(fileName)
-		streamStoredFile(c, reader, contentType, inline, "private, max-age=300",
-			"resource grant (resource_id="+resource.ID+")", fileName)
-	}
-	r.GET("/r/:token", handler)
-	r.HEAD("/r/:token", handler)
-}
-
-// serveKBScopedFiles registers the KB-scoped file proxy used to render images
-// embedded in a knowledge base's content (chunks / gaze pages). Unlike the
-// tenant-scoped /files route, this route consumes RequireKBAccess's exact KB
-// grant. The file must be owned by that KB's tenant and have a live document
-// binding or an exact reference in the KB's chunks/gaze pages. Only then does
-// storage execute under the owner tenant.
-//
-// Route:
-//   - GET /api/v1/knowledge-bases/:id/files?file_path=<provider://...>
-func serveKBScopedFiles(
-	r *gin.RouterGroup,
-	g *rbacGuards,
-	tenantService interfaces.TenantService,
-	globalFileService interfaces.FileService,
-	storageResolver interfaces.StorageBackendResolver,
-	resourceCatalogs ...interfaces.ResourceCatalog,
-) {
-	logger.Infof(context.Background(), "[Router] Serving KB-scoped files from /knowledge-bases/:id/files")
-	// Preserve the existing file-route API-key policy: KB-restricted keys are
-	// denied; full-access and tenant-wide retrieve keys still need KBAccessRead.
-	g.apiKeyRoute(r, http.MethodGet, "/knowledge-bases/:id/files",
-		apiKeyRetrieve(apiKeyFullAccess()),
-		middleware.AllowFileServeAPIKey(),
-		g.Viewer(),
-		g.KBAccessRead("id"),
-		newKBScopedFileServeHandlerWithResources(
-			tenantService,
-			globalFileService,
-			storageResolver,
-			firstResourceCatalog(resourceCatalogs),
-		),
 	)
 }
 
@@ -352,169 +238,6 @@ func firstResourceCatalog(catalogs []interfaces.ResourceCatalog) interfaces.Reso
 		return nil
 	}
 	return catalogs[0]
-}
-
-func newKBScopedFileServeHandlerWithResources(
-	tenantService interfaces.TenantService,
-	globalFileService interfaces.FileService,
-	storageResolver interfaces.StorageBackendResolver,
-	resourceCatalog interfaces.ResourceCatalog,
-) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		reference, ok := requireFilePathQuery(c)
-		if !ok {
-			return
-		}
-		grant, _ := middleware.KBAccessFromContext(c)
-		bindings, _ := resourceCatalog.(interfaces.KBResourceLookup)
-		file, err := access.ResolveKBFile(
-			c.Request.Context(),
-			grant,
-			c.Param("id"),
-			reference,
-			resourceCatalog,
-			bindings,
-		)
-		if fileAccessError(c, err) {
-			return
-		}
-		serveAuthorizedFile(c, file, tenantService, globalFileService, storageResolver, "KB files")
-	}
-}
-
-// newMessageScopedFileServeHandler serves resources rendered inside one
-// assistant message. The message service first proves that the caller owns the
-// containing session, and the persisted message must reference the exact file.
-// For cross-workspace resources we then require either the
-// message's agent to still be shared from the resource-owning workspace, or —
-// when the reply was produced by the caller's own agent over an org-shared
-// knowledge base — that the resource's KB is still shared to the caller.
-//
-// The owner tenant comes from the resource registry whenever possible. This
-// also keeps old messages (written before agent_tenant_id was populated)
-// readable without accepting a client-provided source workspace ID.
-func newMessageScopedFileServeHandler(
-	messageService messageFileLookup,
-	agentShareService sharedAgentFileLookup,
-	tenantService interfaces.TenantService,
-	globalFileService interfaces.FileService,
-	storageResolver interfaces.StorageBackendResolver,
-	resourceCatalog interfaces.ResourceCatalog,
-	kbShareAuth messageKBShareAuthorizer,
-) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		reference, ok := requireFilePathQuery(c)
-		if !ok {
-			return
-		}
-		file, err := access.ResolveMessageFile(c.Request.Context(), c.Param("id"), c.Param("message_id"), reference,
-			messageService, agentShareService, resourceCatalog, kbShareAuth)
-		if fileAccessError(c, err) {
-			return
-		}
-		serveAuthorizedFile(c, file, tenantService, globalFileService, storageResolver, "message files")
-	}
-}
-
-// Storage consumes the authorized locator; it never infers permissions from
-// a context tenant or attempts a different resource after an authorization error.
-func serveAuthorizedFile(c *gin.Context, file access.FileAccess, tenants interfaces.TenantService,
-	global interfaces.FileService, resolver interfaces.StorageBackendResolver, tag string,
-) {
-	ctx := types.WithExecutionTenant(c.Request.Context(), file.OwnerTenantID)
-	tenant, err := tenants.GetTenantByID(ctx, file.OwnerTenantID)
-	if err != nil || tenant == nil {
-		c.Status(http.StatusNotFound)
-		return
-	}
-	backendID, provider := parseStorageTarget(file.Path)
-	if file.StorageBackendID != "" {
-		backendID = file.StorageBackendID
-	}
-	svc, _, ok := filesvc.ResolveTenantFileServiceWithFallback(
-		ctx,
-		tag,
-		tenant,
-		backendID,
-		provider,
-		localStorageAbsDir(),
-		resolver,
-		global,
-	)
-	if !ok {
-		c.Status(http.StatusBadRequest)
-		return
-	}
-	reader, err := svc.GetFile(ctx, file.Path)
-	if err != nil {
-		c.Status(http.StatusNotFound)
-		return
-	}
-	if err := filetransport.Serve(c.Writer, c.Request, reader, filetransport.Options{
-		Filename: file.Filename, CacheControl: "private, no-store",
-	}); err != nil {
-		logger.Warnf(ctx, "%s stream failed: %v", tag, err)
-	}
-}
-
-func fileAccessError(c *gin.Context, err error) bool {
-	if err == nil {
-		return false
-	}
-	switch {
-	case errors.Is(err, access.ErrNotFound):
-		c.Status(http.StatusNotFound)
-	case errors.Is(err, access.ErrUnauthorized):
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized: workspace context missing"})
-	case errors.Is(err, access.ErrForbidden):
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden: file not accessible from this resource"})
-	default:
-		if app, ok := apperrors.IsAppError(err); ok {
-			c.JSON(app.HTTPCode, gin.H{"error": app.Message})
-		} else {
-			logger.Warnf(c.Request.Context(), "file authorization failed: %v", err)
-			c.Status(http.StatusServiceUnavailable)
-		}
-	}
-	return true
-}
-
-// serveMessageScopedFiles registers the authenticated proxy used by the chat
-// renderer for assistant-message resources. The chat API-key capability is
-// sufficient because GetMessage enforces ownership of the API key's session.
-func serveMessageScopedFiles(
-	r *gin.RouterGroup,
-	g *rbacGuards,
-	messageService interfaces.MessageService,
-	agentShareService interfaces.AgentShareService,
-	tenantService interfaces.TenantService,
-	globalFileService interfaces.FileService,
-	storageResolver interfaces.StorageBackendResolver,
-	resourceCatalog interfaces.ResourceCatalog,
-	kbShareService interfaces.KBShareService,
-	kbService interfaces.KnowledgeBaseService,
-	knowledgeService interfaces.KnowledgeService,
-) {
-	g.apiKeyRoute(
-		r,
-		http.MethodGet,
-		"/sessions/:id/messages/:message_id/files",
-		apiKeyChat(apiKeyFullAccess()),
-		g.Viewer(),
-		newMessageScopedFileServeHandler(
-			messageService,
-			agentShareService,
-			tenantService,
-			globalFileService,
-			storageResolver,
-			resourceCatalog,
-			messageKBShareAuthorizer{
-				ShareGuard: kbShareService,
-				KBs:        kbService,
-				Knowledges: knowledgeService,
-			},
-		),
-	)
 }
 
 // servePresignedFiles serves files via HMAC-signed URLs without requiring authentication.
@@ -620,74 +343,66 @@ func presignedFileHandler(tenantService interfaces.TenantService, absDir string,
 	}
 }
 
-// servePresignedPreview registers an Admin-only diagnostic endpoint that
-// returns the presigned HTTP URL that *would be* generated for a given
-// storage path by the calling tenant's current storage config — exactly the
-// URL an IM channel would embed in a reply. Operators can paste the result
-// into a 4G/mobile browser to verify public reachability without having to
-// send a real message through an IM bot.
+// servePresignedPreview registers a diagnostic endpoint that returns the
+// presigned HTTP URL that *would be* generated for a given storage path by the
+// owner's current storage config — exactly the URL an IM channel would embed
+// in a reply. It is registered after the auth middleware, so only the owner
+// can query it.
 //
 // Route:
 //   - GET /api/v1/files/presigned-preview?file_path=<provider://...>
-func servePresignedPreview(r *gin.Engine, cfg *config.Config, storageResolver interfaces.StorageBackendResolver) {
+func servePresignedPreview(r *gin.Engine, storageResolver interfaces.StorageBackendResolver) {
 	absDir := localStorageAbsDir()
 
-	// This route is registered on the engine root, NOT the /api/v1 group,
-	// so the APIKeyGate never runs for it. RequireRole short-circuits
-	// API-key principals (deferring to that absent gate), which would let
-	// any valid key past the Admin check. Deny API keys explicitly first.
-	r.GET("/api/v1/files/presigned-preview",
-		middleware.DenyAPIKeyPrincipal(),
-		middleware.RequireRole(types.TenantRoleAdmin, cfg),
-		func(c *gin.Context) {
-			ctx := c.Request.Context()
-			filePath, ok := requireFilePathQuery(c)
-			if !ok {
-				return
-			}
+	r.GET("/api/v1/files/presigned-preview", func(c *gin.Context) {
+		ctx := c.Request.Context()
+		filePath, ok := requireFilePathQuery(c)
+		if !ok {
+			return
+		}
 
-			tenant, _ := ctx.Value(types.TenantInfoContextKey).(*types.Tenant)
-			if tenant == nil {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized: workspace context missing"})
-				return
-			}
+		tenant, _ := ctx.Value(types.TenantInfoContextKey).(*types.Tenant)
+		if tenant == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized: workspace context missing"})
+			return
+		}
 
-			backendID, provider := parseStorageTarget(filePath)
-			fileSvc, resolvedProvider, err := resolveFileService(ctx, tenant, backendID, provider, absDir, storageResolver)
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{
-					"error":    err.Error(),
-					"provider": provider,
-					"hint":     "workspace storage config is missing or incomplete for this provider",
-				})
-				return
-			}
-
-			httpURL, err := fileSvc.GetFileURL(ctx, filePath)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":    err.Error(),
-					"provider": resolvedProvider,
-					"hint":     "GetFileURL failed; for local storage this usually means APP_EXTERNAL_URL is unset",
-				})
-				return
-			}
-
-			// Detect the "no-op" case where local storage falls back to the
-			// provider:// path because APP_EXTERNAL_URL is missing. Surfacing
-			// this explicitly is the whole point of the endpoint.
-			rewritten := httpURL != filePath
-			hint := ""
-			if !rewritten {
-				hint = "URL unchanged; for local storage set APP_EXTERNAL_URL to enable presigned HTTP URLs"
-			}
-
-			c.JSON(http.StatusOK, gin.H{
-				"file_path": filePath,
-				"provider":  resolvedProvider,
-				"url":       httpURL,
-				"rewritten": rewritten,
-				"hint":      hint,
+		backendID, provider := parseStorageTarget(filePath)
+		fileSvc, resolvedProvider, err := resolveFileService(ctx, tenant, backendID, provider, absDir, storageResolver)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":    err.Error(),
+				"provider": provider,
+				"hint":     "workspace storage config is missing or incomplete for this provider",
 			})
+			return
+		}
+
+		httpURL, err := fileSvc.GetFileURL(ctx, filePath)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":    err.Error(),
+				"provider": resolvedProvider,
+				"hint":     "GetFileURL failed; for local storage this usually means APP_EXTERNAL_URL is unset",
+			})
+			return
+		}
+
+		// Detect the "no-op" case where local storage falls back to the
+		// provider:// path because APP_EXTERNAL_URL is missing. Surfacing
+		// this explicitly is the whole point of the endpoint.
+		rewritten := httpURL != filePath
+		hint := ""
+		if !rewritten {
+			hint = "URL unchanged; for local storage set APP_EXTERNAL_URL to enable presigned HTTP URLs"
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"file_path": filePath,
+			"provider":  resolvedProvider,
+			"url":       httpURL,
+			"rewritten": rewritten,
+			"hint":      hint,
 		})
+	})
 }

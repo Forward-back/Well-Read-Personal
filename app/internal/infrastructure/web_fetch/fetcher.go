@@ -16,9 +16,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/PuerkitoBio/goquery"
 	"gaze/internal/logger"
 	"gaze/internal/utils"
+	"github.com/PuerkitoBio/goquery"
 	"github.com/chromedp/chromedp"
 )
 

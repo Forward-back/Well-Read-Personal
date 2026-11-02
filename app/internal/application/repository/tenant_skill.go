@@ -472,16 +472,9 @@ func (r *tenantSkillRepository) UpdateCatalog(ctx context.Context, e *types.Tena
 }
 
 func (r *tenantSkillRepository) DeleteCatalog(ctx context.Context, tenantID uint64, catalogID string) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// Grants are scoped 1:1 to the skill; remove them with the definition
-		// so a later skill that reuses the id cannot inherit stale editors.
-		if err := tx.Where("tenant_id = ? AND skill_id = ?", tenantID, catalogID).
-			Delete(&types.SkillEditorGrant{}).Error; err != nil {
-			return err
-		}
-		return tx.Where("tenant_id = ? AND id = ?", tenantID, catalogID).
-			Delete(&types.TenantSkillCatalogEntity{}).Error
-	})
+	return r.db.WithContext(ctx).
+		Where("tenant_id = ? AND id = ?", tenantID, catalogID).
+		Delete(&types.TenantSkillCatalogEntity{}).Error
 }
 
 func (r *tenantSkillRepository) ListSkillsByCatalog(

@@ -146,20 +146,17 @@ app 上传文档后通过 `/ingest` 推送，不在容器启动时跑全量离�
 | `MAX_FILE_SIZE_MB` | 上传上限，前端 nginx 与后端共用 |
 | `APP_HOST` / `APP_PORT` / `APP_SCHEME` | nginx 代理目标 |
 
-前端镜像构建需要 named context：
+前端镜像构建：
 
 ```bash
-docker build \
-  --build-context contracts=app/contracts \
-  -f frontend/Dockerfile \
-  frontend/
+docker build -f frontend/Dockerfile frontend/
 ```
 
 ## 5. 构建上下文
 
 | 服务 | context | Dockerfile |
 |---|---|---|
-| frontend | `../frontend` | `frontend/Dockerfile`，额外 context `contracts=../app/contracts` |
+| frontend | `../frontend` | `frontend/Dockerfile` |
 | app | `../app` | `docker/Dockerfile.app` |
 | docreader | `../app` | `docker/Dockerfile.docreader` |
 | ylsw | `../rag` | `rag/Dockerfile` |

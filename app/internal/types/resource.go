@@ -111,28 +111,6 @@ func (b *ResourceBinding) BeforeCreate(_ *gorm.DB) error {
 	return nil
 }
 
-// ResourceAccessGrant is a revocable, expiring read capability.
-type ResourceAccessGrant struct {
-	ID          string     `json:"id" gorm:"type:varchar(36);primaryKey"`
-	TokenHash   string     `json:"-" gorm:"type:varchar(64);not null;uniqueIndex"`
-	ResourceID  string     `json:"resource_id" gorm:"type:varchar(36);not null;index"`
-	AccessScope string     `json:"access_scope" gorm:"type:varchar(16);not null;default:'read'"`
-	ExpiresAt   time.Time  `json:"expires_at" gorm:"not null;index"`
-	RevokedAt   *time.Time `json:"revoked_at,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
-}
-
-// TableName returns the resource access grant table name.
-func (ResourceAccessGrant) TableName() string { return "resource_access_grants" }
-
-// BeforeCreate assigns an ID before persistence.
-func (g *ResourceAccessGrant) BeforeCreate(_ *gorm.DB) error {
-	if g.ID == "" {
-		g.ID = uuid.NewString()
-	}
-	return nil
-}
-
 // BuildResourcePath creates a stable application resource reference.
 func BuildResourcePath(handle string) string {
 	return ResourceScheme + strings.TrimSpace(handle)

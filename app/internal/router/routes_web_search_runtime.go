@@ -8,7 +8,7 @@ import (
 
 // RegisterWebSearchRuntimeRoutes exposes the read-only provider list used by
 // chat readiness checks. Provider CRUD remains disabled.
-func RegisterWebSearchRuntimeRoutes(r *gin.RouterGroup, h *handler.WebSearchRuntimeHandler, g *rbacGuards) {
+func RegisterWebSearchRuntimeRoutes(r *gin.RouterGroup, h *handler.WebSearchRuntimeHandler, g *apiKeyGuards) {
 	providers := g.apiKeyGroup(r.Group("/web-search-providers"), apiKeyFullAccess())
-	providers.GET("", g.Viewer(), h.ListProviders)
+	providers.GET("", h.ListProviders)
 }

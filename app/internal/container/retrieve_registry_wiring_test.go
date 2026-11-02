@@ -1,10 +1,7 @@
 package container
 
 import (
-	"context"
 	"testing"
-
-	"github.com/gin-gonic/gin"
 
 	"go.uber.org/dig"
 	"gorm.io/driver/sqlite"
@@ -13,7 +10,6 @@ import (
 	"gaze/internal/application/repository"
 	"gaze/internal/application/service/retriever"
 	"gaze/internal/config"
-	"gaze/internal/types"
 	"gaze/internal/types/interfaces"
 )
 
@@ -43,7 +39,6 @@ func TestRetrieveEngineRegistryWiring(t *testing.T) {
 	}
 	provide(func() *gorm.DB { return db })
 	provide(func() *config.Config { return &config.Config{} })
-	provide(func() interfaces.AuditLogService { return &fakeAuditSvc{} })
 	provide(repository.NewVectorStoreRepository)
 	provide(NewEngineFactory)
 	provide(initRetrieveEngineRegistry)
@@ -61,14 +56,3 @@ func TestRetrieveEngineRegistryWiring(t *testing.T) {
 		t.Fatalf("container could not build the registry: %v", err)
 	}
 }
-
-type fakeAuditSvc struct{}
-
-func (*fakeAuditSvc) Log(context.Context, *types.AuditLog) error { return nil }
-func (*fakeAuditSvc) LogDenied(context.Context, *gin.Context, uint64, string, string, types.TenantRole) error {
-	return nil
-}
-func (*fakeAuditSvc) List(context.Context, uint64, *interfaces.AuditLogQuery) ([]*types.AuditLog, error) {
-	return nil, nil
-}
-func (*fakeAuditSvc) Purge(context.Context, int) (int64, error) { return 0, nil }

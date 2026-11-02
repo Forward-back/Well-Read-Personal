@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"gaze/internal/application/access"
 	"gaze/internal/types"
 	"github.com/stretchr/testify/require"
 )
@@ -22,17 +21,6 @@ func TestUpdateKnowledgeExplicitEmptyDescriptionClearsSummary(t *testing.T) {
 		repo: repo, kbService: metadataUpdateKBService{},
 	}
 	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(7))
-	ctx = (&access.KBAccess{
-		KnowledgeBase: &types.KnowledgeBase{
-			ID:       "kb-1",
-			TenantID: 7,
-		},
-		Caller:            types.CallerFromContext(ctx),
-		EffectiveTenantID: 7,
-		Permission:        types.OrgRoleEditor,
-	}).Context(
-		ctx,
-	)
 
 	err := service.UpdateKnowledge(ctx, &types.Knowledge{
 		ID:                   "knowledge-1",
@@ -57,17 +45,6 @@ func TestUpdateKnowledgeOmittedDescriptionPreservesExisting(t *testing.T) {
 		repo: repo, kbService: metadataUpdateKBService{},
 	}
 	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(7))
-	ctx = (&access.KBAccess{
-		KnowledgeBase: &types.KnowledgeBase{
-			ID:       "kb-1",
-			TenantID: 7,
-		},
-		Caller:            types.CallerFromContext(ctx),
-		EffectiveTenantID: 7,
-		Permission:        types.OrgRoleEditor,
-	}).Context(
-		ctx,
-	)
 
 	err := service.UpdateKnowledge(ctx, &types.Knowledge{
 		ID:    "knowledge-1",
@@ -91,17 +68,6 @@ func TestUpdateKnowledgeManualDescriptionSetsCompletedStatus(t *testing.T) {
 		repo: repo, kbService: metadataUpdateKBService{},
 	}
 	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(7))
-	ctx = (&access.KBAccess{
-		KnowledgeBase: &types.KnowledgeBase{
-			ID:       "kb-1",
-			TenantID: 7,
-		},
-		Caller:            types.CallerFromContext(ctx),
-		EffectiveTenantID: 7,
-		Permission:        types.OrgRoleEditor,
-	}).Context(
-		ctx,
-	)
 
 	err := service.UpdateKnowledge(ctx, &types.Knowledge{
 		ID:                   "knowledge-1",
@@ -127,17 +93,6 @@ func TestUpdateKnowledgeDescriptionOnlyDoesNotTouchMetadata(t *testing.T) {
 		repo: repo, kbService: metadataUpdateKBService{},
 	}
 	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(7))
-	ctx = (&access.KBAccess{
-		KnowledgeBase: &types.KnowledgeBase{
-			ID:       "kb-1",
-			TenantID: 7,
-		},
-		Caller:            types.CallerFromContext(ctx),
-		EffectiveTenantID: 7,
-		Permission:        types.OrgRoleEditor,
-	}).Context(
-		ctx,
-	)
 
 	err := service.UpdateKnowledge(ctx, &types.Knowledge{
 		ID:                   "knowledge-1",

@@ -191,14 +191,5 @@ func GetWebSearchProviderTypes() []WebSearchProviderTypeInfo {
 			Description:      "Google Custom Search API (requires API key and engine ID)",
 			DocsURL:          "https://developers.google.com/custom-search/v1/overview",
 		},
-
-
-
-
-
-
-
-
-
 	}
 }

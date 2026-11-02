@@ -49,8 +49,7 @@
             </div>
         </t-tooltip>
 
-        <!-- 空间选择器：仅在用户可切换空间时显示 -->
-        <TenantSelector v-if="canAccessAllTenants && !uiStore.sidebarCollapsed" />
+        <!-- 个人版无多空间概念，空间选择器不再展示 -->
 
         <!-- 折叠时右侧拖拽展开手柄 -->
         <div v-if="uiStore.sidebarCollapsed" class="sidebar-drag-handle" @mousedown="onDragHandleMouseDown" />
@@ -88,10 +87,6 @@
                             </div>
                             <template v-if="!uiStore.sidebarCollapsed">
                                 <span class="menu_title" :title="item.title">{{ item.title }}</span>
-                                <span v-if="item.path === 'organizations' && orgStore.totalPendingJoinRequestCount > 0"
-                                    class="menu-pending-badge"
-                                    :title="t('organization.settings.pendingJoinRequestsBadge')">{{
-                                        orgStore.totalPendingJoinRequestCount }}</span>
                             </template>
                         </div>
                     </div>
@@ -245,13 +240,10 @@ import { logout as logoutApi } from '@/api/auth';
 import { useMenuStore } from '@/stores/menu';
 import { useSessionActivityStore } from '@/stores/sessionActivity';
 import { useAuthStore } from '@/stores/auth';
-import { useDeploymentCapabilitiesStore } from '@/stores/deploymentCapabilities';
-import { useOrganizationStore } from '@/stores/organization';
 import { useUIStore } from '@/stores/ui';
 import { useCommandPaletteStore } from '@/stores/commandPalette';
 import { MessagePlugin, DialogPlugin, Icon as TIcon } from "tdesign-vue-next";
 import UserMenu from '@/components/UserMenu.vue';
-import TenantSelector from '@/components/TenantSelector.vue';
 import { useI18n } from 'vue-i18n';
 import { getSystemInfo } from '@/api/system';
 
@@ -288,9 +280,7 @@ const sessionActivity = useSessionActivityStore();
 const { entries: sessionActivityEntries } = storeToRefs(sessionActivity);
 let sessionActivityTimer: ReturnType<typeof setInterval> | undefined;
 const authStore = useAuthStore();
-const isGovernanceOnly = computed(() => authStore.isCompanyAdmin);
-const deploymentCapabilities = useDeploymentCapabilitiesStore();
-const orgStore = useOrganizationStore();
+const isGovernanceOnly = computed(() => false);
 const uiStore = useUIStore();
 const commandPaletteStore = useCommandPaletteStore();
 
@@ -366,9 +356,6 @@ const batchDisplayCount = computed(() =>
     isAllBatchSelected.value ? total.value : batchSelectedIds.value.length
 )
 
-// 是否可以访问所有空间
-const canAccessAllTenants = computed(() => authStore.canAccessAllTenants);
-
 // 是否处于知识库详情页（不包括全局聊天）
 const isInKnowledgeBase = computed<boolean>(() => {
     return route.name === 'knowledgeBaseDetail' ||
@@ -389,12 +376,6 @@ const isInCreatChat = computed<boolean>(() => {
 // 是否在对话详情页
 const isInChatDetail = computed<boolean>(() => route.name === 'chat');
 
-// 是否在智能体列表页面
-const isInAgentList = computed<boolean>(() => route.name === 'agentList');
-
-// 是否在组织列表页面
-const isInOrganizationList = computed<boolean>(() => route.name === 'organizationList');
-
 // 统一的菜单项激活状态判断
 const isMenuItemActive = (itemPath: string): boolean => {
     const currentRoute = route.name;
@@ -413,10 +394,10 @@ const isMenuItemActive = (itemPath: string): boolean => {
             return currentRoute === 'kbCreatChat' || currentRoute === 'globalCreatChat';
         case 'settings':
             return currentRoute === 'settings';
-        case 'governance':
-            return currentRoute === 'governanceHome';
-        case 'management':
-            return currentRoute === 'managementHome';
+        case 'skills':
+            return currentRoute === 'skills';
+        case 'reading':
+            return currentRoute === 'readingRun';
         default:
             return itemPath === currentpath.value;
     }
@@ -438,12 +419,9 @@ const getIconActiveState = (itemPath: string) => {
     };
 };
 
-// 分离上下两部分菜单（使用 visibleMenuArr 以便 lite 模式过滤 logout）
+// 分离上下两部分菜单
 const topMenuItems = computed<MenuItem[]>(() => {
-    return (visibleMenuArr.value as unknown as MenuItem[]).filter((item: MenuItem) =>
-        (item.path === 'creatChat' ? !isGovernanceOnly.value : true) &&
-        (item.path === 'knowledge-bases' || item.path === 'reading' || item.path === 'governance' || item.path === 'management' || item.path === 'agents' || item.path === 'organizations' || item.path === 'shared-space' || item.path === 'creatChat')
-    );
+    return visibleMenuArr.value as unknown as MenuItem[];
 });
 
 // 当前知识库信息
@@ -975,10 +953,6 @@ onMounted(async () => {
         ensureSessionInSidebar(initialChatId);
         await syncActiveBucketFromChat(initialChatId);
     }
-    // 若组织列表未加载则拉取一次，用于侧栏「待审批」角标
-    if (deploymentCapabilities.isSupported('organizations') && orgStore.organizations.length === 0) {
-        orgStore.fetchOrganizations();
-    }
 });
 
 onUnmounted(() => {
@@ -1047,7 +1021,7 @@ const getIcon = (path: string) => {
 }
 getIcon(typeof route.name === 'string' ? route.name as string : (route.name ? String(route.name) : ''))
 const goDefault = () => {
-    router.push(isGovernanceOnly.value ? '/platform/governance' : '/platform/knowledge-bases')
+    router.push('/platform/creatChat')
 }
 
 const handleMenuClick = async (path: string) => {
@@ -1059,16 +1033,10 @@ const handleMenuClick = async (path: string) => {
         } else {
             router.push('/platform/knowledge-bases')
         }
-    } else if (path === 'agents') {
-        router.push('/platform/agents')
-    } else if (path === 'organizations' || path === 'shared-space') {
-        router.push('/platform/shared-space')
     } else if (path === 'reading') {
         router.push('/platform/reading')
-    } else if (path === 'governance') {
-        router.push('/platform/governance')
-    } else if (path === 'management') {
-        router.push('/platform/management')
+    } else if (path === 'skills') {
+        router.push('/platform/skills')
     } else if (path === 'settings') {
         // 设置菜单项：打开设置弹窗并跳转路由
         uiStore.openSettings()

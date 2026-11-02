@@ -174,9 +174,13 @@ func (h *Handler) SandboxTerminalWS(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to validate ticket"})
 		return
 	}
-	if !middleware.AttachAuthenticatedUser(
-		c, h.tenantService, h.memberService, h.config, user, claims.TenantID,
-	) {
+	var tenant *types.Tenant
+	if h.tenantService != nil {
+		if t, err := h.tenantService.GetTenantByID(c.Request.Context(), user.TenantID); err == nil {
+			tenant = t
+		}
+	}
+	if !middleware.AttachAuthenticatedUser(c, user, tenant) {
 		return
 	}
 
@@ -413,14 +417,8 @@ func (h *Handler) checkTerminalAuth(
 	return service.CheckSandboxTerminalAuth(
 		ctx,
 		h.userService,
-		h.memberService,
 		h.sessionService,
 		claims,
-		h.terminalRBACEnforced(),
 		rejectExpired,
 	)
-}
-
-func (h *Handler) terminalRBACEnforced() bool {
-	return h != nil && h.config != nil && h.config.Tenant.IsRBACEnforced()
 }

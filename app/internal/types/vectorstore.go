@@ -303,6 +303,7 @@ func (c IndexConfig) GetIndexNameOrDefault(engineType RetrieverEngineType) strin
 		return ""
 	}
 }
+
 // ---------------------------------------------------------------------------
 // IndexConfig — getter helpers (pointer receiver for nil safety)
 // ---------------------------------------------------------------------------

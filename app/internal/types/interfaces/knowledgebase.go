@@ -50,10 +50,6 @@ type KnowledgeBaseService interface {
 	// FillKnowledgeBaseCounts fills KnowledgeCount, ChunkCount, IsProcessing, ProcessingCount for the given KB (uses kb.TenantID).
 	FillKnowledgeBaseCounts(ctx context.Context, kb *types.KnowledgeBase) error
 
-	// ListPublicKnowledgeBases lists consumer-portal visible KBs across all
-	// tenants (visibility='public', non-temporary) — portal home page (§2.13).
-	ListPublicKnowledgeBases(ctx context.Context) ([]*types.KnowledgeBase, error)
-
 	// ListKnowledgeBases lists all knowledge bases under the current tenant
 	// Parameters:
 	//   - ctx: Context information, containing tenant information
@@ -63,19 +59,6 @@ type KnowledgeBaseService interface {
 	ListKnowledgeBases(ctx context.Context) ([]*types.KnowledgeBase, error)
 	// ListKnowledgeBasesByTenantID lists all knowledge bases for a specific tenant (e.g. for shared agent context).
 	ListKnowledgeBasesByTenantID(ctx context.Context, tenantID uint64) ([]*types.KnowledgeBase, error)
-
-	// ListKnowledgeBasesByDepartment lists KBs owned by one department.
-	ListKnowledgeBasesByDepartment(ctx context.Context, tenantID uint64, departmentID string) ([]*types.KnowledgeBase, error)
-
-	// ListSharedKnowledgeBasesForDepartment lists KBs shared into a department
-	// but owned by another department.
-	ListSharedKnowledgeBasesForDepartment(ctx context.Context, tenantID uint64, departmentID string) ([]*types.KnowledgeBase, error)
-
-	// GetKBDepartmentShareIDs returns the KB's materialized department scope.
-	GetKBDepartmentShareIDs(ctx context.Context, tenantID uint64, kbID string) ([]string, error)
-
-	// ReplaceKBDepartmentShareScope rewrites the KB's department scope.
-	ReplaceKBDepartmentShareScope(ctx context.Context, tenantID uint64, kbID string, departmentIDs []string) error
 
 	// UpdateKnowledgeBase updates knowledge base information
 	// Parameters:
@@ -90,11 +73,6 @@ type KnowledgeBaseService interface {
 	UpdateKnowledgeBase(ctx context.Context,
 		id string, name string, description string, config *types.KnowledgeBaseConfig,
 	) (*types.KnowledgeBase, error)
-
-	// SetKnowledgeBaseVisibility updates the consumer-portal visibility of a
-	// knowledge base (private/internal/public). Only Admin+ may call it; the
-	// role guard lives at the route layer (改造方案 §2.13).
-	SetKnowledgeBaseVisibility(ctx context.Context, id string, visibility types.KBVisibility) (*types.KnowledgeBase, error)
 
 	// DeleteKnowledgeBase deletes a knowledge base
 	// Parameters:
@@ -209,10 +187,6 @@ type KnowledgeBaseRepository interface {
 	//   - Possible errors such as database errors, etc.
 	ListKnowledgeBases(ctx context.Context) ([]*types.KnowledgeBase, error)
 
-	// ListPublicKnowledgeBases lists consumer-portal visible KBs across all
-	// tenants (visibility='public', non-temporary) — portal home page (§2.13).
-	ListPublicKnowledgeBases(ctx context.Context) ([]*types.KnowledgeBase, error)
-
 	// ListKnowledgeBasesByTenantID lists all knowledge bases for a specific tenant
 	// Parameters:
 	//   - ctx: Context information
@@ -221,22 +195,6 @@ type KnowledgeBaseRepository interface {
 	//   - List of knowledge base objects
 	//   - Possible errors such as database errors, etc.
 	ListKnowledgeBasesByTenantID(ctx context.Context, tenantID uint64) ([]*types.KnowledgeBase, error)
-
-	// ListKnowledgeBasesByDepartment lists KBs owned by one department.
-	ListKnowledgeBasesByDepartment(ctx context.Context, tenantID uint64, departmentID string) ([]*types.KnowledgeBase, error)
-
-	// ListSharedKnowledgeBasesForDepartment lists KBs shared into a department
-	// but owned by another department.
-	ListSharedKnowledgeBasesForDepartment(ctx context.Context, tenantID uint64, departmentID string) ([]*types.KnowledgeBase, error)
-
-	// ListKBDepartmentShareIDs returns the materialized share scope.
-	ListKBDepartmentShareIDs(ctx context.Context, tenantID uint64, kbID string) ([]string, error)
-
-	// ReplaceKBDepartmentShares atomically rewrites a KB's share scope.
-	ReplaceKBDepartmentShares(ctx context.Context, tenantID uint64, kbID string, departmentIDs []string, createdBy string) error
-
-	// AddKBDepartmentShare inserts one share row idempotently.
-	AddKBDepartmentShare(ctx context.Context, tenantID uint64, kbID, departmentID, createdBy string) error
 
 	// UpdateKnowledgeBase updates a knowledge base record
 	// Parameters:

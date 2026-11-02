@@ -157,37 +157,3 @@ func (r *knowledgeRepository) DeleteKnowledgeTagRelations(
 		Where("knowledge_id = ?", knowledgeID).
 		Delete(&types.KnowledgeTagRelation{}).Error
 }
-
-// ListCustomFieldDefs returns the metadata field definitions visible to a
-// tenant: its own rows plus global defaults (tenant_id=0), tenant rows
-// shadowing same-named defaults.
-func (r *knowledgeRepository) ListCustomFieldDefs(
-	ctx context.Context, tenantID uint64,
-) ([]*types.KnowledgeCustomFieldDef, error) {
-	var defs []*types.KnowledgeCustomFieldDef
-	err := r.db.WithContext(ctx).
-		Where("tenant_id = 0 OR tenant_id = ?", tenantID).
-		Order("name").
-		Find(&defs).Error
-	if err != nil {
-		return nil, err
-	}
-	// Tenant rows shadow same-named global defaults (tenant_id=0).
-	byName := make(map[string]*types.KnowledgeCustomFieldDef, len(defs))
-	for _, d := range defs {
-		existing, ok := byName[d.Name]
-		if !ok || d.TenantID != 0 {
-			// First occurrence wins; tenant rows (sorted after tenant_id=0
-			// defaults only by name order, so insert defaults first) shadow
-			// same-named defaults when they appear later.
-			byName[d.Name] = d
-		} else if existing.TenantID == 0 && d.TenantID != 0 {
-			byName[d.Name] = d
-		}
-	}
-	out := make([]*types.KnowledgeCustomFieldDef, 0, len(byName))
-	for _, d := range byName {
-		out = append(out, d)
-	}
-	return out, nil
-}

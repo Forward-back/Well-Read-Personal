@@ -159,7 +159,6 @@ type gazeIngestService struct {
 	chunkRepo      interfaces.ChunkRepository
 	modelService   interfaces.ModelService
 	task           interfaces.TaskEnqueuer
-	audit          interfaces.AuditLogService
 	pendingRepo    interfaces.TaskPendingOpsRepository
 	deadLetterRepo interfaces.TaskDeadLetterRepository
 	redisClient    *redis.Client // nil in Lite mode (no Redis)
@@ -188,7 +187,6 @@ func NewGazeIngestService(
 	chunkRepo interfaces.ChunkRepository,
 	modelService interfaces.ModelService,
 	task interfaces.TaskEnqueuer,
-	audit interfaces.AuditLogService,
 	pendingRepo interfaces.TaskPendingOpsRepository,
 	deadLetterRepo interfaces.TaskDeadLetterRepository,
 	redisClient *redis.Client,
@@ -202,7 +200,6 @@ func NewGazeIngestService(
 		chunkRepo:      chunkRepo,
 		modelService:   modelService,
 		task:           task,
-		audit:          audit,
 		pendingRepo:    pendingRepo,
 		deadLetterRepo: deadLetterRepo,
 		redisClient:    redisClient,

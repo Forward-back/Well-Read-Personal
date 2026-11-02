@@ -55,31 +55,6 @@ const (
 	FAQQuestionIndexModeSeparate FAQQuestionIndexMode = "separate"
 )
 
-// KBVisibility controls whether a knowledge base is exposed to the consumer
-// portal. private = hidden everywhere; internal (default) = workspace members
-// only; public = visible to the consumer portal. Only Admin+ may change it
-// (改造方案 §2.13).
-type KBVisibility string
-
-const (
-	KBVisibilityPrivate  KBVisibility = "private"
-	KBVisibilityInternal KBVisibility = "internal"
-	KBVisibilityPublic   KBVisibility = "public"
-)
-
-// NormalizeKBVisibility maps an input visibility string to a known value,
-// falling back to internal for anything unrecognised.
-func NormalizeKBVisibility(v KBVisibility) KBVisibility {
-	switch KBVisibility(strings.ToLower(strings.TrimSpace(string(v)))) {
-	case KBVisibilityPrivate:
-		return KBVisibilityPrivate
-	case KBVisibilityPublic:
-		return KBVisibilityPublic
-	default:
-		return KBVisibilityInternal
-	}
-}
-
 // KnowledgeBase represents a knowledge base entity
 type KnowledgeBase struct {
 	// Unique identifier of the knowledge base
@@ -90,10 +65,6 @@ type KnowledgeBase struct {
 	Type string `yaml:"type"                    json:"type"                    gorm:"type:varchar(32);default:'document'"`
 	// Whether this knowledge base is temporary (ephemeral) and should be hidden from UI
 	IsTemporary bool `yaml:"is_temporary"            json:"is_temporary"            gorm:"default:false"`
-	// Visibility controls consumer-portal exposure: private/internal/public.
-	// Only Admin+ may change it; the update DTO omits it and the dedicated
-	// visibility endpoint enforces the role guard.
-	Visibility KBVisibility `yaml:"visibility" json:"visibility" gorm:"type:varchar(16);not null;default:'internal'"`
 	// Description of the knowledge base
 	Description string `yaml:"description"             json:"description"`
 	// Workspace ID
@@ -104,9 +75,6 @@ type KnowledgeBase struct {
 	// Nullable for backward compatibility with rows created before the
 	// RBAC migration backfilled the column to the workspace Owner.
 	CreatorID string `yaml:"creator_id"              json:"creator_id"              gorm:"type:varchar(36);index"`
-	// DepartmentID is the owning department. Every KB belongs to exactly one
-	// department; sharing to other departments never changes ownership.
-	DepartmentID string `yaml:"department_id"           json:"department_id"           gorm:"type:varchar(36);index"`
 	// Chunking configuration
 	ChunkingConfig ChunkingConfig `yaml:"chunking_config"         json:"chunking_config"         gorm:"type:json"`
 	// Image processing configuration

@@ -74,7 +74,6 @@ func (s *vectorStoreService) CreateStore(ctx context.Context, store *types.Vecto
 		return err
 	}
 
-
 	// 3. Duplicate check — DB stores
 	endpoint := store.ConnectionConfig.GetEndpoint()
 	indexName := store.IndexConfig.GetIndexNameOrDefault(store.EngineType)
@@ -444,7 +443,7 @@ func validateConnectionConfig(engineType types.RetrieverEngineType, config types
 // Empty fields are skipped — required-field presence is the responsibility of
 // validateConnectionConfig, which runs first on every guarded path.
 func validateConnectionAddrSSRF(engineType types.RetrieverEngineType, config types.ConnectionConfig) error {
-		switch engineType {
+	switch engineType {
 	case types.PostgresRetrieverEngineType,
 		types.SQLiteRetrieverEngineType:
 		// Default-DB or file-based engines; no user-supplied remote address.

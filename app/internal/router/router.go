@@ -37,23 +37,14 @@ type RouterParams struct {
 	SessionService               interfaces.SessionService
 	MessageService               interfaces.MessageService
 	ModelService                 interfaces.ModelService
-	KBShareService               interfaces.KBShareService
-	AgentShareService            interfaces.AgentShareService
 	KBHandler                    *handler.KnowledgeBaseHandler
-	PortalHandler                *handler.PortalHandler
 	KnowledgeHandler             *handler.KnowledgeHandler
-	TenantHandler                *handler.TenantHandler
+	SettingsHandler              *handler.SettingsHandler
 	TenantService                interfaces.TenantService
 	TenantAPIKeyService          interfaces.TenantAPIKeyService
-	TenantMemberService          interfaces.TenantMemberService
-	TenantMemberHandler          *handler.TenantMemberHandler
-	DepartmentHandler            *handler.DepartmentHandler
 	AgentRuntimeHandler          *handler.AgentRuntimeHandler
 	MemoryRuntimeHandler         *handler.MemoryRuntimeHandler
 	WebSearchRuntimeHandler      *handler.WebSearchRuntimeHandler
-	TenantInvitationHandler      *handler.TenantInvitationHandler
-	AuditLogHandler              *handler.AuditLogHandler
-	AuditLogService              interfaces.AuditLogService
 	ChunkHandler                 *handler.ChunkHandler
 	SessionHandler               *session.Handler
 	MessageHandler               *handler.MessageHandler
@@ -68,16 +59,11 @@ type RouterParams struct {
 	ResourceCatalog              interfaces.ResourceCatalog
 	TagHandler                   *handler.TagHandler
 	SkillHandler                 *handler.SkillHandler
-	SkillGrantHandler            *handler.SkillGrantHandler
-	SkillGrantService            interfaces.SkillEditorGrantService
 	RedisClient                  *redis.Client
 	DataSourceHandler            *handler.DataSourceHandler
 	DataSourceCredentialsHandler *handler.DataSourceCredentialsHandler
 	GazePageHandler              *handler.GazePageHandler
-	CollaborationHandler         *handler.CollaborationHandler
-	EngineSyncHandler            *handler.EngineSyncHandler
 	ReadingHandler               *handler.ReadingHandler
-	GovernanceHandler            *handler.GovernanceHandler
 }
 
 // NewRouter 创建新的路由
@@ -138,22 +124,13 @@ func NewRouter(params RouterParams) *gin.Engine {
 		serveFrontendStatic(r)
 	}
 
-	// Short-lived capability URLs for IM and other clients that cannot attach
-	// Gaze authentication headers.
-	serveResourceGrants(r, params.ResourceCatalog, params.TenantService, params.FileService, params.StorageBackendResolver)
-
 	// Sandbox terminal WebSocket (self-authenticated via a short-lived
-	// query ticket — see RegisterSandboxTerminalRoutes; browsers cannot set
-	// auth headers on the WS handshake, so this must precede the global Auth
-	// middleware). The ticket is minted by an authenticated POST.
+	// query ticket). Browsers cannot set auth headers on the WS handshake,
+	// so this must precede the global Auth middleware.
 	RegisterSandboxTerminalRoutes(r, params.SessionHandler)
 
-	// 门户路由(§2.13 P2): 消费者公开面,独立 portal token 机制。
-	// 与沙箱 WS 同理,必须注册在全局 Auth 中间件之前——portal token 不是内部凭证。
-	RegisterPortalRoutes(r, params.PortalHandler)
-
 	// 认证中间件
-	r.Use(middleware.Auth(params.TenantService, params.UserService, params.TenantMemberService, params.TenantAPIKeyService, params.Config))
+	r.Use(middleware.Auth(params.UserService, params.TenantAPIKeyService, params.TenantService))
 
 	// 文件服务：统一代理本地/MinIO/COS/TOS存储后端（需要认证）
 	serveFilesWithResources(r, params.FileService, params.StorageBackendResolver, params.ResourceCatalog)
@@ -161,117 +138,56 @@ func NewRouter(params RouterParams) *gin.Engine {
 	// Presigned file access: no auth required, signature-verified.
 	servePresignedFiles(r, params.TenantService, params.StorageBackendResolver)
 
-	// Diagnostic preview of presigned URLs (Admin only, behind auth middleware).
-	servePresignedPreview(r, params.Config, params.StorageBackendResolver)
+	// Diagnostic preview of presigned URLs (behind auth middleware).
+	servePresignedPreview(r, params.StorageBackendResolver)
 
 	// Langfuse observability — only active when LANGFUSE_* env vars are set.
 	// The middleware is registered unconditionally; when disabled it's a no-op.
 	r.Use(langfuse.GinMiddleware())
 
-	// Audit log injection — middleware/rbac.go's reject paths and the
-	// admin-only /tenants/:id/audit-log endpoint pull the service out
-	// of the gin context. Provider is a no-op when AuditLogService is
-	// nil (e.g. lite mode without DB), so the rbac path degrades to
-	// "log to stderr only" instead of crashing.
-	r.Use(middleware.AuditServiceProvider(params.AuditLogService))
-
 	// 需要认证的API路由
 	v1 := r.Group("/api/v1")
 	{
-		// rbacGuards bundles the role-gating middleware factories so each
-		// Register* function below can attach the right guard without
-		// taking a *config.Config dependency directly. The guards honour
-		// cfg.Tenant.EnableRBAC: when false, they log but pass through,
-		// preserving today's behaviour during the rollout window.
-		rbacGuards := newRBACGuards(
-			params.Config,
-			params.KBHandler,
-			params.KnowledgeHandler,
-			params.ChunkHandler,
-			params.GazePageHandler,
-			params.KBService,
-			params.KnowledgeService,
-			params.ChunkService,
-			params.KBShareService,
-			params.AgentShareService,
-		)
+		// apiKeyGuards records the API-key policy of every route reachable
+		// with X-API-Key. The personal edition exposes one MCP key, but the
+		// gate still denies any route that was not explicitly declared.
+		apiKeyGuards := newAPIKeyGuards()
 
 		// API-key gate: single authority for X-API-Key principals. Runs
 		// first on every /api/v1 route (JWT sessions pass straight
 		// through) and denies any route not explicitly declared via the
 		// apiKeyGroup helpers. Must be attached BEFORE the Register* calls
 		// so that sub-groups inherit it.
-		v1.Use(rbacGuards.apiKeyAuthorizer.Middleware())
+		v1.Use(apiKeyGuards.apiKeyAuthorizer.Middleware())
 
-		RegisterAuthRoutes(v1, params.AuthHandler, rbacGuards)
-		RegisterTenantRoutes(v1, params.TenantHandler, params.TenantMemberHandler, params.TenantInvitationHandler, params.AuditLogHandler, rbacGuards)
-		RegisterMyInvitationRoutes(v1, params.TenantInvitationHandler)
-		RegisterKnowledgeBaseRoutes(v1, params.KBHandler, rbacGuards)
-		RegisterPortalOpsRoutes(v1, params.PortalHandler, rbacGuards)
-		RegisterKnowledgeBaseActivityRoutes(v1, params.AuditLogHandler, rbacGuards)
-		// KB-scoped image proxy: lets tenants render images embedded in
-		// org-shared / agent-visible KB content, which the tenant-scoped
-		// /files route cannot serve because it enforces same-tenant paths.
-		serveKBScopedFiles(
-			v1,
-			rbacGuards,
-			params.TenantService,
-			params.FileService,
-			params.StorageBackendResolver,
-			params.ResourceCatalog,
-		)
-		// Message-scoped image proxy: shared-agent replies belong to the
-		// caller's session but may reference resources stored in the agent's
-		// source workspace. Authorization is derived from the persisted message,
-		// never from a client-provided workspace ID. Replies produced by the
-		// caller's own agent over an org-shared KB fall back to the KB share
-		// relation instead (#3022).
-		serveMessageScopedFiles(
-			v1,
-			rbacGuards,
-			params.MessageService,
-			params.AgentShareService,
-			params.TenantService,
-			params.FileService,
-			params.StorageBackendResolver,
-			params.ResourceCatalog,
-			params.KBShareService,
-			params.KBService,
-			params.KnowledgeService,
-		)
-		RegisterKnowledgeTagRoutes(v1, params.TagHandler, rbacGuards)
-		RegisterKnowledgeRoutes(v1, params.KnowledgeHandler, rbacGuards)
-		RegisterDepartmentRoutes(v1, params.DepartmentHandler, rbacGuards)
-		RegisterAgentRuntimeRoutes(v1, params.AgentRuntimeHandler, rbacGuards)
-		RegisterMemoryRuntimeRoutes(v1, params.MemoryRuntimeHandler, rbacGuards)
-		RegisterWebSearchRuntimeRoutes(v1, params.WebSearchRuntimeHandler, rbacGuards)
-		RegisterChunkRoutes(v1, params.ChunkHandler, rbacGuards)
-		RegisterCollaborationRoutes(v1, params.CollaborationHandler, params.EngineSyncHandler, rbacGuards)
-		RegisterSessionRoutes(v1, params.SessionHandler, params.MessageSuggestionHandler, rbacGuards)
-		RegisterChatRoutes(v1, params.SessionHandler, rbacGuards)
-		RegisterMessageRoutes(v1, params.MessageHandler, rbacGuards)
-		RegisterModelRoutes(v1, params.ModelHandler, params.ModelCredentialsHandler, rbacGuards)
-		// 银联商务融合版削减：沙箱/env 管理路由不注册
-		RegisterInitializationRoutes(v1, params.InitializationHandler, rbacGuards)
+		RegisterAuthRoutes(v1, params.AuthHandler, apiKeyGuards)
+		RegisterSettingsRoutes(v1, params.SettingsHandler)
+		RegisterKnowledgeBaseRoutes(v1, params.KBHandler, apiKeyGuards)
+		RegisterKnowledgeTagRoutes(v1, params.TagHandler, apiKeyGuards)
+		RegisterKnowledgeRoutes(v1, params.KnowledgeHandler, apiKeyGuards)
+		RegisterAgentRuntimeRoutes(v1, params.AgentRuntimeHandler, apiKeyGuards)
+		RegisterMemoryRuntimeRoutes(v1, params.MemoryRuntimeHandler, apiKeyGuards)
+		RegisterWebSearchRuntimeRoutes(v1, params.WebSearchRuntimeHandler, apiKeyGuards)
+		RegisterChunkRoutes(v1, params.ChunkHandler, apiKeyGuards)
+		RegisterSessionRoutes(v1, params.SessionHandler, params.MessageSuggestionHandler, apiKeyGuards)
+		RegisterChatRoutes(v1, params.SessionHandler, apiKeyGuards)
+		RegisterMessageRoutes(v1, params.MessageHandler, apiKeyGuards)
+		RegisterModelRoutes(v1, params.ModelHandler, params.ModelCredentialsHandler, apiKeyGuards)
+		RegisterInitializationRoutes(v1, params.InitializationHandler, apiKeyGuards)
 		params.SystemHandler.BindDeploymentCapabilities(deploymentCapabilitiesFromRouter(params))
-		RegisterSystemRoutes(v1, params.SystemHandler, rbacGuards)
-		RegisterSystemAdminRoutes(v1, params.SystemHandler, params.AuditLogHandler, rbacGuards)
-		RegisterStorageBackendRoutes(v1, params.StorageBackendHandler, rbacGuards)
-		// 银联商务融合版削减：技能目录与授权保留
-		RegisterSkillRoutes(v1, params.SkillHandler, params.SkillGrantService, rbacGuards)
-		RegisterSkillGrantRoutes(v1, params.SkillGrantHandler, rbacGuards)
-		RegisterDataSourceRoutes(v1, params.DataSourceHandler, params.DataSourceCredentialsHandler, rbacGuards)
-		// gaze 为保留板块正常注册
-		RegisterGazePageRoutes(v1, params.GazePageHandler, rbacGuards)
-		RegisterChunkerDebugRoutes(v1, rbacGuards)
-		RegisterReadingRoutes(v1, params.ReadingHandler, rbacGuards)
-		RegisterGovernanceRoutes(v1, params.GovernanceHandler, rbacGuards)
+		RegisterSystemRoutes(v1, params.SystemHandler, apiKeyGuards)
+		RegisterStorageBackendRoutes(v1, params.StorageBackendHandler, apiKeyGuards)
+		RegisterSkillRoutes(v1, params.SkillHandler, apiKeyGuards)
+		RegisterDataSourceRoutes(v1, params.DataSourceHandler, params.DataSourceCredentialsHandler, apiKeyGuards)
+		RegisterGazePageRoutes(v1, params.GazePageHandler, apiKeyGuards)
+		RegisterChunkerDebugRoutes(v1, apiKeyGuards)
+		RegisterReadingRoutes(v1, params.ReadingHandler, apiKeyGuards)
 
 		// Fail fast if any declared API-key policy points at a route
 		// template that does not actually exist (typo / path drift). A
 		// stale template would silently 403 every API key on that route,
 		// so we panic at startup instead of shipping a dead policy.
-		rbacGuards.assertAPIKeyPoliciesMatchRoutes(r)
+		apiKeyGuards.assertAPIKeyPoliciesMatchRoutes(r)
 	}
 
 	return r

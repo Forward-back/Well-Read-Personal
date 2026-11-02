@@ -13,20 +13,13 @@ import (
 // DocumentMetadata carries the domain metadata extracted on the app side and
 // passed through to the engine at ingest time.
 type DocumentMetadata struct {
-	DocNumber   string `json:"doc_number"`
-	OrgName     string `json:"org_name"`
-	DocDate     string `json:"doc_date"`
-	DocTitle    string `json:"doc_title"`
-	DocType     string `json:"doc_type"`
-	ProductName string `json:"product_name"`
-	// 企业级元数据（§2.14）
-	LifecycleStatus string         `json:"lifecycle_status"`
-	EffectiveDate   string         `json:"effective_date"`
-	ExpiryDate      string         `json:"expiry_date"`
-	SupersededBy    string         `json:"superseded_by"`
-	Sensitivity     string         `json:"sensitivity"`
-	Department      string         `json:"department"`
-	CustomMetadata  map[string]any `json:"custom_metadata"`
+	DocNumber      string         `json:"doc_number"`
+	OrgName        string         `json:"org_name"`
+	DocDate        string         `json:"doc_date"`
+	DocTitle       string         `json:"doc_title"`
+	DocType        string         `json:"doc_type"`
+	ProductName    string         `json:"product_name"`
+	CustomMetadata map[string]any `json:"custom_metadata"`
 }
 
 // IngestChunk mirrors one app-side chunk so the engine can map its own
@@ -64,11 +57,10 @@ type RetrievalAuditSink interface {
 // RAGEngine is the retrieval/generation engine behind knowledge QA.
 type RAGEngine interface {
 	// StreamChat streams an answer for the question scoped to the
-	// knowledgeBaseIDs whitelist (empty = full corpus) and the
-	// allowedSensitivities whitelist (empty = all sensitivity levels),
-	// invoking onDelta for each answer fragment, onReferences when the
-	// recall references arrive and onStage for retrieval-pipeline stage
-	// notifications (recall start / per-route counts / rerank / generation).
+	// knowledgeBaseIDs whitelist (empty = full corpus), invoking onDelta for
+	// each answer fragment, onReferences when the recall references arrive and
+	// onStage for retrieval-pipeline stage notifications (recall start /
+	// per-route counts / rerank / generation).
 	// It returns the accumulated answer and the recall references.
 	StreamChat(
 		ctx context.Context,
@@ -76,7 +68,6 @@ type RAGEngine interface {
 		knowledgeBaseIDs []string,
 		aclScope *types.ACLScope,
 		skill *types.SkillInjection,
-		allowedSensitivities []string,
 		onDelta func(string),
 		onReferences func([]*types.SearchResult),
 		onStage func(stage string, counts map[string]int, tMs int64, detail map[string]interface{}),
@@ -123,11 +114,10 @@ type RAGEngine interface {
 	// DeleteDocument removes a previously ingested document from the engine.
 	DeleteDocument(ctx context.Context, documentID string) error
 
-	// UpdateDocumentMetadata refreshes document-level metadata (lifecycle,
-	// sensitivity, department) in place. Unlike IngestDocument it neither
-	// re-chunks nor re-embeds, so governance changes take effect immediately
-	// and cost nothing. Engines that cannot update in place may return an
-	// error; callers fall back to a full re-push.
+	// UpdateDocumentMetadata refreshes document-level metadata in place.
+	// Unlike IngestDocument it neither re-chunks nor re-embeds, so metadata
+	// changes take effect immediately and cost nothing. Engines that cannot
+	// update in place may return an error; callers fall back to a full re-push.
 	UpdateDocumentMetadata(
 		ctx context.Context, knowledgeBaseID, documentID string, meta *DocumentMetadata,
 	) error

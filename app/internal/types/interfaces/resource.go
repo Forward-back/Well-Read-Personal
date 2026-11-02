@@ -16,7 +16,7 @@ type ResourceCleaner interface {
 }
 
 // ResourceRepository persists stable resource identities, ownership bindings,
-// and short-lived access grants.
+// and ownership bindings.
 type ResourceRepository interface {
 	Create(ctx context.Context, resource *types.StoredResource) error
 	GetByID(ctx context.Context, id string) (*types.StoredResource, error)
@@ -36,9 +36,6 @@ type ResourceRepository interface {
 		tenantID uint64,
 		resourceID, messageID string,
 	) (*types.MessageFileBindings, error)
-	CreateGrant(ctx context.Context, grant *types.ResourceAccessGrant) error
-	GetValidGrant(ctx context.Context, tokenHash string, now time.Time) (*types.ResourceAccessGrant, error)
-	DeleteExpiredGrants(ctx context.Context, before time.Time) error
 }
 
 // ResourceRegistration describes one physical object at registration time.

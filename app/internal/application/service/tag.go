@@ -28,9 +28,7 @@ type knowledgeTagService struct {
 	ownership      retriever.TenantStoreOwnership
 	modelService   interfaces.ModelService
 	task           interfaces.TaskEnqueuer
-	kbShareService interfaces.KBShareService
 	tenantRepo     interfaces.TenantRepository
-	audit          interfaces.AuditLogService
 }
 
 // NewKnowledgeTagService creates a new tag service.
@@ -43,9 +41,7 @@ func NewKnowledgeTagService(
 	ownership retriever.TenantStoreOwnership,
 	modelService interfaces.ModelService,
 	task interfaces.TaskEnqueuer,
-	kbShareService interfaces.KBShareService,
 	tenantRepo interfaces.TenantRepository,
-	audit interfaces.AuditLogService,
 ) (interfaces.KnowledgeTagService, error) {
 	return &knowledgeTagService{
 		kbService:      kbService,
@@ -56,9 +52,7 @@ func NewKnowledgeTagService(
 		ownership:      ownership,
 		modelService:   modelService,
 		task:           task,
-		kbShareService: kbShareService,
 		tenantRepo:     tenantRepo,
-		audit:          audit,
 	}, nil
 }
 
@@ -82,7 +76,7 @@ func (s *knowledgeTagService) ListTags(
 		return nil, err
 	}
 
-	effectiveTenantID, err := resolveKBReadTenant(ctx, kb, s.kbShareService)
+	effectiveTenantID, err := resolveKBReadTenant(ctx, kb)
 	if err != nil {
 		return nil, err
 	}
@@ -177,8 +171,6 @@ func (s *knowledgeTagService) CreateTag(
 	if err := s.repo.Create(ctx, tag); err != nil {
 		return nil, err
 	}
-	recordKBActivity(ctx, s.audit, tag.TenantID, tag.KnowledgeBaseID, types.AuditActionTagCreated,
-		"knowledge_tag", tag.ID, types.AuditOutcomeSuccess, map[string]any{"name": tag.Name})
 	return tag, nil
 }
 
@@ -223,8 +215,6 @@ func (s *knowledgeTagService) UpdateTag(
 	if err := s.repo.Update(ctx, tag); err != nil {
 		return nil, err
 	}
-	recordKBActivity(ctx, s.audit, tag.TenantID, tag.KnowledgeBaseID, types.AuditActionTagUpdated,
-		"knowledge_tag", tag.ID, types.AuditOutcomeSuccess, map[string]any{"name": tag.Name})
 	return tag, nil
 }
 
@@ -332,9 +322,6 @@ func (s *knowledgeTagService) DeleteTag(ctx context.Context, id string, force bo
 				return err
 			}
 		}
-		recordKBActivity(ctx, s.audit, tenantID, tag.KnowledgeBaseID, types.AuditActionTagUpdated,
-			"knowledge_tag", tag.ID, types.AuditOutcomeSuccess,
-			map[string]any{"name": tag.Name, "content_cleared": true, "excluded_count": len(excludeIDs)})
 		return nil
 	}
 
@@ -359,17 +346,11 @@ func (s *knowledgeTagService) DeleteTag(ctx context.Context, id string, force bo
 
 	// If there are excludeIDs, we cannot delete the tag itself as it still has content
 	if len(excludeIDs) > 0 {
-		recordKBActivity(ctx, s.audit, tenantID, tag.KnowledgeBaseID, types.AuditActionTagUpdated,
-			"knowledge_tag", tag.ID, types.AuditOutcomeSuccess,
-			map[string]any{"name": tag.Name, "content_cleared": true, "excluded_count": len(excludeIDs)})
 		return nil
 	}
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
 	}
-	recordKBActivity(ctx, s.audit, tenantID, tag.KnowledgeBaseID, types.AuditActionTagDeleted,
-		"knowledge_tag", tag.ID, types.AuditOutcomeSuccess,
-		map[string]any{"name": tag.Name, "force": force})
 	return nil
 }
 

@@ -36,13 +36,12 @@ const (
 
 // customAgentService implements the CustomAgentService interface
 type customAgentService struct {
-	repo           interfaces.CustomAgentRepository
-	chunkRepo      interfaces.ChunkRepository
-	kbService      interfaces.KnowledgeBaseService
-	kbShareService interfaces.KBShareService
-	gazePageRepo   interfaces.GazePageRepository
-	tagRepo        interfaces.KnowledgeTagRepository
-	knowledgeRepo  interfaces.KnowledgeRepository
+	repo          interfaces.CustomAgentRepository
+	chunkRepo     interfaces.ChunkRepository
+	kbService     interfaces.KnowledgeBaseService
+	gazePageRepo  interfaces.GazePageRepository
+	tagRepo       interfaces.KnowledgeTagRepository
+	knowledgeRepo interfaces.KnowledgeRepository
 }
 
 // NewCustomAgentService creates a new custom agent service
@@ -50,19 +49,17 @@ func NewCustomAgentService(
 	repo interfaces.CustomAgentRepository,
 	chunkRepo interfaces.ChunkRepository,
 	kbService interfaces.KnowledgeBaseService,
-	kbShareService interfaces.KBShareService,
 	gazePageRepo interfaces.GazePageRepository,
 	tagRepo interfaces.KnowledgeTagRepository,
 	knowledgeRepo interfaces.KnowledgeRepository,
 ) interfaces.CustomAgentService {
 	return &customAgentService{
-		repo:           repo,
-		chunkRepo:      chunkRepo,
-		kbService:      kbService,
-		kbShareService: kbShareService,
-		gazePageRepo:   gazePageRepo,
-		tagRepo:        tagRepo,
-		knowledgeRepo:  knowledgeRepo,
+		repo:          repo,
+		chunkRepo:     chunkRepo,
+		kbService:     kbService,
+		gazePageRepo:  gazePageRepo,
+		tagRepo:       tagRepo,
+		knowledgeRepo: knowledgeRepo,
 	}
 }
 
@@ -1106,13 +1103,13 @@ func (s *customAgentService) groupKBIDsByEffectiveTenant(
 			kbByID[kb.ID] = kb
 		}
 	}
-	permissions := access.NewKBPermissions(ctx, s.kbShareService)
+	permissions := access.NewKBPermissions(ctx)
 	for _, kbID := range kbIDs {
 		kb := kbByID[kbID]
 		if kb == nil {
 			continue
 		}
-		ok, err := permissions.Check(kbID, kb.TenantID, types.OrgRoleViewer)
+		ok, err := permissions.Check(kbID, kb.TenantID)
 		if err != nil || !ok {
 			continue
 		}

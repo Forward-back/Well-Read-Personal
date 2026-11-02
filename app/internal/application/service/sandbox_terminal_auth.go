@@ -40,13 +40,11 @@ var ErrTerminalAuthDenied = errors.New("terminal authorization no longer valid")
 func CheckSandboxTerminalAuth(
 	ctx context.Context,
 	users interfaces.UserService,
-	members interfaces.TenantMemberService,
 	sessions interfaces.SessionService,
 	claims SandboxTerminalTicketClaims,
-	rbacEnforced bool,
 	rejectExpired bool,
 ) (*types.User, error) {
-	if users == nil || members == nil || sessions == nil {
+	if users == nil || sessions == nil {
 		return nil, ErrTerminalAuthDenied
 	}
 	userID := strings.TrimSpace(claims.UserID)
@@ -85,9 +83,8 @@ func CheckSandboxTerminalAuth(
 	if user == nil || !user.IsActive {
 		return nil, ErrTerminalAuthDenied
 	}
-
-	if err := terminalMembershipStillValid(ctx, members, user, claims.TenantID, rbacEnforced); err != nil {
-		return nil, err
+	if user.TenantID != claims.TenantID {
+		return nil, ErrTerminalAuthDenied
 	}
 
 	ownedCtx := sandboxTerminalAuthContext(ctx, userID, claims.TenantID)
@@ -139,42 +136,6 @@ func AssertAccessTokenStillActive(token *types.AuthToken, userID string, now tim
 		return err
 	}
 	return assertAccessTokenNotExpired(token, now)
-}
-
-// terminalMembershipStillValid answers "may this user still act in this
-// workspace", the recheck counterpart to middleware.resolveTenantRole.
-//
-// The two are deliberately NOT shared. resolveTenantRole derives a role for a
-// fresh request and self-heals (it can auto-promote the owner of an orphan
-// workspace, writing a tenant_members row); a recheck on a live socket must
-// only observe, never grant. What the two do share — active membership,
-// superuser bypass, and the RBAC fail-open switch — is kept in step here on
-// purpose, so change both if that policy moves.
-//
-// Where they differ, this one is the more permissive: the handshake already
-// passed the middleware, so a recheck that is stricter would kill sessions
-// the middleware just admitted.
-func terminalMembershipStillValid(
-	ctx context.Context,
-	members interfaces.TenantMemberService,
-	user *types.User,
-	tenantID uint64,
-	rbacEnforced bool,
-) error {
-	member, err := members.GetMembership(ctx, user.ID, tenantID)
-	if err != nil {
-		return err
-	}
-	if member != nil && member.Status == types.TenantMemberStatusActive {
-		return nil
-	}
-	if user.CanAccessAllTenants {
-		return nil
-	}
-	if !rbacEnforced {
-		return nil
-	}
-	return ErrTerminalAuthDenied
 }
 
 func sandboxTerminalAuthContext(parent context.Context, userID string, tenantID uint64) context.Context {

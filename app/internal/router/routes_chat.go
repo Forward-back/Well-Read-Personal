@@ -13,7 +13,7 @@ import (
 // user must own the session). We add Viewer+ here so non-members
 // (e.g. revoked accounts retained in the tenant for audit) cannot
 // reach the endpoints at all once RBAC is on.
-func RegisterMessageRoutes(r *gin.RouterGroup, handler *handler.MessageHandler, g *rbacGuards) {
+func RegisterMessageRoutes(r *gin.RouterGroup, handler *handler.MessageHandler, g *apiKeyGuards) {
 	// Message history is tenant-wide and not attributable to a KB, so it is
 	// a full-access surface for API keys by default. The narrow
 	// exceptions are explicit capabilities:
@@ -25,10 +25,10 @@ func RegisterMessageRoutes(r *gin.RouterGroup, handler *handler.MessageHandler, 
 	chatMessages := messages.With(apiKeyChat(apiKeyFullAccess()))
 	historyMessages := messages.With(apiKeyMessageHistory(apiKeyFullAccess()))
 	{
-		historyMessages.POST("/search", g.Viewer(), handler.SearchMessages)
-		historyMessages.GET("/chat-history-stats", g.ViewerOrSystemAdmin(), handler.GetChatHistoryKBStats)
-		chatMessages.GET("/:session_id/load", g.Viewer(), handler.LoadMessages)
-		chatMessages.DELETE("/:session_id/:id", g.Viewer(), handler.DeleteMessage)
+		historyMessages.POST("/search", handler.SearchMessages)
+		historyMessages.GET("/chat-history-stats", handler.GetChatHistoryKBStats)
+		chatMessages.GET("/:session_id/load", handler.LoadMessages)
+		chatMessages.DELETE("/:session_id/:id", handler.DeleteMessage)
 	}
 }
 
@@ -43,12 +43,12 @@ func RegisterSessionRoutes(
 	r *gin.RouterGroup,
 	handler *session.Handler,
 	suggestionHandler *handler.MessageSuggestionHandler,
-	g *rbacGuards,
+	g *apiKeyGuards,
 ) {
 	// Sessions are per-user chat state, not knowledge-base content. The
 	// chat capability lets a scoped key run the full conversation flow
 	// (create/manage its own sessions) without full tenant access.
-	sessions := g.apiKeyGroup(r.Group("/sessions", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	sessions := g.apiKeyGroup(r.Group("/sessions"), apiKeyChat(apiKeyFullAccess()))
 	{
 		sessions.POST("", handler.CreateSession)
 		sessions.DELETE("/batch", handler.BatchDeleteSessions)
@@ -109,22 +109,22 @@ func RegisterSessionRoutes(
 // RegisterChatRoutes 注册路由。Chat endpoints are tenant-member usage
 // surfaces; Viewer+ is sufficient because per-session/per-agent
 // authorisation is enforced inside the handlers.
-func RegisterChatRoutes(r *gin.RouterGroup, handler *session.Handler, g *rbacGuards) {
+func RegisterChatRoutes(r *gin.RouterGroup, handler *session.Handler, g *apiKeyGuards) {
 	// These POST routes append messages and run generation, so a scoped key
 	// needs the explicit chat capability unless it has full tenant access.
-	knowledgeChat := g.apiKeyGroup(r.Group("/knowledge-chat", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	knowledgeChat := g.apiKeyGroup(r.Group("/knowledge-chat"), apiKeyChat(apiKeyFullAccess()))
 	{
 		knowledgeChat.POST("/:session_id", handler.KnowledgeQA)
 	}
 
 	// Agent-based chat for external agent/MCP integrations.
-	agentChat := g.apiKeyGroup(r.Group("/agent-chat", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	agentChat := g.apiKeyGroup(r.Group("/agent-chat"), apiKeyChat(apiKeyFullAccess()))
 	{
 		agentChat.POST("/:session_id", handler.AgentQA)
 	}
 
 	// 新增知识检索接口，不需要session_id
-	knowledgeSearch := g.apiKeyGroup(r.Group("/knowledge-search", g.Viewer()), apiKeyRetrieve(apiKeyFullAccess()))
+	knowledgeSearch := g.apiKeyGroup(r.Group("/knowledge-search"), apiKeyRetrieve(apiKeyFullAccess()))
 	{
 		knowledgeSearch.POST("", handler.SearchKnowledge)
 	}

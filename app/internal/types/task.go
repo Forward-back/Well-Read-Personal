@@ -255,23 +255,7 @@ const (
 	TypeMemoryExtract = "memory:extract"
 	// TypeEnginePushRetry YLSW 双写失败重推任务（重跑 convert→push，§2.2 ③）
 	TypeEnginePushRetry = "engine:push_retry"
-	// TypeMetadataExtract 企业级元数据 LLM 异步抽取任务（§2.14 赋值双路之二）
-	TypeMetadataExtract = "metadata:extract"
 )
-
-// MetadataExtractPayload carries the LLM enterprise-metadata extraction task.
-// Title + content head travel in the payload (small data, no re-parse needed);
-// the worker writes high-confidence fields to the knowledge row and re-pushes
-// the engine copy (§2.14).
-type MetadataExtractPayload struct {
-	TracingContext
-	RequestId       string `json:"request_id"`
-	TenantID        uint64 `json:"tenant_id"`
-	KnowledgeID     string `json:"knowledge_id"`
-	KnowledgeBaseID string `json:"knowledge_base_id"`
-	Title           string `json:"title,omitempty"`
-	ContentHead     string `json:"content_head,omitempty"` // 正文首段(≤2000 字符)
-}
 
 // EnginePushRetryPayload carries the retry for a failed YLSW dual-write:
 // the worker re-runs convert → pushToEngine. Deliberately minimal (no file

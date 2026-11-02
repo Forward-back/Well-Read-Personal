@@ -196,10 +196,6 @@ func (s *modelService) UpdateModel(ctx context.Context, model *types.Model) erro
 		return err
 	}
 	if existingModel != nil && existingModel.IsBuiltin {
-		if !types.IsSystemAdminFromContext(ctx) {
-			logger.Warnf(ctx, "Non-system-admin attempted to update builtin model: %s", model.ID)
-			return apperrors.NewForbiddenError("only system administrators can update builtin models")
-		}
 		// A UI edit is an explicit runtime override. Clear YAML ownership so
 		// the startup reconciler does not silently replace the saved values.
 		model.TenantID = existingModel.TenantID
@@ -237,10 +233,6 @@ func (s *modelService) UpdateModelCredentials(
 	if existing == nil {
 		return nil, ErrModelNotFound
 	}
-	if existing.IsBuiltin && !types.IsSystemAdminFromContext(ctx) {
-		return nil, apperrors.NewForbiddenError(
-			"only system administrators can modify builtin model credentials")
-	}
 
 	changed := false
 	if apiKey != nil && *apiKey != "" && *apiKey != existing.Parameters.APIKey {
@@ -274,10 +266,6 @@ func (s *modelService) ClearModelCredential(ctx context.Context, id, field strin
 	}
 	if existing == nil {
 		return ErrModelNotFound
-	}
-	if existing.IsBuiltin && !types.IsSystemAdminFromContext(ctx) {
-		return apperrors.NewForbiddenError(
-			"only system administrators can modify builtin model credentials")
 	}
 
 	changed := false
@@ -451,7 +439,6 @@ func (s *modelService) GetEmbeddingModel(ctx context.Context, modelId string) (e
 
 	logger.Infof(ctx, "Getting embedding model: %s, source: %s", model.Name, model.Source)
 
-
 	embedder, err := embedding.NewEmbedder(embedding.ConfigFromModel(model), s.pooler, s.ollamaService)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
@@ -497,7 +484,6 @@ func (s *modelService) GetEmbeddingModelForTenant(ctx context.Context, modelId s
 
 	logger.Infof(ctx, "Getting cross-tenant embedding model: %s, source: %s, tenant: %d", model.Name, model.Source, tenantID)
 
-
 	embedder, err := embedding.NewEmbedder(embedding.ConfigFromModel(model), s.pooler, s.ollamaService)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
@@ -525,7 +511,6 @@ func (s *modelService) GetRerankModel(ctx context.Context, modelId string) (rera
 	}
 
 	logger.Infof(ctx, "Getting rerank model: %s, source: %s", model.Name, model.Source)
-
 
 	reranker, err := rerank.NewReranker(rerank.ConfigFromModel(model))
 	if err != nil {
@@ -568,7 +553,6 @@ func (s *modelService) GetChatModel(ctx context.Context, modelId string) (chat.C
 
 	logger.Infof(ctx, "Getting chat model: %s, source: %s", model.Name, model.Source)
 
-
 	chatModel, err := chat.NewChat(chat.ConfigFromModel(model), s.ollamaService)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
@@ -603,7 +587,6 @@ func (s *modelService) GetVLMModel(ctx context.Context, modelId string) (vlm.VLM
 	}
 
 	logger.Infof(ctx, "Getting VLM model: %s, source: %s", model.Name, model.Source)
-
 
 	vlmModel, err := vlm.NewVLM(vlm.ConfigFromModel(model), s.ollamaService)
 	if err != nil {

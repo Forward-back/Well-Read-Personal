@@ -1,10 +1,6 @@
 import { reactive, ref, computed, watch } from 'vue'
 import { defineStore } from 'pinia'
 import i18n from '@/i18n'
-import { useAuthStore } from '@/stores/auth'
-import { useDeploymentCapabilitiesStore } from '@/stores/deploymentCapabilities'
-import type { DeploymentCapabilityKey } from '@/config/deploymentCapabilities'
-import { MANAGEMENT_ENTRY_CAPS } from '@/config/managementCards'
 
 type MenuChild = Record<string, any>
 
@@ -15,9 +11,6 @@ interface MenuItem {
   path: string
   childrenPath?: string
   children?: MenuChild[]
-  requiredCapability?: DeploymentCapabilityKey
-  requiredCaps?: string[]
-  requiredAnyCaps?: string[]
 }
 
 const createMenuChildren = () => reactive<MenuChild[]>([])
@@ -32,13 +25,10 @@ export const useMenuStore = defineStore('menuStore', () => {
       childrenPath: 'chat',
       children: createMenuChildren()
     },
-    { title: '', titleKey: 'menu.knowledgeBase', icon: 'menu-kb.png', path: 'knowledge-bases', requiredCaps: ['kb:read'] },
-    { title: '', titleKey: 'menu.reading', icon: 'menu-reading.png', path: 'reading', requiredCaps: ['kb:read'] },
-    { title: '', titleKey: 'menu.sharedSpace', icon: 'menu-shared.png', path: 'shared-space', requiredCaps: ['shared_space:view'] },
-    { title: '', titleKey: 'menu.governance', icon: 'menu-governance.png', path: 'governance', requiredAnyCaps: ['stats:dept_read', 'stats:company_read', 'audit:dept_read', 'audit:company_read'] },
-    { title: '', titleKey: 'menu.management', icon: 'menu-management.svg', path: 'management', requiredAnyCaps: [...MANAGEMENT_ENTRY_CAPS] },
-    { title: '', titleKey: 'menu.settings', icon: 'menu-settings.svg', path: 'settings', requiredCaps: ['settings:self_manage'] },
-    { title: '', titleKey: 'menu.logout', icon: 'logout', path: 'logout' }
+    { title: '', titleKey: 'menu.knowledgeBase', icon: 'menu-kb.png', path: 'knowledge-bases' },
+    { title: '', titleKey: 'menu.reading', icon: 'menu-reading.png', path: 'reading' },
+    { title: '', titleKey: 'menu.skills', icon: 'agent.svg', path: 'skills' },
+    { title: '', titleKey: 'menu.settings', icon: 'menu-settings.svg', path: 'settings' }
   ])
 
   const isFirstSession = ref(false)
@@ -66,38 +56,7 @@ export const useMenuStore = defineStore('menuStore', () => {
     }
   )
 
-  const liteHiddenPaths = new Set(['logout', 'shared-space'])
-
-  // 银联商务融合版：大众用户（非员工、非系统管理员）仅保留聊天与登出。
-  const publicUserHiddenPaths = new Set(['knowledge-bases', 'shared-space', 'settings'])
-
-  // 共享空间对所有公司成员可见；旧组织页已下线。
-  const visibleMenuArr = computed(() => {
-    const authStore = useAuthStore()
-    const deploymentCapabilities = useDeploymentCapabilitiesStore()
-    const isPublicUser = !authStore.isEmployee && !authStore.isSystemAdmin
-    return menuArr.filter(item => {
-      if (authStore.isLiteMode && liteHiddenPaths.has(item.path)) {
-        return false
-      }
-      if (isPublicUser && publicUserHiddenPaths.has(item.path)) {
-        return false
-      }
-      if (!deploymentCapabilities.isSupported(item.requiredCapability)) {
-        return false
-      }
-      if (item.requiredCaps && !authStore.hasCaps(item.requiredCaps)) {
-        return false
-      }
-      if (
-        item.requiredAnyCaps &&
-        !item.requiredAnyCaps.some((cap) => authStore.hasCaps([cap]))
-      ) {
-        return false
-      }
-      return true
-    })
-  })
+  const visibleMenuArr = computed(() => menuArr)
 
   const chatMenuIndex = menuArr.findIndex(item => item.path === 'creatChat')
 

@@ -62,8 +62,7 @@ func TestNewReaderReportsDisconnectedDocReader(t *testing.T) {
 }
 
 func TestNewReaderRequiresGazeCloudCredentials(t *testing.T) {
-	_, err := NewReader(context.Background(), AnydocEngineName, "docx", false, ReaderDeps{
-	})
+	_, err := NewReader(context.Background(), AnydocEngineName, "docx", false, ReaderDeps{})
 	if err == nil {
 		t.Fatal("NewReader succeeded without credentials, want an error")
 	}

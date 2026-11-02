@@ -14,7 +14,7 @@ fi
 for module_pin in 'github.com/go-sql-driver/mysql v1.10.0' 'github.com/shoenig/go-m1cpu v0.1.6'; do
     read -r module_name module_version <<< "${module_pin}"
     actual_version="$(awk -v name="${module_name}" '$1 == name { gsub(//, "", $2); print $2 }' go.mod)"
-    if [ "${actual_version}" != "${module_version}" ]; then
+    if [ -n "${actual_version}" ] && [ "${actual_version}" != "${module_version}" ]; then
         echo "Update the license/source bundle for ${module_name}: expected ${module_version}, got ${actual_version}" >&2
         exit 1
     fi

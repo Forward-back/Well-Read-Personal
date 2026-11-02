@@ -2,16 +2,14 @@ package dto
 
 import "gaze/internal/types"
 
-// AuthLoginResponse is the HTTP-safe login / switch-tenant response shape.
+// AuthLoginResponse is the HTTP-safe login response shape.
 type AuthLoginResponse struct {
-	Success      bool               `json:"success"`
-	Message      string             `json:"message,omitempty"`
-	User         *types.User        `json:"user,omitempty"`
-	ActiveTenant *TenantResponse    `json:"active_tenant,omitempty"`
-	Memberships  []types.Membership `json:"memberships"`
-	Caps         []string           `json:"caps"`
-	Token        string             `json:"token,omitempty"`
-	RefreshToken string             `json:"refresh_token,omitempty"`
+	Success      bool          `json:"success"`
+	Message      string        `json:"message,omitempty"`
+	User         *types.User   `json:"user,omitempty"`
+	Tenant       *types.Tenant `json:"tenant,omitempty"`
+	Token        string        `json:"token,omitempty"`
+	RefreshToken string        `json:"refresh_token,omitempty"`
 }
 
 // AuthOIDCCallbackResponse is the HTTP-safe OIDC callback payload shape.
@@ -32,17 +30,11 @@ func NewAuthLoginResponse(resp *types.LoginResponse) *AuthLoginResponse {
 	if resp == nil {
 		return nil
 	}
-	var role types.TenantRole
-	if resp.ActiveTenant != nil {
-		role = membershipRoleForTenant(resp.Memberships, resp.ActiveTenant.ID)
-	}
 	return &AuthLoginResponse{
 		Success:      resp.Success,
 		Message:      resp.Message,
 		User:         resp.User,
-		ActiveTenant: NewTenantResponseWithRole(resp.ActiveTenant, role),
-		Memberships:  resp.Memberships,
-		Caps:         nonNilCaps(resp.Caps),
+		Tenant:       resp.Tenant,
 		Token:        resp.Token,
 		RefreshToken: resp.RefreshToken,
 	}
@@ -63,7 +55,6 @@ func NewAuthOIDCCallbackResponse(resp *types.OIDCCallbackResponse) *AuthOIDCCall
 		User:         resp.User,
 		Tenant:       NewTenantResponseWithRole(resp.Tenant, role),
 		Memberships:  resp.Memberships,
-		Caps:         nonNilCaps(resp.Caps),
 		Token:        resp.Token,
 		RefreshToken: resp.RefreshToken,
 		IsNewUser:    resp.IsNewUser,
@@ -77,11 +68,4 @@ func membershipRoleForTenant(memberships []types.Membership, tenantID uint64) ty
 		}
 	}
 	return ""
-}
-
-func nonNilCaps(caps []string) []string {
-	if caps == nil {
-		return []string{}
-	}
-	return caps
 }

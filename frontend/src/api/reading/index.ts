@@ -248,11 +248,11 @@ export function addReadingDocuments(id: string, documentIds: string[]) {
 }
 
 export function getReadingConfig() {
-  return get<{ data: { reading_model_id: string } }>('/api/v1/tenants/kv/reading-config')
+  return get<{ data: { reading_model_id: string } }>('/api/v1/settings/kv/reading-config')
 }
 
 export function updateReadingConfig(readingModelId: string) {
-  return put<{ data: { reading_model_id: string } }>('/api/v1/tenants/kv/reading-config', {
+  return put<{ data: { reading_model_id: string } }>('/api/v1/settings/kv/reading-config', {
     reading_model_id: readingModelId,
   })
 }

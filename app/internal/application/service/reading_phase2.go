@@ -152,9 +152,6 @@ func (s *readingRunService) ResolveContradiction(
 	// The structured state changed after a possible report edit; a stale draft
 	// must not silently override the new decision in Markdown export.
 	_, _ = s.repo.DeleteReportDraft(ctx, run.TenantID, run.UserID, run.ID, -1)
-	s.logAudit(ctx, caller, types.AuditActionReadingFeedbackReceived, run.ID, map[string]any{
-		"contradiction_id": target.ID, "choice": choice, "promoted": len(updated),
-	})
 	return s.Get(ctx, run.ID)
 }
 

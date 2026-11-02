@@ -9,18 +9,13 @@ import (
 	"gaze/internal/types/interfaces"
 )
 
-// Service reads accept exact upstream grants. Otherwise cross-tenant reads
-// require a user and organization permission resolved for the original caller.
-func kbReadPermissions(ctx context.Context, shares access.KBShareLookup) *access.KBPermissions {
-	if types.CallerFromContext(ctx).UserID == "" {
-		shares = nil
-	}
-	return access.NewKBPermissions(ctx, shares)
+func kbReadPermissions(ctx context.Context) *access.KBPermissions {
+	return access.NewKBPermissions(ctx)
 }
 
-func resolveKBReadTenant(ctx context.Context, kb *types.KnowledgeBase, shares access.KBShareLookup) (uint64, error) {
+func resolveKBReadTenant(ctx context.Context, kb *types.KnowledgeBase) (uint64, error) {
 	if kb != nil {
-		allowed, err := kbReadPermissions(ctx, shares).Check(kb.ID, kb.TenantID, types.OrgRoleViewer)
+		allowed, err := kbReadPermissions(ctx).Check(kb.ID, kb.TenantID)
 		if err == nil && allowed {
 			return kb.TenantID, nil
 		}

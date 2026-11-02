@@ -68,7 +68,6 @@ type knowledgeService struct {
 	taskInspector   interfaces.TaskInspector
 	graphEngine     interfaces.RetrieveGraphRepository
 	redisClient     *redis.Client
-	kbShareService  interfaces.KBShareService
 	imageResolver   *docparser.ImageResolver
 	taskPendingRepo interfaces.TaskPendingOpsRepository
 
@@ -83,7 +82,6 @@ type knowledgeService struct {
 	// handled because the public surface is the SpanTracker interface,
 	// which has a no-op fallback. See knowledge_span_tracker.go.
 	spanTracker SpanTracker
-	audit       interfaces.AuditLogService
 	ragEngine   engine.RAGEngine
 	engineSync  *EngineSyncService
 	docVersions interfaces.DocumentVersionService
@@ -118,13 +116,11 @@ func NewKnowledgeService(
 	retrieveEngine interfaces.RetrieveEngineRegistry,
 	ownership retriever.TenantStoreOwnership,
 	redisClient *redis.Client,
-	kbShareService interfaces.KBShareService,
 	imageResolver *docparser.ImageResolver,
 	gazeRepo interfaces.GazePageRepository,
 	gazeService interfaces.GazePageService,
 	taskPendingRepo interfaces.TaskPendingOpsRepository,
 	spanTracker SpanTracker,
-	audit interfaces.AuditLogService,
 	ragEngine engine.RAGEngine,
 	engineSync *EngineSyncService,
 	docVersions interfaces.DocumentVersionService,
@@ -151,13 +147,11 @@ func NewKnowledgeService(
 		retrieveEngine:  retrieveEngine,
 		ownership:       ownership,
 		redisClient:     redisClient,
-		kbShareService:  kbShareService,
 		imageResolver:   imageResolver,
 		gazeRepo:        gazeRepo,
 		gazeService:     gazeService,
 		taskPendingRepo: taskPendingRepo,
 		spanTracker:     spanTracker,
-		audit:           audit,
 		ragEngine:       ragEngine,
 		engineSync:      engineSync,
 		docVersions:     docVersions,
@@ -869,7 +863,7 @@ func (s *knowledgeService) GetKnowledgeBatchWithSharedAccess(ctx context.Context
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	permissions := kbReadPermissions(ctx, s.kbShareService)
+	permissions := kbReadPermissions(ctx)
 	rows, err := s.repo.GetKnowledgeBatch(ctx, tenantID, ids)
 	if err != nil {
 		return nil, err
@@ -880,7 +874,7 @@ func (s *knowledgeService) GetKnowledgeBatchWithSharedAccess(ctx context.Context
 		if k == nil || foundSet[k.ID] {
 			return
 		}
-		allowed, err := permissions.Check(k.KnowledgeBaseID, k.TenantID, types.OrgRoleViewer)
+		allowed, err := permissions.Check(k.KnowledgeBaseID, k.TenantID)
 		if err == nil && allowed {
 			ownList = append(ownList, k)
 			foundSet[k.ID] = true
@@ -1132,26 +1126,6 @@ func (s *knowledgeService) SearchKnowledge(ctx context.Context, keyword string, 
 		for _, kb := range ownKBs {
 			if kb != nil && kb.Type == types.KnowledgeBaseTypeDocument {
 				scopes = append(scopes, types.KnowledgeSearchScope{TenantID: tenantID, KBID: kb.ID})
-			}
-		}
-	}
-
-	// Shared knowledge bases (document type only). Plan 3 of #1303 keys
-	// the share lookup on (tenantID, callerTenantRole); userID is no
-	// longer load-bearing for org-share access.
-	if s.kbShareService != nil {
-		if caller.UserID != "" {
-			callerTenantRole := caller.Role
-			sharedList, err := s.kbShareService.ListSharedKnowledgeBases(ctx, tenantID, callerTenantRole)
-			if err == nil {
-				for _, info := range sharedList {
-					if info != nil && info.KnowledgeBase != nil && info.KnowledgeBase.Type == types.KnowledgeBaseTypeDocument {
-						scopes = append(scopes, types.KnowledgeSearchScope{
-							TenantID: info.SourceTenantID,
-							KBID:     info.KnowledgeBase.ID,
-						})
-					}
-				}
 			}
 		}
 	}

@@ -88,8 +88,6 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    // app/contracts/capabilities.json is imported directly so the capability
-    // contract stays single-source; the workspace root contains app/contracts.
     fs: {
       allow: [searchForWorkspaceRoot(process.cwd()), resolve(__dirname, '..')],
     },

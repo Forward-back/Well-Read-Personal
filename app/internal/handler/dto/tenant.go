@@ -43,7 +43,7 @@ func NewTenantResponseWithRole(tenant *types.Tenant, role types.TenantRole) *Ten
 	if tenant == nil {
 		return nil
 	}
-	includeSecrets := role.HasPermission(types.TenantRoleAdmin)
+	includeSecrets := role.IsValid()
 	resp := &TenantResponse{
 		ID:                tenant.ID,
 		Name:              tenant.Name,
@@ -79,13 +79,12 @@ func NewTenantResponses(ctx context.Context, tenants []*types.Tenant) []*TenantR
 	return out
 }
 
-// NewTenantResponsesCrossTenant redacts every tenant as Viewer regardless of
-// the caller's active-tenant role. Used by cross-tenant list/search endpoints
-// where the caller's home-tenant role must not unlock other tenants' secrets.
+// NewTenantResponsesCrossTenant returns the owner view for every tenant. The
+// personal edition has a single tenant, so this helper simply forwards.
 func NewTenantResponsesCrossTenant(tenants []*types.Tenant) []*TenantResponse {
 	out := make([]*TenantResponse, 0, len(tenants))
 	for _, t := range tenants {
-		out = append(out, NewTenantResponseWithRole(t, types.TenantRoleViewer))
+		out = append(out, NewTenantResponseWithRole(t, types.TenantRoleOwner))
 	}
 	return out
 }

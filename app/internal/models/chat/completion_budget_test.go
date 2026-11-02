@@ -18,7 +18,6 @@ func TestChatOptionsCompletionBudget(t *testing.T) {
 	assert.Equal(t, 256, (&ChatOptions{MaxTokens: 128, MaxCompletionTokens: 256}).CompletionBudget())
 }
 
-
 func TestBuildChatCompletionRequest_OneWireTokenField(t *testing.T) {
 	messages := []Message{{Role: "user", Content: "hello"}}
 

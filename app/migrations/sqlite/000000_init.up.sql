@@ -1,3 +1,8 @@
+-- WellRead Personal baseline schema (SQLite).
+-- Squashed from the enterprise-era versioned migration chain.
+-- Fresh databases only: apply once, then never edit this file in place.
+
+-- ---- source: 000000_init.up.sql ----
 -- SQLite schema for Gaze Lite (consolidated from all Postgres migrations)
 
 CREATE TABLE IF NOT EXISTS tenants (
@@ -338,61 +343,6 @@ CREATE INDEX IF NOT EXISTS idx_auth_tokens_token ON auth_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_auth_tokens_token_type ON auth_tokens(token_type);
 CREATE INDEX IF NOT EXISTS idx_auth_tokens_expires_at ON auth_tokens(expires_at);
 
--- tenant_members carries the per-(user, tenant) TenantRole used by the
--- tenant-level RBAC introduced in #1303. SQLite does not support partial
--- indexes the same way Postgres does, so we use a plain unique index on
--- (user_id, tenant_id) — soft-deleted rows are filtered by the GORM scope.
-CREATE TABLE IF NOT EXISTS tenant_members (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id VARCHAR(36) NOT NULL,
-    tenant_id INTEGER NOT NULL,
-    role VARCHAR(20) NOT NULL DEFAULT 'contributor',
-    status VARCHAR(20) NOT NULL DEFAULT 'active',
-    invited_by VARCHAR(36),
-    joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted_at DATETIME
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_tenant_members_user_tenant_unique
-    ON tenant_members(user_id, tenant_id);
-CREATE INDEX IF NOT EXISTS idx_tenant_members_tenant_role
-    ON tenant_members(tenant_id, role);
-CREATE INDEX IF NOT EXISTS idx_tenant_members_user
-    ON tenant_members(user_id);
-
--- audit_logs is the generic per-tenant durability for RBAC events
--- (and future KB / agent / datasource events). Sqlite mirror of the
--- 000044_audit_log migration; same column shape with INTEGER for the
--- BIGSERIAL id and TEXT in place of JSONB for details.
-CREATE TABLE IF NOT EXISTS audit_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id INTEGER NOT NULL,
-    actor_user_id VARCHAR(36) NOT NULL DEFAULT '',
-    actor_role VARCHAR(32) NOT NULL DEFAULT '',
-    action VARCHAR(64) NOT NULL,
-    target_type VARCHAR(32) NOT NULL DEFAULT '',
-    target_id VARCHAR(64) NOT NULL DEFAULT '',
-    target_user_id VARCHAR(36) NOT NULL DEFAULT '',
-    request_path VARCHAR(512) NOT NULL DEFAULT '',
-    request_method VARCHAR(16) NOT NULL DEFAULT '',
-    outcome VARCHAR(16) NOT NULL DEFAULT 'success',
-    details TEXT NOT NULL DEFAULT '{}',
-    scope_type VARCHAR(32) NOT NULL DEFAULT '',
-    scope_id VARCHAR(64) NOT NULL DEFAULT '',
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_id_desc
-    ON audit_logs(tenant_id, id DESC);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_actor
-    ON audit_logs(actor_user_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_action
-    ON audit_logs(tenant_id, action);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at
-    ON audit_logs(created_at);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_scope_desc
-    ON audit_logs(tenant_id, scope_type, scope_id, id DESC);
-
 -- user_kb_pins — sqlite mirror of migration 000050. Per-(user, tenant)
 -- pinned knowledge bases; replaces the tenant-wide knowledge_bases.is_pinned
 -- column for ordering purposes. The legacy column on knowledge_bases is
@@ -407,31 +357,6 @@ CREATE TABLE IF NOT EXISTS user_kb_pins (
 );
 CREATE INDEX IF NOT EXISTS idx_user_kb_pins_user_tenant_pinned_at
     ON user_kb_pins(tenant_id, user_id, pinned_at DESC);
-
--- tenant_invitations — sqlite mirror of migration 000048. SQLite supports
--- partial unique indexes too, so the same "one pending per (tenant,
--- invitee)" guard can be applied verbatim.
-CREATE TABLE IF NOT EXISTS tenant_invitations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id INTEGER NOT NULL,
-    invitee_user_id VARCHAR(36) NOT NULL,
-    invited_by VARCHAR(36),
-    role VARCHAR(20) NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending',
-    message VARCHAR(500),
-    expires_at DATETIME NOT NULL,
-    responded_at DATETIME,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted_at DATETIME
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_tenant_invitations_unique_pending
-    ON tenant_invitations(tenant_id, invitee_user_id)
-    WHERE status = 'pending' AND deleted_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_tenant_invitations_tenant
-    ON tenant_invitations(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_tenant_invitations_invitee
-    ON tenant_invitations(invitee_user_id);
 
 CREATE TABLE IF NOT EXISTS knowledge_tags (
     id VARCHAR(36) PRIMARY KEY,
@@ -559,115 +484,6 @@ CREATE INDEX IF NOT EXISTS idx_tenant_sandbox_configs_tenant_id ON tenant_sandbo
 CREATE INDEX IF NOT EXISTS idx_tenant_sandbox_configs_deleted_at ON tenant_sandbox_configs(deleted_at);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_sandbox_configs_tenant_name
     ON tenant_sandbox_configs(tenant_id, name) WHERE deleted_at IS NULL;
-
-CREATE TABLE IF NOT EXISTS organizations (
-    id VARCHAR(36) PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    owner_id VARCHAR(36) NOT NULL,
-    -- Plan 3 (#1303): owning tenant pinned at create time; see migration 000046.
-    owner_tenant_id INTEGER NOT NULL DEFAULT 0,
-    invite_code VARCHAR(32),
-    require_approval BOOLEAN DEFAULT 0,
-    invite_code_expires_at DATETIME,
-    invite_code_validity_days SMALLINT NOT NULL DEFAULT 7,
-    avatar VARCHAR(512) DEFAULT '',
-    searchable BOOLEAN NOT NULL DEFAULT 0,
-    member_limit INTEGER NOT NULL DEFAULT 50,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    deleted_at DATETIME
-);
-
-CREATE INDEX IF NOT EXISTS idx_organizations_owner_id ON organizations(owner_id);
-CREATE INDEX IF NOT EXISTS idx_organizations_owner_tenant ON organizations(owner_tenant_id);
-CREATE INDEX IF NOT EXISTS idx_organizations_deleted_at ON organizations(deleted_at);
-
-CREATE TABLE IF NOT EXISTS organization_tenant_members (
-    id VARCHAR(36) PRIMARY KEY,
-    organization_id VARCHAR(36) NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    tenant_id INTEGER NOT NULL,
-    role VARCHAR(32) NOT NULL DEFAULT 'viewer',
-    representative_user_id VARCHAR(36) NOT NULL DEFAULT '',
-    joined_at DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_org_tenant_members_unique ON organization_tenant_members(organization_id, tenant_id);
-CREATE INDEX IF NOT EXISTS idx_org_tenant_members_by_tenant ON organization_tenant_members(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_org_tenant_members_role ON organization_tenant_members(organization_id, role);
-
-CREATE TABLE IF NOT EXISTS kb_shares (
-    id VARCHAR(36) PRIMARY KEY,
-    knowledge_base_id VARCHAR(36) NOT NULL REFERENCES knowledge_bases(id) ON DELETE CASCADE,
-    organization_id VARCHAR(36) NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    shared_by_user_id VARCHAR(36) NOT NULL,
-    source_tenant_id INTEGER NOT NULL,
-    permission VARCHAR(32) NOT NULL DEFAULT 'viewer',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    deleted_at DATETIME
-);
-
-CREATE INDEX IF NOT EXISTS idx_kb_shares_kb_id ON kb_shares(knowledge_base_id);
-CREATE INDEX IF NOT EXISTS idx_kb_shares_org_id ON kb_shares(organization_id);
-CREATE INDEX IF NOT EXISTS idx_kb_shares_source_tenant ON kb_shares(source_tenant_id);
-CREATE INDEX IF NOT EXISTS idx_kb_shares_deleted_at ON kb_shares(deleted_at);
-
-CREATE TABLE IF NOT EXISTS organization_join_requests (
-    id VARCHAR(36) PRIMARY KEY,
-    organization_id VARCHAR(36) NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    user_id VARCHAR(36) NOT NULL,
-    tenant_id INTEGER NOT NULL,
-    status VARCHAR(32) NOT NULL DEFAULT 'pending',
-    requested_role VARCHAR(32) NOT NULL DEFAULT 'viewer',
-    request_type VARCHAR(32) NOT NULL DEFAULT 'join',
-    prev_role VARCHAR(32),
-    message TEXT,
-    reviewed_by VARCHAR(36),
-    reviewed_at DATETIME,
-    review_message TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_org_join_requests_org_id ON organization_join_requests(organization_id);
-CREATE INDEX IF NOT EXISTS idx_org_join_requests_user_id ON organization_join_requests(user_id);
-CREATE INDEX IF NOT EXISTS idx_org_join_requests_status ON organization_join_requests(status);
--- Plan 3 (#1303): at most one pending request per (org, tenant, type).
--- Approved/rejected rows are not constrained so the audit trail stays.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_org_join_requests_pending_per_tenant
-    ON organization_join_requests(organization_id, tenant_id, request_type)
-    WHERE status = 'pending';
-
-CREATE TABLE IF NOT EXISTS agent_shares (
-    id VARCHAR(36) PRIMARY KEY,
-    agent_id VARCHAR(36) NOT NULL,
-    organization_id VARCHAR(36) NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    shared_by_user_id VARCHAR(36) NOT NULL,
-    source_tenant_id INTEGER NOT NULL,
-    permission VARCHAR(32) NOT NULL DEFAULT 'viewer',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    deleted_at DATETIME,
-    FOREIGN KEY (agent_id, source_tenant_id) REFERENCES custom_agents(id, tenant_id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_agent_shares_agent_id ON agent_shares(agent_id);
-CREATE INDEX IF NOT EXISTS idx_agent_shares_org_id ON agent_shares(organization_id);
-CREATE INDEX IF NOT EXISTS idx_agent_shares_source_tenant ON agent_shares(source_tenant_id);
-CREATE INDEX IF NOT EXISTS idx_agent_shares_deleted_at ON agent_shares(deleted_at);
-
-CREATE TABLE IF NOT EXISTS tenant_disabled_shared_agents (
-    tenant_id BIGINT NOT NULL,
-    agent_id VARCHAR(36) NOT NULL,
-    source_tenant_id BIGINT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (tenant_id, agent_id, source_tenant_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_tenant_disabled_shared_agents_tenant_id ON tenant_disabled_shared_agents(tenant_id);
 
 CREATE TABLE IF NOT EXISTS im_channel_sessions (
     id VARCHAR(36) PRIMARY KEY,
@@ -899,20 +715,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_resource_bindings_unique
 CREATE INDEX IF NOT EXISTS idx_resource_bindings_owner
     ON resource_bindings(tenant_id, owner_type, owner_id);
 
-CREATE TABLE IF NOT EXISTS resource_access_grants (
-    id VARCHAR(36) PRIMARY KEY,
-    token_hash VARCHAR(64) NOT NULL UNIQUE,
-    resource_id VARCHAR(36) NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
-    access_scope VARCHAR(16) NOT NULL DEFAULT 'read',
-    expires_at DATETIME NOT NULL,
-    revoked_at DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX IF NOT EXISTS idx_resource_access_grants_resource
-    ON resource_access_grants(resource_id);
-CREATE INDEX IF NOT EXISTS idx_resource_access_grants_expires
-    ON resource_access_grants(expires_at);
-
 CREATE TABLE IF NOT EXISTS tenant_api_keys (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER,
@@ -1104,3 +906,746 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_gaze_page_revisions_page_version
 
 CREATE INDEX IF NOT EXISTS idx_gaze_page_revisions_kb_slug
     ON gaze_page_revisions (knowledge_base_id, slug);
+
+-- ---- source: 000001_remove_gaze_log.up.sql ----
+DROP TABLE IF EXISTS gaze_log_entries;
+
+DELETE FROM gaze_pages WHERE page_type = 'log';
+
+-- ---- source: 000002_knowledge_folder_path.up.sql ----
+-- Folder tree support for knowledge bases (SQLite / lite mode).
+--
+-- Mirrors migrations/versioned/000079_knowledge_folder_path.up.sql.
+ALTER TABLE knowledges ADD COLUMN folder_path VARCHAR(1024) NOT NULL DEFAULT '';
+
+-- Backfill legacy folder uploads, which encoded their relative directory in
+-- file_name. SQLite has no regex, so the directory prefix is isolated with the
+-- rtrim trick: trimming every non-slash character off the right leaves exactly
+-- the prefix up to and including the last '/'.
+UPDATE knowledges
+SET folder_path = substr(
+        rtrim(file_name, replace(file_name, '/', '')),
+        1,
+        length(rtrim(file_name, replace(file_name, '/', ''))) - 1
+    ),
+    file_name = substr(
+        file_name,
+        length(rtrim(file_name, replace(file_name, '/', ''))) + 1
+    )
+WHERE file_name LIKE '%/%';
+
+CREATE INDEX IF NOT EXISTS idx_knowledges_folder_path
+    ON knowledges (tenant_id, knowledge_base_id, folder_path);
+
+-- ---- source: 000003_knowledge_base_auto_tag_config.up.sql ----
+ALTER TABLE knowledge_bases ADD COLUMN auto_tag_config TEXT;
+
+-- ---- source: 000004_memory.up.sql ----
+-- Cross-session long-term memory (Lite). Mirrors migrations/versioned/000084.
+-- Row ids are generated in Go, so there is no server-side default here.
+
+CREATE TABLE IF NOT EXISTS memory_subjects (
+    id VARCHAR(36) PRIMARY KEY,
+    tenant_id INTEGER NOT NULL,
+    subject_id VARCHAR(512) NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT 1,
+    block_text TEXT NOT NULL DEFAULT '',
+    block_updated_at DATETIME,
+    item_count INTEGER NOT NULL DEFAULT 0,
+    last_extracted_at DATETIME,
+    extract_cursor DATETIME,
+    pending_sessions TEXT,
+    extract_scheduled_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_subjects_scope
+    ON memory_subjects (tenant_id, subject_id);
+
+CREATE TABLE IF NOT EXISTS memory_items (
+    id VARCHAR(36) PRIMARY KEY,
+    tenant_id INTEGER NOT NULL,
+    subject_id VARCHAR(512) NOT NULL,
+    kind VARCHAR(32) NOT NULL,
+    content TEXT NOT NULL,
+    topic VARCHAR(255) NOT NULL DEFAULT '',
+    normalized_key VARCHAR(255) NOT NULL DEFAULT '',
+    importance INTEGER NOT NULL DEFAULT 3,
+    origin VARCHAR(16) NOT NULL DEFAULT 'extracted',
+    status VARCHAR(16) NOT NULL DEFAULT 'active',
+    source_session_id VARCHAR(36),
+    source_message_id VARCHAR(36),
+    valid_from DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    invalid_at DATETIME,
+    expires_at DATETIME,
+    superseded_by VARCHAR(36),
+    last_used_at DATETIME,
+    use_count INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_items_scope
+    ON memory_items (tenant_id, subject_id, status);
+CREATE INDEX IF NOT EXISTS idx_memory_items_key
+    ON memory_items (tenant_id, subject_id, normalized_key);
+
+CREATE TABLE IF NOT EXISTS memory_tombstones (
+    id VARCHAR(36) PRIMARY KEY,
+    tenant_id INTEGER NOT NULL,
+    subject_id VARCHAR(512) NOT NULL,
+    topic VARCHAR(255) NOT NULL DEFAULT '',
+    fingerprint VARCHAR(64) NOT NULL,
+    source_message_id VARCHAR(36),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_tombstones_scope
+    ON memory_tombstones (tenant_id, subject_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_tomb_fp
+    ON memory_tombstones (tenant_id, subject_id, fingerprint);
+
+CREATE TABLE IF NOT EXISTS memory_topic_stats (
+    id VARCHAR(36) PRIMARY KEY,
+    tenant_id INTEGER NOT NULL,
+    subject_id VARCHAR(512) NOT NULL,
+    normalized_key VARCHAR(255) NOT NULL,
+    topic VARCHAR(255) NOT NULL DEFAULT '',
+    hits INTEGER NOT NULL DEFAULT 0,
+    last_seen_at DATETIME,
+    promoted_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_topic_scope
+    ON memory_topic_stats (tenant_id, subject_id, normalized_key);
+
+CREATE TABLE IF NOT EXISTS memory_doc_affinity (
+    id VARCHAR(36) PRIMARY KEY,
+    tenant_id INTEGER NOT NULL,
+    subject_id VARCHAR(512) NOT NULL,
+    knowledge_id VARCHAR(36) NOT NULL,
+    knowledge_base_id VARCHAR(36) NOT NULL DEFAULT '',
+    title VARCHAR(512) NOT NULL DEFAULT '',
+    hits INTEGER NOT NULL DEFAULT 0,
+    last_used_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_affinity_scope
+    ON memory_doc_affinity (tenant_id, subject_id, knowledge_id);
+
+ALTER TABLE tenants ADD COLUMN memory_config TEXT;
+ALTER TABLE messages ADD COLUMN used_memories TEXT;
+
+ALTER TABLE memory_subjects ADD COLUMN consolidated_at DATETIME;
+ALTER TABLE memory_subjects ADD COLUMN forced_consolidated_at DATETIME;
+
+ALTER TABLE memory_topic_stats ADD COLUMN aliases TEXT NOT NULL DEFAULT '[]';
+
+CREATE TABLE IF NOT EXISTS memory_item_embeddings (
+    item_id VARCHAR(36) PRIMARY KEY,
+    tenant_id INTEGER NOT NULL,
+    subject_id VARCHAR(512) NOT NULL,
+    model_id VARCHAR(64) NOT NULL DEFAULT '',
+    dims INTEGER NOT NULL DEFAULT 0,
+    vector BLOB,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_mem_emb_scope
+    ON memory_item_embeddings (tenant_id, subject_id);
+
+-- ---- source: 000005_messages_attachments.up.sql ----
+-- Mirrors versioned migration 000034_add_attachments.
+
+ALTER TABLE messages ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]';
+
+-- ---- source: 000006_task_queue_and_dead_letters.up.sql ----
+-- Mirrors versioned migration 000041_task_queue_and_gaze_indexes:
+-- durable pending-op queue and dead-letter archive for SQLite.
+
+CREATE TABLE IF NOT EXISTS task_pending_ops (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id   INTEGER NOT NULL,
+    task_type   VARCHAR(64) NOT NULL,
+    scope       VARCHAR(32) NOT NULL,
+    scope_id    VARCHAR(64) NOT NULL,
+    op          VARCHAR(32) NOT NULL,
+    dedup_key   VARCHAR(128) NOT NULL DEFAULT '',
+    payload     TEXT NOT NULL DEFAULT '{}',
+    fail_count  INTEGER NOT NULL DEFAULT 0,
+    enqueued_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    claimed_at  DATETIME
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_pending_ops_scope
+    ON task_pending_ops (task_type, scope, scope_id, id);
+
+CREATE INDEX IF NOT EXISTS idx_task_pending_ops_tenant
+    ON task_pending_ops (tenant_id);
+
+CREATE TABLE IF NOT EXISTS task_dead_letters (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id   INTEGER NOT NULL,
+    task_type   VARCHAR(64) NOT NULL,
+    scope       VARCHAR(32) NOT NULL,
+    scope_id    VARCHAR(64) NOT NULL,
+    related_id  VARCHAR(64) NOT NULL DEFAULT '',
+    payload     TEXT NOT NULL,
+    last_error  TEXT NOT NULL DEFAULT '',
+    fail_count  INTEGER NOT NULL,
+    failed_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_dead_letters_scope
+    ON task_dead_letters (scope, scope_id, failed_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_task_dead_letters_tenant
+    ON task_dead_letters (tenant_id, failed_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_task_dead_letters_task_type
+    ON task_dead_letters (task_type, failed_at DESC);
+
+-- ---- source: 000007_system_admin_and_settings.up.sql ----
+-- Mirrors versioned migration 000053_system_admin_and_settings:
+-- users.is_system_admin + system_settings table.
+
+ALTER TABLE users ADD COLUMN is_system_admin BOOLEAN NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_users_is_system_admin ON users (is_system_admin);
+
+CREATE TABLE IF NOT EXISTS system_settings (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    key              VARCHAR(128) NOT NULL UNIQUE,
+    value            TEXT NOT NULL,
+    value_type       VARCHAR(16)  NOT NULL,
+    category         VARCHAR(32)  NOT NULL,
+    description      TEXT NOT NULL DEFAULT '',
+    is_secret        BOOLEAN NOT NULL DEFAULT 0,
+    requires_restart BOOLEAN NOT NULL DEFAULT 0,
+    last_modified_by VARCHAR(36) NOT NULL DEFAULT '',
+    created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_system_settings_category
+    ON system_settings (category);
+
+-- ---- source: 000008_processing_spans_and_pending_subtasks.up.sql ----
+-- Mirrors versioned migrations:
+--   000055_knowledge_processing_spans   knowledge_processing_spans table
+--   000056_knowledge_pending_subtasks   knowledges.pending_subtasks_count
+--   000066_expand_knowledge_span_name   name VARCHAR(255)
+
+CREATE TABLE IF NOT EXISTS knowledge_processing_spans (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    knowledge_id    VARCHAR(64) NOT NULL,
+    attempt         INTEGER NOT NULL DEFAULT 1,
+    span_id         VARCHAR(64) NOT NULL,
+    parent_span_id  VARCHAR(64),
+    name            VARCHAR(255) NOT NULL,
+    kind            VARCHAR(16) NOT NULL,
+    status          VARCHAR(16) NOT NULL,
+    input           TEXT,
+    output          TEXT,
+    metadata        TEXT,
+    error_code      VARCHAR(64),
+    error_message   TEXT,
+    error_detail    TEXT,
+    started_at      DATETIME,
+    finished_at     DATETIME,
+    duration_ms     INTEGER,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_kpspan_attempt_span UNIQUE (knowledge_id, attempt, span_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_kpspan_knowledge_attempt
+    ON knowledge_processing_spans (knowledge_id, attempt);
+
+CREATE INDEX IF NOT EXISTS idx_kpspan_status_started
+    ON knowledge_processing_spans (status, started_at);
+
+CREATE INDEX IF NOT EXISTS idx_kpspan_parent
+    ON knowledge_processing_spans (parent_span_id)
+    WHERE parent_span_id IS NOT NULL;
+
+ALTER TABLE knowledges ADD COLUMN pending_subtasks_count INTEGER NOT NULL DEFAULT 0;
+
+-- ---- source: 000009_embed_channel_memory_flag.up.sql ----
+-- Mirrors versioned migration 000060_embed_channels: embed_channels.allow_memory.
+
+ALTER TABLE embed_channels ADD COLUMN allow_memory BOOLEAN NOT NULL DEFAULT 0;
+
+-- ---- source: 000010_knowledge_multi_tags.up.sql ----
+-- Mirrors versioned migration 000063_knowledge_multi_tags:
+-- many-to-many join table between knowledges and knowledge_tags.
+
+CREATE TABLE IF NOT EXISTS knowledge_tag_relations (
+    knowledge_id VARCHAR(36) NOT NULL,
+    tag_id       VARCHAR(36) NOT NULL,
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (knowledge_id, tag_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ktr_knowledge
+    ON knowledge_tag_relations (knowledge_id);
+
+CREATE INDEX IF NOT EXISTS idx_ktr_tag
+    ON knowledge_tag_relations (tag_id);
+
+-- Migrate existing single-tag data into the join table.
+INSERT INTO knowledge_tag_relations (knowledge_id, tag_id, created_at)
+SELECT id, tag_id, updated_at
+FROM knowledges
+WHERE tag_id IS NOT NULL AND tag_id != ''
+  AND deleted_at IS NULL;
+
+DROP INDEX IF EXISTS idx_knowledges_tag;
+ALTER TABLE knowledges DROP COLUMN tag_id;
+
+-- ---- source: 000011_principal_model.up.sql ----
+-- Mirrors versioned migration 000064_principal_model:
+-- principal identity for MCP OAuth tokens and tenant API config.
+
+ALTER TABLE tenants ADD COLUMN api_principal_config TEXT;
+
+ALTER TABLE mcp_oauth_tokens ADD COLUMN principal_type VARCHAR(32);
+ALTER TABLE mcp_oauth_tokens ADD COLUMN principal_id VARCHAR(512);
+
+UPDATE mcp_oauth_tokens
+SET principal_type = 'web_user',
+    principal_id = user_id
+WHERE (principal_type IS NULL OR principal_type = '')
+  AND user_id IS NOT NULL
+  AND user_id <> '';
+
+DROP INDEX IF EXISTS idx_mcp_oauth_tokens_tenant_user_svc;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mcp_oauth_tokens_tenant_principal_svc
+    ON mcp_oauth_tokens(tenant_id, principal_type, principal_id, service_id);
+
+CREATE INDEX IF NOT EXISTS idx_mcp_oauth_tokens_principal
+    ON mcp_oauth_tokens(principal_type, principal_id);
+
+-- ---- source: 000012_message_usage.up.sql ----
+-- Mirrors versioned migration 000085_message_usage:
+-- per-turn LLM token usage persisted with the assistant message.
+
+ALTER TABLE messages ADD COLUMN usage TEXT;
+
+-- ---- source: 000013_mcp_tool_enabled.up.sql ----
+-- Per-tool MCP enable/disable policy. Missing rows are treated as enabled.
+ALTER TABLE mcp_tool_approvals ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1;
+
+-- ---- source: 000014_embeddings_bytea.up.sql ----
+-- Migration: lite_embeddings BYTEA column (native vector store retirement, §2.15)
+-- SQLite Lite stores vectors as float32 little-endian bytes in the embedding BLOB.
+-- The table is also auto-migrated by the runtime retriever; create it if this
+-- migration runs against a fresh database before that runtime path exists.
+CREATE TABLE IF NOT EXISTS lite_embeddings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at DATETIME,
+    updated_at DATETIME,
+    source_id TEXT NOT NULL,
+    source_type INTEGER NOT NULL,
+    chunk_id TEXT,
+    knowledge_id TEXT,
+    knowledge_base_id TEXT,
+    tag_id TEXT,
+    content TEXT NOT NULL,
+    dimension INTEGER NOT NULL,
+    embedding BLOB,
+    is_enabled BOOLEAN DEFAULT TRUE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sqlite_emb_source
+    ON lite_embeddings (source_id, source_type);
+CREATE INDEX IF NOT EXISTS idx_lite_embeddings_chunk_id ON lite_embeddings (chunk_id);
+CREATE INDEX IF NOT EXISTS idx_lite_embeddings_knowledge_id ON lite_embeddings (knowledge_id);
+CREATE INDEX IF NOT EXISTS idx_lite_embeddings_knowledge_base_id ON lite_embeddings (knowledge_base_id);
+CREATE INDEX IF NOT EXISTS idx_lite_embeddings_tag_id ON lite_embeddings (tag_id);
+CREATE INDEX IF NOT EXISTS idx_lite_embeddings_is_enabled ON lite_embeddings (is_enabled);
+
+-- ---- source: 000015_message_query_rewritten.up.sql ----
+-- Migration: user 消息记录指代消解后的实际检索 query（需求五）
+ALTER TABLE messages ADD COLUMN query_rewritten TEXT NOT NULL DEFAULT '';
+
+-- ---- source: 000016_message_query_rewrite_meta.up.sql ----
+-- Migration: user 消息记录指代消解的展开信息（需求五 UI 返工）
+ALTER TABLE messages ADD COLUMN query_rewrite_meta TEXT;
+
+-- ---- source: 000017_collaboration.up.sql ----
+-- Migration 000017: document uploader and engine sync state (SQLite mirror).
+
+ALTER TABLE knowledges ADD COLUMN created_by VARCHAR(36);
+ALTER TABLE knowledges ADD COLUMN engine_sync_status VARCHAR(20) NOT NULL DEFAULT 'synced';
+ALTER TABLE knowledges ADD COLUMN engine_sync_requested_at DATETIME;
+ALTER TABLE knowledges ADD COLUMN engine_sync_completed_at DATETIME;
+ALTER TABLE knowledges ADD COLUMN engine_sync_error TEXT NOT NULL DEFAULT '';
+
+UPDATE knowledges
+SET created_by = (
+    SELECT kb.creator_id FROM knowledge_bases kb
+    WHERE kb.id = knowledges.knowledge_base_id
+)
+WHERE created_by IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_knowledges_created_by ON knowledges(created_by);
+CREATE INDEX IF NOT EXISTS idx_knowledges_engine_sync ON knowledges(tenant_id, knowledge_base_id, engine_sync_status);
+
+ALTER TABLE tenants ADD COLUMN engine_sync_config TEXT;
+
+-- ---- source: 000018_collaboration_v2.up.sql ----
+-- Migration 000018: document versions, chunk snapshots and citation counters.
+
+CREATE TABLE IF NOT EXISTS doc_versions (
+    id TEXT PRIMARY KEY,
+    tenant_id INTEGER NOT NULL,
+    knowledge_base_id TEXT NOT NULL,
+    knowledge_id TEXT NOT NULL,
+    version_seq INTEGER NOT NULL,
+    version_label TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    source_id TEXT NOT NULL DEFAULT '',
+    title TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    chunk_count INTEGER NOT NULL DEFAULT 0,
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_doc_versions_knowledge_seq ON doc_versions(knowledge_id, version_seq);
+CREATE INDEX IF NOT EXISTS idx_doc_versions_kb ON doc_versions(tenant_id, knowledge_base_id, knowledge_id);
+
+CREATE TABLE IF NOT EXISTS doc_version_chunks (
+    id TEXT PRIMARY KEY,
+    tenant_id INTEGER NOT NULL,
+    version_id TEXT NOT NULL,
+    chunk_id TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL DEFAULT 0,
+    content TEXT NOT NULL DEFAULT '',
+    is_enabled INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_doc_version_chunks_version ON doc_version_chunks(version_id, chunk_index);
+CREATE INDEX IF NOT EXISTS idx_doc_version_chunks_chunk ON doc_version_chunks(chunk_id);
+
+CREATE TABLE IF NOT EXISTS chunk_citation_daily (
+    chunk_id TEXT NOT NULL,
+    tenant_id INTEGER NOT NULL,
+    stat_date TEXT NOT NULL,
+    citation_count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (chunk_id, stat_date)
+);
+CREATE INDEX IF NOT EXISTS idx_chunk_citation_daily_tenant ON chunk_citation_daily(tenant_id, stat_date);
+
+-- ---- source: 000021_knowledge_folders.up.sql ----
+-- SQLite mirror of 000109_knowledge_folders.
+
+CREATE TABLE IF NOT EXISTS knowledge_folders (
+    id          TEXT PRIMARY KEY,
+    tenant_id   INTEGER NOT NULL,
+    kb_id       TEXT NOT NULL,
+    parent_id   TEXT NOT NULL DEFAULT '',
+    name        TEXT NOT NULL,
+    path        TEXT NOT NULL DEFAULT '',
+    depth       INTEGER NOT NULL DEFAULT 0,
+    is_root     INTEGER NOT NULL DEFAULT 0,
+    created_by  TEXT NOT NULL DEFAULT '',
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at  DATETIME
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_folders_kb_path
+    ON knowledge_folders (kb_id, path) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_folders_sibling
+    ON knowledge_folders (kb_id, parent_id, name)
+    WHERE deleted_at IS NULL AND is_root = 0;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_folders_root
+    ON knowledge_folders (kb_id) WHERE deleted_at IS NULL AND is_root = 1;
+CREATE INDEX IF NOT EXISTS idx_knowledge_folders_kb
+    ON knowledge_folders (kb_id) WHERE deleted_at IS NULL;
+
+INSERT OR IGNORE INTO knowledge_folders (id, tenant_id, kb_id, parent_id, name, path, depth, is_root, created_by)
+SELECT 'folder-root-' || kb.id, kb.tenant_id, kb.id, '', '', '', 0, 1, kb.creator_id
+FROM knowledge_bases kb
+WHERE kb.deleted_at IS NULL;
+
+-- Materialize every prefix of every existing folder_path.
+WITH RECURSIVE
+paths(tenant_id, kb_id, folder_path) AS (
+    SELECT DISTINCT tenant_id, knowledge_base_id, folder_path
+    FROM knowledges
+    WHERE deleted_at IS NULL AND folder_path <> ''
+),
+prefixes(tenant_id, kb_id, path, prefix, parent_prefix, rest, depth) AS (
+    SELECT tenant_id, kb_id, folder_path, '', '', folder_path, 0
+    FROM paths
+    UNION ALL
+    SELECT
+        tenant_id,
+        kb_id,
+        path,
+        CASE
+            WHEN prefix = '' THEN
+                CASE WHEN instr(rest, '/') > 0 THEN substr(rest, 1, instr(rest, '/') - 1) ELSE rest END
+            ELSE
+                prefix || '/' || CASE WHEN instr(rest, '/') > 0 THEN substr(rest, 1, instr(rest, '/') - 1) ELSE rest END
+        END,
+        prefix,
+        CASE WHEN instr(rest, '/') > 0 THEN substr(rest, instr(rest, '/') + 1) ELSE '' END,
+        depth + 1
+    FROM prefixes
+    WHERE rest <> ''
+)
+INSERT OR IGNORE INTO knowledge_folders (id, tenant_id, kb_id, parent_id, name, path, depth, is_root, created_by)
+SELECT
+    'fd-' || lower(hex(kb_id || ':' || prefix)),
+    tenant_id,
+    kb_id,
+    CASE
+        WHEN parent_prefix = '' THEN 'folder-root-' || kb_id
+        ELSE 'fd-' || lower(hex(kb_id || ':' || parent_prefix))
+    END,
+    CASE
+        WHEN parent_prefix = '' THEN prefix
+        ELSE substr(prefix, length(parent_prefix) + 2)
+    END,
+    prefix,
+    depth,
+    0,
+    ''
+FROM prefixes
+WHERE prefix <> '';
+
+ALTER TABLE knowledges ADD COLUMN folder_id TEXT NOT NULL DEFAULT '';
+
+UPDATE knowledges
+SET folder_id = COALESCE(
+    (
+        SELECT f.id
+        FROM knowledge_folders f
+        WHERE f.kb_id = knowledges.knowledge_base_id
+          AND f.path = knowledges.folder_path
+          AND f.deleted_at IS NULL
+        LIMIT 1
+    ),
+    'folder-root-' || knowledge_base_id
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledges_folder_id
+    ON knowledges (tenant_id, knowledge_base_id, folder_id);
+
+-- ---- source: 000024_retrieval_audit.up.sql ----
+-- SQLite mirror of 000112_retrieval_audit.
+
+CREATE TABLE IF NOT EXISTS retrieval_audit_logs (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id        INTEGER NOT NULL,
+    user_id          TEXT NOT NULL DEFAULT '',
+    principal_kind   TEXT NOT NULL DEFAULT 'member',
+    session_id       TEXT NOT NULL DEFAULT '',
+    query_digest     TEXT NOT NULL DEFAULT '',
+    kb_ids           TEXT NOT NULL DEFAULT '',
+    scope_mode       TEXT NOT NULL DEFAULT '',
+    scope_version    INTEGER NOT NULL DEFAULT 0,
+    scope_doc_count  INTEGER NOT NULL DEFAULT 0,
+    hit_doc_ids      TEXT NOT NULL DEFAULT '',
+    decision         TEXT NOT NULL DEFAULT '',
+    error            TEXT NOT NULL DEFAULT '',
+    created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_retrieval_audit_tenant_time
+    ON retrieval_audit_logs (tenant_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_retrieval_audit_user_time
+    ON retrieval_audit_logs (tenant_id, user_id, created_at);
+
+-- ---- source: 000025_skill_injection.up.sql ----
+-- SQLite mirror of 000113_skill_injection.
+
+CREATE TABLE IF NOT EXISTS tenant_skill_catalog (
+    id            TEXT PRIMARY KEY,
+    tenant_id     INTEGER NOT NULL,
+    name          TEXT NOT NULL,
+    version       TEXT,
+    description   TEXT,
+    instructions  TEXT,
+    bundle_ref    TEXT,
+    bundle_sha256 TEXT,
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at    DATETIME
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_skill_catalog_name
+    ON tenant_skill_catalog (tenant_id, name) WHERE deleted_at IS NULL;
+
+ALTER TABLE tenant_skill_catalog ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE messages ADD COLUMN skill TEXT;
+
+-- ---- source: 000026_reading_runs.up.sql ----
+-- SQLite mirror of 000114_reading_runs.
+
+ALTER TABLE tenants ADD COLUMN reading_model_id TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS reading_runs (
+    id                 TEXT PRIMARY KEY,
+    tenant_id          INTEGER NOT NULL,
+    session_id         TEXT NOT NULL DEFAULT '',
+    user_id            TEXT NOT NULL DEFAULT '',
+    message_id         TEXT NOT NULL DEFAULT '',
+    document_ids       TEXT NOT NULL DEFAULT '[]',
+    skill_id           TEXT NOT NULL DEFAULT '',
+    reading_model_id   TEXT NOT NULL DEFAULT '',
+    status             TEXT NOT NULL DEFAULT 'planning',
+    plan               TEXT NOT NULL DEFAULT '{}',
+    notes              TEXT NOT NULL DEFAULT '{}',
+    final              TEXT NOT NULL DEFAULT '{}',
+    current_section_id TEXT NOT NULL DEFAULT '',
+    step_count         INTEGER NOT NULL DEFAULT 0,
+    token_usage        INTEGER NOT NULL DEFAULT 0,
+    created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_reading_runs_user
+    ON reading_runs (tenant_id, user_id, session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_reading_runs_active
+    ON reading_runs (tenant_id, user_id, session_id, status);
+
+CREATE TABLE IF NOT EXISTS reading_run_steps (
+    id            TEXT PRIMARY KEY,
+    run_id        TEXT NOT NULL,
+    seq           INTEGER NOT NULL,
+    action        TEXT NOT NULL,
+    section_id    TEXT NOT NULL DEFAULT '',
+    question      TEXT NOT NULL DEFAULT '{}',
+    user_feedback TEXT NOT NULL DEFAULT '',
+    notes_patch   TEXT NOT NULL DEFAULT '{}',
+    citations     TEXT NOT NULL DEFAULT '[]',
+    status        TEXT NOT NULL DEFAULT 'done',
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_reading_run_steps_run
+    ON reading_run_steps (run_id, seq);
+
+-- ---- source: 000027_message_reading_run.up.sql ----
+-- SQLite mirror of 000115_message_reading_run.
+
+ALTER TABLE messages ADD COLUMN reading_run_id TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_messages_reading_run
+    ON messages (reading_run_id);
+
+-- ---- source: 000029_retrieval_audit_created_at_index.up.sql ----
+CREATE INDEX IF NOT EXISTS idx_retrieval_audit_created_at
+    ON retrieval_audit_logs (created_at);
+
+-- ---- source: 000032_session_reading_run.up.sql ----
+ALTER TABLE sessions ADD COLUMN reading_run_id VARCHAR(36) NOT NULL DEFAULT '';
+
+-- ---- source: 000033_reading_state_tables.up.sql ----
+-- SQLite mirror of 000121_reading_state_tables.
+
+CREATE TABLE IF NOT EXISTS reading_questions (
+    id                 TEXT PRIMARY KEY,
+    run_id             TEXT NOT NULL,
+    tenant_id          INTEGER NOT NULL,
+    parent_id          TEXT NOT NULL DEFAULT '',
+    section_id         TEXT NOT NULL DEFAULT '',
+    round              INTEGER NOT NULL DEFAULT 0,
+    text               TEXT NOT NULL DEFAULT '',
+    recommended_answer TEXT NOT NULL DEFAULT '',
+    why                TEXT NOT NULL DEFAULT '',
+    search_query       TEXT NOT NULL DEFAULT '',
+    evidence           TEXT NOT NULL DEFAULT '[]',
+    answer             TEXT NOT NULL DEFAULT '',
+    answer_source      TEXT NOT NULL DEFAULT '',
+    status             TEXT NOT NULL DEFAULT 'pending',
+    created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_reading_questions_run
+    ON reading_questions (run_id, round, created_at);
+CREATE INDEX IF NOT EXISTS idx_reading_questions_status
+    ON reading_questions (run_id, status);
+
+CREATE TABLE IF NOT EXISTS reading_conclusions (
+    id          TEXT PRIMARY KEY,
+    run_id      TEXT NOT NULL,
+    tenant_id   INTEGER NOT NULL,
+    section_id  TEXT NOT NULL DEFAULT '',
+    round       INTEGER NOT NULL DEFAULT 0,
+    text        TEXT NOT NULL DEFAULT '',
+    evidence    TEXT NOT NULL DEFAULT '[]',
+    status      TEXT NOT NULL DEFAULT 'candidate',
+    source      TEXT NOT NULL DEFAULT 'model',
+    gates       TEXT NOT NULL DEFAULT '{}',
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_reading_conclusions_run
+    ON reading_conclusions (run_id, status, created_at);
+
+CREATE TABLE IF NOT EXISTS reading_terms (
+    id          TEXT PRIMARY KEY,
+    run_id      TEXT NOT NULL,
+    tenant_id   INTEGER NOT NULL,
+    term        TEXT NOT NULL DEFAULT '',
+    definition  TEXT NOT NULL DEFAULT '',
+    source      TEXT NOT NULL DEFAULT '[]',
+    canonical   INTEGER NOT NULL DEFAULT 0,
+    status      TEXT NOT NULL DEFAULT 'candidate',
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_reading_terms_run
+    ON reading_terms (run_id, created_at);
+
+CREATE TABLE IF NOT EXISTS reading_contradictions (
+    id          TEXT PRIMARY KEY,
+    run_id      TEXT NOT NULL,
+    tenant_id   INTEGER NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    evidence_a  TEXT NOT NULL DEFAULT '[]',
+    evidence_b  TEXT NOT NULL DEFAULT '[]',
+    status      TEXT NOT NULL DEFAULT 'open',
+    resolution  TEXT NOT NULL DEFAULT '',
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_reading_contradictions_run
+    ON reading_contradictions (run_id, status, created_at);
+
+-- ---- source: 000034_reading_report_drafts.up.sql ----
+-- SQLite mirror of 000122_reading_report_drafts.
+
+CREATE TABLE IF NOT EXISTS reading_report_drafts (
+    run_id     TEXT PRIMARY KEY,
+    tenant_id  INTEGER NOT NULL,
+    user_id    TEXT NOT NULL,
+    content_md TEXT NOT NULL DEFAULT '',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_reading_report_drafts_user
+    ON reading_report_drafts (tenant_id, user_id);
+
+-- ---- source: 000035_reading_report_draft_version.up.sql ----
+-- SQLite mirror of 000123_reading_report_draft_version.
+
+ALTER TABLE reading_report_drafts
+    ADD COLUMN version INTEGER NOT NULL DEFAULT 0;
+
+-- ---- source: 000036_reading_question_kind.up.sql ----
+-- SQLite mirror of 000124_reading_question_kind.
+
+ALTER TABLE reading_questions ADD COLUMN kind TEXT NOT NULL DEFAULT '';
+ALTER TABLE reading_questions ADD COLUMN gap_type TEXT NOT NULL DEFAULT '';

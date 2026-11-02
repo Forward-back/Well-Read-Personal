@@ -30,7 +30,7 @@ func (s *sessionService) resolveSkillInjection(
 	if err != nil {
 		return nil, nil, err
 	}
-	if entity == nil || !entity.Enabled || !canViewDepartmentSkill(ctx, entity) {
+	if entity == nil || !entity.Enabled {
 		return nil, nil, fmt.Errorf("selected skill is unavailable")
 	}
 	instructions := strings.TrimSpace(entity.Instructions)
@@ -72,14 +72,6 @@ func (s *sessionService) KnowledgeQAFusion(
 	kbID := ""
 	if len(qaReq.KnowledgeBaseIDs) > 0 {
 		kbID = qaReq.KnowledgeBaseIDs[0]
-	}
-
-	// 密级过滤（§2.14 B）：owner/admin 全量；contributor/viewer 及无角色
-	// 上下文只召回 internal。YLSW 只机械过滤，角色→集合由这里算好传入。
-	allowedSensitivities := []string{"internal"}
-	switch types.CallerFromContext(ctx).Role {
-	case types.TenantRoleCompanyAdmin:
-		allowedSensitivities = nil
 	}
 
 	logger.Infof(ctx, "YLSW fusion QA started, session: %s, kb: %s", sessionID, kbID)
@@ -124,20 +116,13 @@ func (s *sessionService) KnowledgeQAFusion(
 	if len(qaReq.KnowledgeBaseIDs) == 0 {
 		return fmt.Errorf("fusion QA failed: no knowledge base selected")
 	}
-	if s.aclService == nil {
-		return fmt.Errorf("fusion QA failed: acl service is not configured")
-	}
-	aclScope, err := s.aclService.RetrievalScope(ctx, qaReq.KnowledgeBaseIDs)
-	if err != nil {
-		return fmt.Errorf("fusion QA failed: build acl scope: %w", err)
-	}
 	skillInjection, skillMeta, err := s.resolveSkillInjection(ctx, qaReq.Session.TenantID, qaReq.SkillID)
 	if err != nil {
 		return fmt.Errorf("fusion QA failed: resolve skill: %w", err)
 	}
 
 	answer, refs, err := s.ragEngine.StreamChat(ctx, question, qaReq.KnowledgeBaseIDs,
-		aclScope, skillInjection, allowedSensitivities, func(delta string) {
+		types.TenantWideScope(), skillInjection, func(delta string) {
 			emit(event.EventAgentFinalAnswer, answerID, event.AgentFinalAnswerData{
 				Content: delta,
 				Done:    false,

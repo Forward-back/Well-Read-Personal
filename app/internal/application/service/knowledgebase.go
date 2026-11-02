@@ -34,8 +34,6 @@ type knowledgeBaseService struct {
 	repo            interfaces.KnowledgeBaseRepository
 	kgRepo          interfaces.KnowledgeRepository
 	chunkRepo       interfaces.ChunkRepository
-	shareRepo       interfaces.KBShareRepository
-	kbShareService  interfaces.KBShareService
 	modelService    interfaces.ModelService
 	retrieveEngine  interfaces.RetrieveEngineRegistry
 	ownership       retriever.TenantStoreOwnership
@@ -49,17 +47,13 @@ type knowledgeBaseService struct {
 	dsRepo          interfaces.DataSourceRepository
 	syncLogRepo     interfaces.SyncLogRepository
 	dsScheduler     *datasource.Scheduler
-	audit           interfaces.AuditLogService
 	resourceCatalog interfaces.ResourceCatalog
-	deptRepo        interfaces.DepartmentRepository
 }
 
 // NewKnowledgeBaseService creates a new knowledge base service
 func NewKnowledgeBaseService(repo interfaces.KnowledgeBaseRepository,
 	kgRepo interfaces.KnowledgeRepository,
 	chunkRepo interfaces.ChunkRepository,
-	shareRepo interfaces.KBShareRepository,
-	kbShareService interfaces.KBShareService,
 	modelService interfaces.ModelService,
 	retrieveEngine interfaces.RetrieveEngineRegistry,
 	ownership retriever.TenantStoreOwnership,
@@ -73,16 +67,12 @@ func NewKnowledgeBaseService(repo interfaces.KnowledgeBaseRepository,
 	dsRepo interfaces.DataSourceRepository,
 	syncLogRepo interfaces.SyncLogRepository,
 	dsScheduler *datasource.Scheduler,
-	audit interfaces.AuditLogService,
 	resourceCatalog interfaces.ResourceCatalog,
-	deptRepo interfaces.DepartmentRepository,
 ) interfaces.KnowledgeBaseService {
 	return &knowledgeBaseService{
 		repo:            repo,
 		kgRepo:          kgRepo,
 		chunkRepo:       chunkRepo,
-		shareRepo:       shareRepo,
-		kbShareService:  kbShareService,
 		modelService:    modelService,
 		retrieveEngine:  retrieveEngine,
 		ownership:       ownership,
@@ -96,9 +86,7 @@ func NewKnowledgeBaseService(repo interfaces.KnowledgeBaseRepository,
 		dsRepo:          dsRepo,
 		syncLogRepo:     syncLogRepo,
 		dsScheduler:     dsScheduler,
-		audit:           audit,
 		resourceCatalog: resourceCatalog,
-		deptRepo:        deptRepo,
 	}
 }
 
@@ -128,17 +116,7 @@ func (s *knowledgeBaseService) CreateKnowledgeBase(ctx context.Context,
 	kb.CreatedAt = time.Now()
 	kb.TenantID = types.MustTenantIDFromContext(ctx)
 	kb.UpdatedAt = time.Now()
-	if err := s.assignCreateDepartment(ctx, kb); err != nil {
-		return nil, err
-	}
-	// Record the creator so RBAC's RequireOwnershipOrRole can let
-	// Contributors edit their own KBs without granting them tenant-wide
-	// edit rights. The X-API-Key auth path attaches a synthetic
-	// `system-<tenantID>` user; we deliberately skip those so the KB
-	// stays tenant-owned (CreatorID == ""), which matches the original
-	// API-key semantics (any human Admin can manage it) and prevents a
-	// later "list KBs by creator" feature from surfacing rows nobody can
-	// re-attribute.
+	// Record the creator so later listing can attribute KBs.
 	if uid, ok := types.UserIDFromContext(ctx); ok && !types.IsSyntheticUserID(uid) {
 		kb.CreatorID = uid
 	}
@@ -173,96 +151,8 @@ func (s *knowledgeBaseService) CreateKnowledgeBase(ctx context.Context,
 		})
 		return nil, err
 	}
-	if err := s.repo.AddKBDepartmentShare(ctx, kb.TenantID, kb.ID, kb.DepartmentID, kb.CreatorID); err != nil {
-		logger.Warnf(ctx, "failed to materialize owning department share for kb=%s dept=%s: %v", kb.ID, kb.DepartmentID, err)
-	}
-	recordKBActivity(ctx, s.audit, kb.TenantID, kb.ID, types.AuditActionKBCreated,
-		"knowledge_base", kb.ID, types.AuditOutcomeSuccess, map[string]any{
-			"name": kb.Name, "type": kb.Type,
-		})
-
 	logger.Infof(ctx, "Knowledge base created successfully, ID: %s, name: %s", kb.ID, kb.Name)
 	return kb, nil
-}
-
-func (s *knowledgeBaseService) assignCreateDepartment(ctx context.Context, kb *types.KnowledgeBase) error {
-	caller := types.CallerFromContext(ctx)
-	_, apiKey := types.TenantAPIKeyScopeFromContext(ctx)
-
-	// Human callers need a business role. Company administrators without a
-	// department role are platform-only and must not create KBs.
-	if !apiKey && caller.UserID != "" {
-		if caller.DepartmentRole != types.DepartmentRoleManager &&
-			caller.DepartmentRole != types.DepartmentRoleKnowledgeAdmin {
-			return apperrors.NewForbiddenError("creating a knowledge base requires department manager or knowledge admin")
-		}
-		requested := strings.TrimSpace(kb.DepartmentID)
-		if requested != "" && requested != caller.DepartmentID {
-			return apperrors.NewForbiddenError("a knowledge base must belong to the creator's department")
-		}
-		kb.DepartmentID = caller.DepartmentID
-	}
-	if strings.TrimSpace(kb.DepartmentID) == "" {
-		kb.DepartmentID = caller.DepartmentID
-	}
-	if strings.TrimSpace(kb.DepartmentID) == "" && s.deptRepo != nil {
-		dept, err := s.deptRepo.EnsureDefault(ctx, kb.TenantID)
-		if err != nil {
-			return err
-		}
-		kb.DepartmentID = dept.ID
-	}
-	if strings.TrimSpace(kb.DepartmentID) == "" {
-		return apperrors.NewBadRequestError("department is required")
-	}
-	if s.deptRepo != nil {
-		dept, err := s.deptRepo.Get(ctx, kb.TenantID, kb.DepartmentID)
-		if err != nil {
-			return err
-		}
-		if dept == nil {
-			return apperrors.NewBadRequestError("department does not belong to this company")
-		}
-	}
-	return nil
-}
-
-func (s *knowledgeBaseService) assignCloneDepartment(
-	ctx context.Context,
-	target, source *types.KnowledgeBase,
-) error {
-	caller := types.CallerFromContext(ctx)
-	// A human with a business role clones into their own department.
-	if caller.UserID != "" && !types.IsSyntheticUserID(caller.UserID) &&
-		caller.DepartmentRole.IsValid() && caller.DepartmentID != "" {
-		target.DepartmentID = caller.DepartmentID
-	}
-	// Tasks and API-key machine principals inherit the source department.
-	if strings.TrimSpace(target.DepartmentID) == "" && source != nil {
-		target.DepartmentID = source.DepartmentID
-	}
-	if strings.TrimSpace(target.DepartmentID) == "" {
-		if s.deptRepo == nil {
-			// Narrow unit tests construct the service without department
-			// storage; production always has deptRepo.
-			return nil
-		}
-		dept, err := s.deptRepo.EnsureDefault(ctx, target.TenantID)
-		if err != nil {
-			return err
-		}
-		target.DepartmentID = dept.ID
-	}
-	if s.deptRepo != nil {
-		dept, err := s.deptRepo.Get(ctx, target.TenantID, target.DepartmentID)
-		if err != nil {
-			return err
-		}
-		if dept == nil {
-			return apperrors.NewBadRequestError("department does not belong to this company")
-		}
-	}
-	return nil
 }
 
 func (s *knowledgeBaseService) applyAndValidateStorageBackend(ctx context.Context, kb *types.KnowledgeBase) error {
@@ -537,106 +427,6 @@ func (s *knowledgeBaseService) ListKnowledgeBasesByTenantID(ctx context.Context,
 	return kbs, nil
 }
 
-// ListKnowledgeBasesByDepartment returns the KBs owned by one department.
-func (s *knowledgeBaseService) ListKnowledgeBasesByDepartment(ctx context.Context, tenantID uint64, departmentID string) ([]*types.KnowledgeBase, error) {
-	kbs, err := s.repo.ListKnowledgeBasesByDepartment(ctx, tenantID, departmentID)
-	if err != nil {
-		return nil, err
-	}
-	for _, kb := range kbs {
-		_ = s.FillKnowledgeBaseCounts(ctx, kb)
-	}
-	return kbs, nil
-}
-
-// ListSharedKnowledgeBasesForDepartment returns KBs shared into a department
-// but owned by another department.
-func (s *knowledgeBaseService) ListSharedKnowledgeBasesForDepartment(ctx context.Context, tenantID uint64, departmentID string) ([]*types.KnowledgeBase, error) {
-	kbs, err := s.repo.ListSharedKnowledgeBasesForDepartment(ctx, tenantID, departmentID)
-	if err != nil {
-		return nil, err
-	}
-	for _, kb := range kbs {
-		_ = s.FillKnowledgeBaseCounts(ctx, kb)
-	}
-	return kbs, nil
-}
-
-// GetKBDepartmentShareIDs returns the materialized department scope.
-func (s *knowledgeBaseService) GetKBDepartmentShareIDs(ctx context.Context, tenantID uint64, kbID string) ([]string, error) {
-	return s.repo.ListKBDepartmentShareIDs(ctx, tenantID, kbID)
-}
-
-// IsKnowledgeBaseSharedToDepartment reports whether a KB is in a
-// department's materialized share scope. Used by the centralized access
-// resolver for same-tenant, cross-department reads.
-func (s *knowledgeBaseService) IsKnowledgeBaseSharedToDepartment(
-	ctx context.Context, tenantID uint64, kbID, departmentID string,
-) (bool, error) {
-	if departmentID == "" {
-		return false, nil
-	}
-	ids, err := s.repo.ListKBDepartmentShareIDs(ctx, tenantID, kbID)
-	if err != nil {
-		return false, err
-	}
-	for _, id := range ids {
-		if id == departmentID {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-// ReplaceKBDepartmentShareScope rewrites the KB's department scope. Only the
-// owning department's manager may do this; the owning department is always
-// re-inserted and cannot be removed.
-func (s *knowledgeBaseService) ReplaceKBDepartmentShareScope(ctx context.Context, tenantID uint64, kbID string, departmentIDs []string) error {
-	kb, err := s.GetKnowledgeBaseByID(ctx, kbID)
-	if err != nil {
-		return err
-	}
-	if kb == nil {
-		return repository.ErrKnowledgeBaseNotFound
-	}
-	caller := types.CallerFromContext(ctx)
-	if caller.DepartmentRole != types.DepartmentRoleManager || caller.DepartmentID != kb.DepartmentID {
-		return apperrors.NewForbiddenError("only the owning department manager can change the share scope")
-	}
-	seen := map[string]struct{}{kb.DepartmentID: {}}
-	ids := make([]string, 0, len(departmentIDs)+1)
-	ids = append(ids, kb.DepartmentID)
-	for _, id := range departmentIDs {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
-		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		if s.deptRepo != nil {
-			dept, err := s.deptRepo.Get(ctx, tenantID, id)
-			if err != nil {
-				return err
-			}
-			if dept == nil {
-				return apperrors.NewBadRequestError("shared department does not belong to this company")
-			}
-		}
-		seen[id] = struct{}{}
-		ids = append(ids, id)
-	}
-	uid, _ := types.UserIDFromContext(ctx)
-	if err := s.repo.ReplaceKBDepartmentShares(ctx, tenantID, kbID, ids, uid); err != nil {
-		return err
-	}
-	recordKBActivity(ctx, s.audit, tenantID, kbID, types.AuditActionKBShareScopeUpdated,
-		"knowledge_base", kbID, types.AuditOutcomeSuccess, map[string]any{
-			"department_ids": ids,
-		})
-	return nil
-}
-
 // FillKnowledgeBaseCounts fills KnowledgeCount, ChunkCount, IsProcessing, ProcessingCount for the given KB using kb.TenantID.
 func (s *knowledgeBaseService) FillKnowledgeBaseCounts(ctx context.Context, kb *types.KnowledgeBase) error {
 	if kb == nil {
@@ -756,95 +546,8 @@ func (s *knowledgeBaseService) UpdateKnowledgeBase(ctx context.Context,
 		})
 		return nil, err
 	}
-	recordKBActivity(ctx, s.audit, kb.TenantID, kb.ID, types.AuditActionKBUpdated,
-		"knowledge_base", kb.ID, types.AuditOutcomeSuccess, map[string]any{
-			"name": kb.Name, "changed_fields": changedFields,
-		})
-
 	logger.Infof(ctx, "Knowledge base updated successfully, ID: %s, name: %s", kb.ID, kb.Name)
 	return kb, nil
-}
-
-// SetKnowledgeBaseVisibility updates the consumer-portal visibility of a KB.
-// The Admin+ role guard lives at the route layer; the update itself is a
-// narrow single-field write so the KB update DTO stays Contributor-safe.
-func (s *knowledgeBaseService) SetKnowledgeBaseVisibility(
-	ctx context.Context, id string, visibility types.KBVisibility,
-) (*types.KnowledgeBase, error) {
-	if id == "" {
-		logger.Error(ctx, "Knowledge base ID is empty")
-		return nil, errors.New("knowledge base ID cannot be empty")
-	}
-	visibility = types.NormalizeKBVisibility(visibility)
-
-	kb, err := s.repo.GetKnowledgeBaseByID(ctx, id)
-	if err != nil {
-		logger.ErrorWithFields(ctx, err, map[string]interface{}{
-			"knowledge_base_id": id,
-		})
-		return nil, err
-	}
-	if kb.Visibility == visibility {
-		return kb, nil
-	}
-	kb.Visibility = visibility
-	kb.UpdatedAt = time.Now()
-	if err := s.repo.UpdateKnowledgeBase(ctx, kb); err != nil {
-		logger.ErrorWithFields(ctx, err, map[string]interface{}{
-			"knowledge_base_id": id,
-		})
-		return nil, err
-	}
-	recordKBActivity(ctx, s.audit, kb.TenantID, kb.ID, types.AuditActionKBUpdated,
-		"knowledge_base", kb.ID, types.AuditOutcomeSuccess, map[string]any{
-			"changed_fields": []string{"visibility"},
-			"visibility":     string(visibility),
-		})
-	logger.Infof(ctx, "Knowledge base visibility updated, ID: %s, visibility: %s", kb.ID, visibility)
-	return kb, nil
-}
-
-// ListPublicKnowledgeBases returns consumer-portal visible KBs (portal home
-// page). The caller is a portal token, not a workspace user — no tenant
-// scoping applies by design.
-func (s *knowledgeBaseService) ListPublicKnowledgeBases(ctx context.Context) ([]*types.KnowledgeBase, error) {
-	kbs, err := s.repo.ListPublicKnowledgeBases(ctx)
-	if err != nil {
-		logger.ErrorWithFields(ctx, err, nil)
-		return nil, err
-	}
-	if len(kbs) == 0 || s.deptRepo == nil {
-		return kbs, nil
-	}
-	// Consumer portal precondition: a public KB must also be shared to every
-	// department. Checking visibility alone would expose a KB whose share
-	// scope was narrowed after the public flag was set.
-	deptCounts := make(map[uint64]int64)
-	out := make([]*types.KnowledgeBase, 0, len(kbs))
-	for _, kb := range kbs {
-		if kb == nil {
-			continue
-		}
-		count, ok := deptCounts[kb.TenantID]
-		if !ok {
-			count, err = s.deptRepo.CountDepartments(ctx, kb.TenantID)
-			if err != nil {
-				return nil, err
-			}
-			deptCounts[kb.TenantID] = count
-		}
-		if count <= 0 {
-			continue
-		}
-		ids, err := s.repo.ListKBDepartmentShareIDs(ctx, kb.TenantID, kb.ID)
-		if err != nil {
-			return nil, err
-		}
-		if int64(len(ids)) >= count {
-			out = append(out, kb)
-		}
-	}
-	return out, nil
 }
 
 // TogglePinKnowledgeBase toggles whether the calling user has pinned
@@ -1007,18 +710,6 @@ func (s *knowledgeBaseService) DeleteKnowledgeBase(ctx context.Context, id strin
 		})
 		return err
 	}
-	// Drop the materialized department scope with the KB. A leftover share
-	// row would keep blocking department deletion even after the KB is gone.
-	if err := s.repo.ReplaceKBDepartmentShares(ctx, tenantID, id, nil, ""); err != nil {
-		logger.Warnf(ctx, "failed to clear department shares for deleted kb=%s: %v", id, err)
-	}
-	deletedName := ""
-	if kb != nil {
-		deletedName = kb.Name
-	}
-	recordKBActivity(ctx, s.audit, tenantID, id, types.AuditActionKBDeleted,
-		"knowledge_base", id, types.AuditOutcomeSuccess, map[string]any{"name": deletedName})
-
 	// Stop both ephemeral queue work and durable gaze operations that target
 	// the now-deleted KB. ProcessKBDelete repeats this with document IDs and
 	// performs one final scrub after heavy cleanup to close enqueue races.
@@ -1033,15 +724,6 @@ func (s *knowledgeBaseService) DeleteKnowledgeBase(ctx context.Context, id strin
 	s.cleanupTasksForKnowledgeBase(kbCleanupCtx, id, nil, nil)
 	cancelKBCleanup()
 
-	// Step 1b: Remove all organization shares for this KB so org settings no longer show them
-	if s.shareRepo != nil {
-		if delErr := s.shareRepo.DeleteByKnowledgeBaseID(ctx, id); delErr != nil {
-			logger.Warnf(ctx, "Failed to delete KB shares for knowledge base %s: %v", id, delErr)
-		}
-	}
-
-	// Step 1c: Stop and soft-delete all data sources bound to this KB so cron
-	// schedules and in-flight sync logs do not keep running against a deleted KB.
 	dataSourceIDs := s.deleteDataSourcesForKnowledgeBase(ctx, id)
 	if len(dataSourceIDs) > 0 {
 		dsCancelCtx, cancelDSCancel := context.WithTimeout(
@@ -1461,19 +1143,8 @@ func (s *knowledgeBaseService) CopyKnowledgeBase(ctx context.Context,
 			targetKB.CreatorID = uid
 		}
 		targetKB.EnsureDefaults()
-		// A clone is a new KB; human callers place it in their department,
-		// task/API-key callers inherit the source department.
-		if err := s.assignCloneDepartment(ctx, targetKB, sourceKB); err != nil {
-			return nil, nil, err
-		}
 		if err := s.repo.CreateKnowledgeBase(ctx, targetKB); err != nil {
 			return nil, nil, err
-		}
-		if err := s.repo.AddKBDepartmentShare(
-			ctx, tenantID, targetKB.ID, targetKB.DepartmentID, targetKB.CreatorID,
-		); err != nil {
-			logger.Warnf(ctx, "failed to materialize department share for cloned kb=%s dept=%s: %v",
-				targetKB.ID, targetKB.DepartmentID, err)
 		}
 	}
 	return sourceKB, targetKB, nil
@@ -1516,9 +1187,6 @@ func (s *knowledgeBaseService) DuplicateKnowledgeBase(
 	targetKB.DeletedAt.Valid = false
 	targetKB.DeletedAt.Time = time.Time{}
 	targetKB.IsTemporary = false
-	// 副本不继承源 KB 的对外发布状态:发布仅 Admin+ 可做(§2.13),
-	// duplicate 是 Contributor+ 操作,继承 public 等于变相发布。
-	targetKB.Visibility = types.KBVisibilityInternal
 	targetKB.IsPinned = false
 	targetKB.PinnedAt = nil
 	targetKB.KnowledgeCount = 0
@@ -1529,11 +1197,6 @@ func (s *knowledgeBaseService) DuplicateKnowledgeBase(
 	targetKB.CreatorName = ""
 	targetKB.EnsureDefaults()
 	targetKB.Normalize()
-	// A duplicate is a new KB; human callers place it in their department,
-	// task/API-key callers inherit the source department.
-	if err := s.assignCloneDepartment(ctx, targetKB, sourceKB); err != nil {
-		return nil, err
-	}
 
 	if targetKB.HasVectorStore() {
 		if err := s.validateVectorStoreBinding(ctx, tenantID, *targetKB.VectorStoreID); err != nil {
@@ -1544,16 +1207,6 @@ func (s *knowledgeBaseService) DuplicateKnowledgeBase(
 	if err := s.repo.CreateKnowledgeBase(ctx, targetKB); err != nil {
 		return nil, err
 	}
-	if err := s.repo.AddKBDepartmentShare(
-		ctx, tenantID, targetKB.ID, targetKB.DepartmentID, targetKB.CreatorID,
-	); err != nil {
-		logger.Warnf(ctx, "failed to materialize department share for duplicated kb=%s dept=%s: %v",
-			targetKB.ID, targetKB.DepartmentID, err)
-	}
-	recordKBActivity(ctx, s.audit, tenantID, targetKB.ID, types.AuditActionKBDuplicated,
-		"knowledge_base", targetKB.ID, types.AuditOutcomeSuccess, map[string]any{
-			"source_kb_id": sourceKB.ID, "name": targetKB.Name,
-		})
 	return targetKB, nil
 }
 

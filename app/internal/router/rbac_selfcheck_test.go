@@ -15,7 +15,7 @@ func TestAssertAPIKeyPoliciesMatchRoutes_TrailingSlash(t *testing.T) {
 	engine := gin.New()
 	v1 := engine.Group("/api/v1")
 
-	g := &rbacGuards{}
+	g := newAPIKeyGuards()
 	noop := func(c *gin.Context) {}
 
 	// Register through the apiKey helpers using both "" and "/" rel plus a
@@ -40,9 +40,9 @@ func TestAssertAPIKeyPoliciesMatchRoutes_Missing(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
 
-	g := &rbacGuards{}
+	g := newAPIKeyGuards()
 	// Declare a policy for a path that is never registered on the engine.
-	g.ensureAPIKeyAuthorizer().Register(http.MethodPost, "/api/v1/does-not-exist", apiKeyFullAccess())
+	g.apiKeyAuthorizer.Register(http.MethodPost, "/api/v1/does-not-exist", apiKeyFullAccess())
 
 	defer func() {
 		if recover() == nil {

@@ -3,14 +3,11 @@ package repository
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"gaze/internal/types"
 	"gaze/internal/types/interfaces"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 var ErrKnowledgeBaseNotFound = errors.New("knowledge base not found")
@@ -67,20 +64,6 @@ func (r *knowledgeBaseRepository) GetKnowledgeBaseByIDs(ctx context.Context, ids
 }
 
 // ListKnowledgeBases lists all knowledge bases
-// ListPublicKnowledgeBases lists consumer-portal visible KBs across all
-// tenants. Portal queries are intentionally cross-tenant: a public KB is
-// published to consumers, not to a workspace.
-func (r *knowledgeBaseRepository) ListPublicKnowledgeBases(ctx context.Context) ([]*types.KnowledgeBase, error) {
-	var kbs []*types.KnowledgeBase
-	if err := r.db.WithContext(ctx).
-		Where("visibility = ? AND is_temporary = ?", types.KBVisibilityPublic, false).
-		Order("created_at DESC").
-		Find(&kbs).Error; err != nil {
-		return nil, err
-	}
-	return kbs, nil
-}
-
 func (r *knowledgeBaseRepository) ListKnowledgeBases(ctx context.Context) ([]*types.KnowledgeBase, error) {
 	var kbs []*types.KnowledgeBase
 	if err := r.db.WithContext(ctx).Find(&kbs).Error; err != nil {
@@ -106,105 +89,6 @@ func (r *knowledgeBaseRepository) ListKnowledgeBasesByTenantID(
 		return nil, err
 	}
 	return kbs, nil
-}
-
-func (r *knowledgeBaseRepository) ListKnowledgeBasesByDepartment(
-	ctx context.Context, tenantID uint64, departmentID string,
-) ([]*types.KnowledgeBase, error) {
-	var kbs []*types.KnowledgeBase
-	if err := r.db.WithContext(ctx).
-		Where("tenant_id = ? AND department_id = ? AND is_temporary = ?", tenantID, departmentID, false).
-		Order("created_at DESC").Find(&kbs).Error; err != nil {
-		return nil, err
-	}
-	return kbs, nil
-}
-
-func (r *knowledgeBaseRepository) ListSharedKnowledgeBasesForDepartment(
-	ctx context.Context, tenantID uint64, departmentID string,
-) ([]*types.KnowledgeBase, error) {
-	var kbs []*types.KnowledgeBase
-	if err := r.db.WithContext(ctx).
-		Model(&types.KnowledgeBase{}).
-		Joins("JOIN kb_department_shares s ON s.kb_id = knowledge_bases.id").
-		Where("s.tenant_id = ? AND s.department_id = ?", tenantID, departmentID).
-		Where("knowledge_bases.tenant_id = ? AND knowledge_bases.department_id <> ? AND knowledge_bases.is_temporary = ?",
-			tenantID, departmentID, false).
-		Order("knowledge_bases.created_at DESC").
-		Find(&kbs).Error; err != nil {
-		return nil, err
-	}
-	return kbs, nil
-}
-
-func (r *knowledgeBaseRepository) ListKBDepartmentShareIDs(
-	ctx context.Context, tenantID uint64, kbID string,
-) ([]string, error) {
-	var ids []string
-	if err := r.db.WithContext(ctx).
-		Model(&types.KBDepartmentShare{}).
-		Where("tenant_id = ? AND kb_id = ?", tenantID, kbID).
-		Pluck("department_id", &ids).Error; err != nil {
-		return nil, err
-	}
-	return ids, nil
-}
-
-func (r *knowledgeBaseRepository) ReplaceKBDepartmentShares(
-	ctx context.Context, tenantID uint64, kbID string, departmentIDs []string, createdBy string,
-) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("tenant_id = ? AND kb_id = ?", tenantID, kbID).
-			Delete(&types.KBDepartmentShare{}).Error; err != nil {
-			return err
-		}
-		seen := make(map[string]struct{}, len(departmentIDs))
-		for _, departmentID := range departmentIDs {
-			departmentID = strings.TrimSpace(departmentID)
-			if departmentID == "" {
-				continue
-			}
-			if _, ok := seen[departmentID]; ok {
-				continue
-			}
-			seen[departmentID] = struct{}{}
-			share := &types.KBDepartmentShare{
-				ID:              uuid.New().String(),
-				TenantID:        tenantID,
-				KnowledgeBaseID: kbID,
-				DepartmentID:    departmentID,
-				CreatedBy:       createdBy,
-				CreatedAt:       time.Now(),
-			}
-			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(share).Error; err != nil {
-				return err
-			}
-		}
-		return bumpTenantACLEpoch(tx, tenantID)
-	})
-}
-
-func (r *knowledgeBaseRepository) AddKBDepartmentShare(
-	ctx context.Context, tenantID uint64, kbID, departmentID, createdBy string,
-) error {
-	departmentID = strings.TrimSpace(departmentID)
-	if departmentID == "" {
-		return errors.New("department id is required")
-	}
-	share := &types.KBDepartmentShare{
-		ID:              uuid.New().String(),
-		TenantID:        tenantID,
-		KnowledgeBaseID: kbID,
-		DepartmentID:    departmentID,
-		CreatedBy:       createdBy,
-		CreatedAt:       time.Now(),
-	}
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(share).Error; err != nil {
-			return err
-		}
-		return bumpTenantACLEpoch(tx, tenantID)
-	})
 }
 
 // userKBPinRow mirrors the user_kb_pins table. Kept local to the

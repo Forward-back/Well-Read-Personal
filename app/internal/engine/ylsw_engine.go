@@ -29,7 +29,6 @@ type ylswReference struct {
 	DocType         string  `json:"doc_type"`
 	ProductName     string  `json:"product_name"`
 	DocDate         string  `json:"doc_date"`
-	LifecycleStatus string  `json:"lifecycle_status"`
 	Source          string  `json:"source"`
 	RerankScore     float64 `json:"rerank_score"`
 	// Content 为 chunk 原文摘要（前端悬浮引用卡直接展示）
@@ -81,7 +80,6 @@ func (e *ylswEngine) StreamChat(
 	knowledgeBaseIDs []string,
 	aclScope *types.ACLScope,
 	skill *types.SkillInjection,
-	allowedSensitivities []string,
 	onDelta func(string),
 	onReferences func([]*types.SearchResult),
 	onStage func(stage string, counts map[string]int, tMs int64, detail map[string]interface{}),
@@ -95,12 +93,11 @@ func (e *ylswEngine) StreamChat(
 	}
 
 	payload, err := json.Marshal(map[string]interface{}{
-		"question":              question,
-		"knowledge_base_ids":    knowledgeBaseIDs,
-		"knowledge_base_id":     firstOrEmpty(knowledgeBaseIDs),
-		"allowed_sensitivities": allowedSensitivities,
-		"acl_scope":             aclScope,
-		"skill":                 skill,
+		"question":           question,
+		"knowledge_base_ids": knowledgeBaseIDs,
+		"knowledge_base_id":  firstOrEmpty(knowledgeBaseIDs),
+		"acl_scope":          aclScope,
+		"skill":              skill,
 	})
 	if err != nil {
 		return "", nil, fmt.Errorf("marshal request: %w", err)
@@ -234,15 +231,14 @@ func mapReferences(ylswRefs []ylswReference) []*types.SearchResult {
 			StartAt:           r.StartAt,
 			EndAt:             r.EndAt,
 			Metadata: map[string]string{
-				"lifecycle_status": r.LifecycleStatus,
-				"doc_number":       r.DocNumber,
-				"org_name":         r.OrgName,
-				"doc_type":         r.DocType,
-				"product_name":     r.ProductName,
-				"doc_title":        r.DocTitle,
-				"doc_date":         r.DocDate,
-				"source":           r.Source,
-				"engine_chunk_id":  r.ChunkID,
+				"doc_number":      r.DocNumber,
+				"org_name":        r.OrgName,
+				"doc_type":        r.DocType,
+				"product_name":    r.ProductName,
+				"doc_title":       r.DocTitle,
+				"doc_date":        r.DocDate,
+				"source":          r.Source,
+				"engine_chunk_id": r.ChunkID,
 			},
 		})
 	}
@@ -425,12 +421,6 @@ func (e *ylswEngine) IngestDocument(
 		payload["doc_title"] = meta.DocTitle
 		payload["doc_type"] = meta.DocType
 		payload["product_name"] = meta.ProductName
-		payload["lifecycle_status"] = meta.LifecycleStatus
-		payload["effective_date"] = meta.EffectiveDate
-		payload["expiry_date"] = meta.ExpiryDate
-		payload["superseded_by"] = meta.SupersededBy
-		payload["sensitivity"] = meta.Sensitivity
-		payload["department"] = meta.Department
 		if meta.CustomMetadata != nil {
 			payload["custom_metadata"] = meta.CustomMetadata
 		}
@@ -499,10 +489,9 @@ func (e *ylswEngine) DeleteDocument(ctx context.Context, documentID string) erro
 	return nil
 }
 
-// UpdateDocumentMetadata updates document-level metadata in place. It is the
-// cheap path for lifecycle/sensitivity/department changes: no re-chunking, no
-// re-embedding, and the engine patches its in-memory doc metadata so the next
-// query sees the new status.
+// UpdateDocumentMetadata updates document-level metadata in place. It patches
+// the engine's in-memory doc metadata so the next query sees the new values
+// without re-chunking or re-embedding.
 func (e *ylswEngine) UpdateDocumentMetadata(
 	ctx context.Context, knowledgeBaseID, documentID string, meta *DocumentMetadata,
 ) error {
@@ -515,12 +504,15 @@ func (e *ylswEngine) UpdateDocumentMetadata(
 		"knowledge_base_id": knowledgeBaseID,
 	}
 	if meta != nil {
-		payloadMap["lifecycle_status"] = meta.LifecycleStatus
-		payloadMap["effective_date"] = meta.EffectiveDate
-		payloadMap["expiry_date"] = meta.ExpiryDate
-		payloadMap["superseded_by"] = meta.SupersededBy
-		payloadMap["sensitivity"] = meta.Sensitivity
-		payloadMap["department"] = meta.Department
+		payloadMap["doc_number"] = meta.DocNumber
+		payloadMap["org_name"] = meta.OrgName
+		payloadMap["doc_date"] = meta.DocDate
+		payloadMap["doc_title"] = meta.DocTitle
+		payloadMap["doc_type"] = meta.DocType
+		payloadMap["product_name"] = meta.ProductName
+		if meta.CustomMetadata != nil {
+			payloadMap["custom_metadata"] = meta.CustomMetadata
+		}
 	}
 	payload, err := json.Marshal(payloadMap)
 	if err != nil {

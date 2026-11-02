@@ -8,7 +8,7 @@ import (
 
 // RegisterMemoryRuntimeRoutes exposes the per-user "forget" action used by
 // chat timelines. Full memory management stays disabled.
-func RegisterMemoryRuntimeRoutes(r *gin.RouterGroup, h *handler.MemoryRuntimeHandler, g *rbacGuards) {
+func RegisterMemoryRuntimeRoutes(r *gin.RouterGroup, h *handler.MemoryRuntimeHandler, g *apiKeyGuards) {
 	memory := g.apiKeyGroup(r.Group("/memory"), apiKeyFullAccess())
-	memory.DELETE("/items/:id", g.Viewer(), h.DeleteItem)
+	memory.DELETE("/items/:id", h.DeleteItem)
 }

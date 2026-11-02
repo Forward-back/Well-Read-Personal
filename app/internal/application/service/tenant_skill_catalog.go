@@ -30,7 +30,6 @@ type SkillCatalogInstallView struct {
 // SkillCatalogView is a tenant skill definition plus its sandbox installations.
 type SkillCatalogView struct {
 	ID            string                    `json:"id"`
-	DepartmentID  string                    `json:"department_id,omitempty"`
 	Name          string                    `json:"name"`
 	CanEdit       bool                      `json:"can_edit"`
 	Version       string                    `json:"version,omitempty"`
@@ -45,11 +44,10 @@ type SkillCatalogView struct {
 // SelectableSkillView is the chat-picker projection: enabled skills only, no
 // instructions (the app still resolves and validates those server-side).
 type SelectableSkillView struct {
-	ID           string `json:"id"`
-	DepartmentID string `json:"department_id,omitempty"`
-	Name         string `json:"name"`
-	Version      string `json:"version,omitempty"`
-	Description  string `json:"description,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Version     string `json:"version,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 // ListSelectableCatalog returns enabled workspace skills for the QA selector.
@@ -62,15 +60,14 @@ func (s *TenantSkillService) ListSelectableCatalog(
 	}
 	out := make([]SelectableSkillView, 0, len(catalogs))
 	for _, cat := range catalogs {
-		if cat == nil || !cat.Enabled || !canViewDepartmentSkill(ctx, cat) {
+		if cat == nil || !cat.Enabled {
 			continue
 		}
 		out = append(out, SelectableSkillView{
-			ID:           cat.ID,
-			DepartmentID: cat.DepartmentID,
-			Name:         cat.Name,
-			Version:      cat.Version,
-			Description:  cat.Description,
+			ID:          cat.ID,
+			Name:        cat.Name,
+			Version:     cat.Version,
+			Description: cat.Description,
 		})
 	}
 	return out, nil
@@ -91,9 +88,6 @@ func (s *TenantSkillService) UpdateCatalogDefinition(
 	}
 	if entity == nil {
 		return nil, apperrors.NewNotFoundError("技能不存在")
-	}
-	if !canManageDepartmentSkill(ctx, entity) {
-		return nil, apperrors.NewForbiddenError("只能维护本部门的技能")
 	}
 	if name != nil {
 		value := strings.TrimSpace(*name)
@@ -143,9 +137,6 @@ func (s *TenantSkillService) SetCatalogEnabled(
 	if entity == nil {
 		return apperrors.NewNotFoundError("技能不存在")
 	}
-	if !canManageDepartmentSkill(ctx, entity) {
-		return apperrors.NewForbiddenError("只能维护本部门的技能")
-	}
 	entity.Enabled = enabled
 	return s.skills.UpdateCatalog(ctx, entity)
 }
@@ -161,7 +152,7 @@ func (s *TenantSkillService) ListCatalog(
 	}
 	visible := catalogs[:0]
 	for _, cat := range catalogs {
-		if cat != nil && canViewDepartmentSkill(ctx, cat) {
+		if cat != nil {
 			visible = append(visible, cat)
 		}
 	}
@@ -325,9 +316,6 @@ func (s *TenantSkillService) InstallCatalogToConfigs(
 	if err != nil {
 		return nil, err
 	}
-	if !canManageDepartmentSkill(ctx, catalog) {
-		return nil, apperrors.NewForbiddenError("只能维护本部门的技能")
-	}
 	archive, err := s.catalogBundleArchive(ctx, tenantID, catalog)
 	if err != nil {
 		return nil, err
@@ -377,9 +365,6 @@ func (s *TenantSkillService) DeleteCatalog(
 	if catalog == nil {
 		return apperrors.NewNotFoundError("skill not found")
 	}
-	if !canManageDepartmentSkill(ctx, catalog) {
-		return apperrors.NewForbiddenError("只能维护本部门的技能")
-	}
 	installs, err := s.skills.ListSkillsByCatalog(ctx, tenantID, catalogID)
 	if err != nil {
 		return err
@@ -404,7 +389,7 @@ func (s *TenantSkillService) DeleteCatalog(
 func (s *TenantSkillService) upsertCatalogFromBundle(
 	ctx context.Context, tenantID uint64, bundle *SkillBundle, archive []byte, requireStore bool,
 ) (*types.TenantSkillCatalogEntity, error) {
-	existing, err := s.findCatalogByName(ctx, tenantID, callerDepartmentID(ctx), bundle.Name)
+	existing, err := s.findCatalogByName(ctx, tenantID, bundle.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -441,7 +426,7 @@ func (s *TenantSkillService) upsertCatalogFromBundle(
 	}
 
 	row := &types.TenantSkillCatalogEntity{
-		ID: uuid.NewString(), TenantID: tenantID, DepartmentID: callerDepartmentID(ctx), Name: bundle.Name,
+		ID: uuid.NewString(), TenantID: tenantID, Name: bundle.Name,
 		Version: bundle.Version, Description: bundle.Description,
 		Instructions: bundle.Instructions,
 		CreatedAt:    now, UpdatedAt: now,
@@ -457,7 +442,7 @@ func (s *TenantSkillService) upsertCatalogFromBundle(
 		if !isSkillNameConflict(err) {
 			return nil, err
 		}
-		winner, lookupErr := s.findCatalogByName(ctx, tenantID, callerDepartmentID(ctx), bundle.Name)
+		winner, lookupErr := s.findCatalogByName(ctx, tenantID, bundle.Name)
 		if lookupErr != nil {
 			return nil, lookupErr
 		}
@@ -627,9 +612,6 @@ func (s *TenantSkillService) resolveCatalog(
 		return nil, err
 	}
 	if cat != nil {
-		if !canViewDepartmentSkill(ctx, cat) {
-			return nil, apperrors.NewNotFoundError("skill not found")
-		}
 		return cat, nil
 	}
 	installs, err := s.skills.ListSkillsByTenant(ctx, tenantID)
@@ -655,9 +637,6 @@ func (s *TenantSkillService) resolveCatalog(
 			return nil, err
 		}
 		if cat != nil {
-			if !canViewDepartmentSkill(ctx, cat) {
-				return nil, apperrors.NewNotFoundError("skill not found")
-			}
 			return cat, nil
 		}
 	}
@@ -773,51 +752,15 @@ func (s *TenantSkillService) catalogBundleArchive(
 		"the archive of this skill is no longer stored; add it again from the original bundle")
 }
 
-func callerDepartmentID(ctx context.Context) string {
-	return strings.TrimSpace(types.CallerFromContext(ctx).DepartmentID)
-}
-
-func callerIsCompanyAdmin(ctx context.Context) bool {
-	return types.CallerFromContext(ctx).Role == types.TenantRoleCompanyAdmin
-}
-
-// canViewDepartmentSkill keeps legacy tenant-wide rows (empty department)
-// visible to everyone; company admins can read every department. Department
-// managers/editors only see their own department.
-func canViewDepartmentSkill(ctx context.Context, cat *types.TenantSkillCatalogEntity) bool {
-	if cat == nil {
-		return false
-	}
-	scope := callerDepartmentID(ctx)
-	if scope == "" || callerIsCompanyAdmin(ctx) || cat.DepartmentID == "" || cat.DepartmentID == scope {
-		return true
-	}
-	return false
-}
-
-// canManageDepartmentSkill allows writes only inside the caller's department.
-// A company admin still needs a department membership to edit; their
-// cross-department access is read-only.
-func canManageDepartmentSkill(ctx context.Context, cat *types.TenantSkillCatalogEntity) bool {
-	if cat == nil {
-		return false
-	}
-	scope := callerDepartmentID(ctx)
-	if scope == "" {
-		return true
-	}
-	return cat.DepartmentID == "" || cat.DepartmentID == scope
-}
-
 func (s *TenantSkillService) findCatalogByName(
-	ctx context.Context, tenantID uint64, departmentID, name string,
+	ctx context.Context, tenantID uint64, name string,
 ) (*types.TenantSkillCatalogEntity, error) {
 	catalogs, err := s.skills.ListCatalogsByTenant(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
 	for _, cat := range catalogs {
-		if cat != nil && cat.Name == name && cat.DepartmentID == departmentID {
+		if cat != nil && cat.Name == name {
 			return cat, nil
 		}
 	}

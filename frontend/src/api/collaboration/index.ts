@@ -451,9 +451,9 @@ export interface EngineSyncConfig {
 }
 
 export function getTenantEngineSyncConfig() {
-  return get('/api/v1/tenants/kv/engine-sync-config')
+  return get('/api/v1/settings/kv/engine-sync-config')
 }
 
 export function updateTenantEngineSyncConfig(config: EngineSyncConfig) {
-  return put('/api/v1/tenants/kv/engine-sync-config', config)
+  return put('/api/v1/settings/kv/engine-sync-config', config)
 }

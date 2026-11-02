@@ -19,23 +19,20 @@ import (
 
 // GazePageHandler handles HTTP requests for gaze page operations
 type GazePageHandler struct {
-	gazeService    interfaces.GazePageService
-	kbService      interfaces.KnowledgeBaseService
-	auditService   interfaces.AuditLogService
-	memoryService  interfaces.MemoryService
+	gazeService   interfaces.GazePageService
+	kbService     interfaces.KnowledgeBaseService
+	memoryService interfaces.MemoryService
 }
 
 // NewGazePageHandler creates a new gaze page handler
 func NewGazePageHandler(
 	gazeService interfaces.GazePageService,
 	kbService interfaces.KnowledgeBaseService,
-	auditService interfaces.AuditLogService,
 	memoryService interfaces.MemoryService,
 ) *GazePageHandler {
 	return &GazePageHandler{
 		gazeService:   gazeService,
 		kbService:     kbService,
-		auditService:  auditService,
 		memoryService: memoryService,
 	}
 }
@@ -394,8 +391,6 @@ func (h *GazePageHandler) recordManualGazeActivity(
 	if page == nil {
 		return
 	}
-	service.RecordGazeContentActivity(ctx, h.auditService, page.TenantID,
-		page.KnowledgeBaseID, map[string]int{action: 1})
 }
 
 // GetPage godoc

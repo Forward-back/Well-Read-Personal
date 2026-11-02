@@ -32,3 +32,15 @@ func newKBLookupCtx(t *testing.T, tenantID uint64, id string) *gin.Context {
 }
 
 const testSkillTenantID uint64 = 1
+
+// errorCapture mirrors the production ErrorHandler middleware: it records
+// c.Error values as JSON so tests can assert on status and message.
+func errorCapture() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next()
+		if len(c.Errors) == 0 {
+			return
+		}
+		c.JSON(-1, gin.H{"errors": c.Errors.Errors()})
+	}
+}

@@ -7,15 +7,14 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"gaze/internal/types"
 	"gaze/internal/types/interfaces"
 	secutils "gaze/internal/utils"
-	"gorm.io/gorm"
 )
 
 const defaultResourceGrantTTL = 2 * time.Hour
@@ -231,6 +230,24 @@ func (s *resourceCatalog) MarkDeleted(ctx context.Context, reference string) err
 	return s.repo.MarkDeleted(ctx, resource.ID)
 }
 
+// accessGrantKey signs stateless file-access tokens. SYSTEM_AES_KEY is the
+// deployment-wide key; the JWT secret keeps local single-process runs usable.
+func accessGrantKey() []byte {
+	if key := secutils.SystemHMACKey(); key != nil {
+		return key
+	}
+	return []byte(getJwtSecret())
+}
+
+func signAccessGrant(payload string) string {
+	mac := hmac.New(sha256.New, accessGrantKey())
+	mac.Write([]byte(payload))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+// CreateAccessGrant mints a stateless, expiring read token for a resource.
+// The token is self-contained (resource id + expiry + HMAC), so file rendering
+// needs no write path and no access-grant table.
 func (s *resourceCatalog) CreateAccessGrant(ctx context.Context, reference string, ttl time.Duration) (string, error) {
 	resource, err := s.Resolve(ctx, reference)
 	if err != nil {
@@ -239,146 +256,41 @@ func (s *resourceCatalog) CreateAccessGrant(ctx context.Context, reference strin
 	if ttl <= 0 {
 		ttl = defaultResourceGrantTTL
 	}
-	// Opportunistic cleanup keeps high-volume IM rendering from accumulating
-	// expired capability rows; failure is non-fatal to the current grant.
-	_ = s.repo.DeleteExpiredGrants(ctx, time.Now().UTC())
-
-	// Prefer reusing this resource's live grant. Rendering an answer or
-	// re-reading a message history would otherwise insert one row per image per
-	// request, which turns a read endpoint into a write-heavy one.
-	token, err := s.reuseOrCreateDerivedGrant(ctx, resource.ID, ttl)
-	if err != nil {
-		return "", err
-	}
-	if token != "" {
-		return token, nil
-	}
-
-	// No reusable grant: either this deployment cannot derive tokens, or the
-	// derived one is not usable. Mint a fresh random token.
-	for attempt := 0; attempt < 4; attempt++ {
-		token, tokenErr := randomResourceToken()
-		if tokenErr != nil {
-			return "", tokenErr
-		}
-		grant := &types.ResourceAccessGrant{
-			TokenHash:   resourceLocationHash(token),
-			ResourceID:  resource.ID,
-			AccessScope: "read",
-			ExpiresAt:   time.Now().UTC().Add(ttl),
-		}
-		if err := s.repo.CreateGrant(ctx, grant); err == nil {
-			return token, nil
-		} else if !isUniqueViolation(err) {
-			return "", err
-		}
-	}
-	return "", fmt.Errorf("failed to allocate unique resource access token")
+	payload := resource.ID + ":" + strconv.FormatInt(time.Now().UTC().Add(ttl).Unix(), 10)
+	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + signAccessGrant(payload), nil
 }
 
-// reuseOrCreateDerivedGrant returns the token of a live grant for resourceID,
-// creating the row on first use within the current window. It returns ("", nil)
-// when the caller must fall back to a random token.
-//
-// The token is derived rather than random so it can be recomputed without ever
-// storing it: the table holds only the hash, as before, and the plaintext token
-// cannot be reconstructed from a database dump without SYSTEM_AES_KEY.
-// Authorization still lives entirely in the row — a revoked or expired grant
-// stops resolving even though the token derives to the same value.
-func (s *resourceCatalog) reuseOrCreateDerivedGrant(
-	ctx context.Context, resourceID string, ttl time.Duration,
-) (string, error) {
-	token, expiresAt, ok := derivedGrantToken(resourceID, ttl)
-	if !ok {
-		return "", nil
-	}
-	tokenHash := resourceLocationHash(token)
-	now := time.Now().UTC()
-
-	existing, err := s.repo.GetValidGrant(ctx, tokenHash, now)
-	if err != nil {
-		return "", err
-	}
-	if existing != nil {
-		if existing.ResourceID != resourceID {
-			// A hash collision across resources is practically impossible, but
-			// reusing it would hand out access to the wrong file.
-			return "", nil
-		}
-		return token, nil
-	}
-
-	err = s.repo.CreateGrant(ctx, &types.ResourceAccessGrant{
-		TokenHash:   tokenHash,
-		ResourceID:  resourceID,
-		AccessScope: "read",
-		ExpiresAt:   expiresAt,
-	})
-	switch {
-	case err == nil:
-		return token, nil
-	case isUniqueViolation(err):
-		// Another request may have won the race; a revoked row blocks re-insert.
-		winner, lookupErr := s.repo.GetValidGrant(ctx, tokenHash, now)
-		if lookupErr != nil {
-			return "", lookupErr
-		}
-		if winner != nil && winner.ResourceID == resourceID {
-			return token, nil
-		}
-		return "", nil
-	default:
-		return "", err
-	}
-}
-
-// derivedGrantToken computes the token for resourceID in the current time
-// window, together with the expiry a newly created row must carry. The window is
-// half the TTL, so a reused grant always has at least ttl/2 of life left and one
-// row covers every request in that window.
-//
-// Returns ok=false when SYSTEM_AES_KEY is not configured, in which case grants
-// stay random and per-request as they were.
-func derivedGrantToken(resourceID string, ttl time.Duration) (string, time.Time, bool) {
-	key := secutils.SystemHMACKey()
-	window := ttl / 2
-	if key == nil || window <= 0 || resourceID == "" {
-		return "", time.Time{}, false
-	}
-	windowStart := time.Now().UTC().Truncate(window)
-	mac := hmac.New(sha256.New, key)
-	fmt.Fprintf(mac, "resource_grant:v1:%s:%d", resourceID, windowStart.Unix())
-	token := base64.RawURLEncoding.EncodeToString(mac.Sum(nil)[:16])
-	return token, windowStart.Add(ttl), true
-}
-
-// isUniqueViolation reports whether err is a duplicate-key error. Prefer
-// gorm.ErrDuplicatedKey when TranslateError is enabled; fall back to the
-// driver message for raw errors.
-func isUniqueViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, gorm.ErrDuplicatedKey) {
-		return true
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "duplicate") || strings.Contains(msg, "unique constraint")
-}
-
+// ResolveAccessGrant verifies a token's signature and expiry, then loads the
+// resource it names. Grants are stateless, so revocation is by short TTL;
+// deleting the resource makes the token stop resolving.
 func (s *resourceCatalog) ResolveAccessGrant(ctx context.Context, token string) (*types.StoredResource, error) {
-	grant, err := s.repo.GetValidGrant(ctx, resourceLocationHash(strings.TrimSpace(token)), time.Now().UTC())
-	if err != nil {
-		return nil, err
-	}
-	if grant == nil {
+	token = strings.TrimSpace(token)
+	encodedPayload, signature, ok := strings.Cut(token, ".")
+	if !ok || encodedPayload == "" || signature == "" {
 		return nil, fmt.Errorf("resource access grant is invalid or expired")
 	}
-	resource, err := s.repo.GetByID(ctx, grant.ResourceID)
+	rawPayload, err := base64.RawURLEncoding.DecodeString(encodedPayload)
+	if err != nil {
+		return nil, fmt.Errorf("resource access grant is invalid or expired")
+	}
+	payload := string(rawPayload)
+	expected := signAccessGrant(payload)
+	if !hmac.Equal([]byte(expected), []byte(signature)) {
+		return nil, fmt.Errorf("resource access grant is invalid or expired")
+	}
+	resourceID, expiryRaw, ok := strings.Cut(payload, ":")
+	if !ok || resourceID == "" {
+		return nil, fmt.Errorf("resource access grant is invalid or expired")
+	}
+	expiry, err := strconv.ParseInt(expiryRaw, 10, 64)
+	if err != nil || time.Now().UTC().Unix() >= expiry {
+		return nil, fmt.Errorf("resource access grant is invalid or expired")
+	}
+	resource, err := s.repo.GetByID(ctx, resourceID)
 	if err != nil {
 		return nil, err
 	}
-	if resource == nil {
+	if resource == nil || resource.State == types.ResourceStateDeleted {
 		return nil, fmt.Errorf("resource not found")
 	}
 	return resource, nil

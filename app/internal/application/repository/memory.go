@@ -1042,3 +1042,8 @@ func (r *memoryRepository) CountActive(
 		Count(&count).Error
 	return count, err
 }
+
+// forUpdateClause returns the gorm SELECT ... FOR UPDATE clause.
+func forUpdateClause() clause.Expression {
+	return clause.Locking{Strength: "UPDATE"}
+}

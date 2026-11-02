@@ -124,8 +124,7 @@ type KnowledgeSearchTool struct {
 	chunkService         interfaces.ChunkService
 	searchTargets        types.SearchTargets // Pre-computed unified search targets
 	ragEngine            engine.RAGEngine    // YLSW retrieval engine (only engine)
-	aclService           interfaces.KBAclService
-	config               *config.Config // Global config for fallback values
+	config               *config.Config      // Global config for fallback values
 
 	seenMu     sync.Mutex
 	seenChunks map[string]bool
@@ -138,7 +137,6 @@ func NewKnowledgeSearchTool(
 	chunkService interfaces.ChunkService,
 	searchTargets types.SearchTargets,
 	ragEngine engine.RAGEngine,
-	aclService interfaces.KBAclService,
 	cfg *config.Config,
 ) *KnowledgeSearchTool {
 	return &KnowledgeSearchTool{
@@ -148,7 +146,6 @@ func NewKnowledgeSearchTool(
 		chunkService:         chunkService,
 		searchTargets:        searchTargets,
 		ragEngine:            ragEngine,
-		aclService:           aclService,
 		config:               cfg,
 		seenChunks:           make(map[string]bool),
 	}
@@ -240,15 +237,7 @@ func (t *KnowledgeSearchTool) Execute(ctx context.Context, args json.RawMessage)
 
 	// 检索统一走 YLSW 引擎（唯一检索引擎）：多查询合并去重 + RRF + 精排
 	// 由引擎完成，工具层不再做二次 rerank/MMR。
-	if t.aclService == nil {
-		return &types.ToolResult{Success: false, Error: "检索权限服务未配置"}, fmt.Errorf("acl service is not configured")
-	}
-	aclScope, err := t.aclService.RetrievalScope(ctx, kbIDs)
-	if err != nil {
-		logger.Errorf(ctx, "[Tool][KnowledgeSearch] Build ACL scope failed: %v", err)
-		return &types.ToolResult{Success: false, Error: fmt.Sprintf("检索权限计算失败: %v", err)}, err
-	}
-	engineResults, err := t.ragEngine.Search(ctx, queries, kbIDs, aclScope, topK)
+	engineResults, err := t.ragEngine.Search(ctx, queries, kbIDs, types.TenantWideScope(), topK)
 	if err != nil {
 		logger.Errorf(ctx, "[Tool][KnowledgeSearch] Engine search failed: %v", err)
 		return &types.ToolResult{

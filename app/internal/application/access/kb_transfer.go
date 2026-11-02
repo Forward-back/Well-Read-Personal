@@ -44,12 +44,8 @@ func WithKBTransfer(
 	if err := transferAPIScope(ctx, source.ID, target.ID, operation, create); err != nil {
 		return ctx, err
 	}
-	required := types.OrgRoleViewer
-	if operation == KBTransferMove {
-		required = types.OrgRoleEditor
-	}
-	if !HasKBGrant(ctx, source.ID, source.TenantID, required) ||
-		(!create && !HasKBGrant(ctx, target.ID, target.TenantID, types.OrgRoleEditor)) {
+	if !HasKBGrant(ctx, source.ID, source.TenantID) ||
+		(!create && !HasKBGrant(ctx, target.ID, target.TenantID)) {
 		return ctx, ErrForbidden
 	}
 	return withTransferGrant(ctx, source, target, operation, taskID, create, false), nil
@@ -94,13 +90,9 @@ func withTransferGrant(
 		operation: operation,
 		create:    create,
 	}
-	required := types.OrgRoleViewer
-	if operation == KBTransferMove {
-		required = types.OrgRoleEditor
-	}
 	ctx = context.WithValue(ctx, types.KBGrantsContextKey, []kbGrant{
-		{caller: caller, kbID: source.ID, tenantID: source.TenantID, permission: required, task: task},
-		{caller: caller, kbID: target.ID, tenantID: target.TenantID, permission: types.OrgRoleEditor, task: task},
+		{caller: caller, kbID: source.ID, tenantID: source.TenantID, task: task},
+		{caller: caller, kbID: target.ID, tenantID: target.TenantID, task: task},
 	})
 	return context.WithValue(ctx, types.KBTransferContextKey, grant)
 }

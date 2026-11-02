@@ -102,13 +102,9 @@ func (h *SkillHandler) ListCatalog(c *gin.Context) {
 		_ = c.Error(err)
 		return
 	}
-	if h.grants != nil {
-		for i := range rows {
-			canEdit, editErr := h.grants.CanEdit(c.Request.Context(), rows[i].ID)
-			if editErr == nil {
-				rows[i].CanEdit = canEdit
-			}
-		}
+	// The personal edition has a single owner, who can edit every skill.
+	for i := range rows {
+		rows[i].CanEdit = true
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": rows})
 }

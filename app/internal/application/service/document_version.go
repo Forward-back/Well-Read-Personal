@@ -13,13 +13,13 @@ import (
 )
 
 type documentVersionService struct {
-	repo      interfaces.CollaborationRepository
+	repo      interfaces.DocumentVersionRepository
 	chunkRepo interfaces.ChunkRepository
 }
 
 // NewDocumentVersionService creates the immutable document snapshot service.
 func NewDocumentVersionService(
-	repo interfaces.CollaborationRepository,
+	repo interfaces.DocumentVersionRepository,
 	chunkRepo interfaces.ChunkRepository,
 ) interfaces.DocumentVersionService {
 	return &documentVersionService{repo: repo, chunkRepo: chunkRepo}

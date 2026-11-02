@@ -35,11 +35,11 @@ func TestDetectProvider(t *testing.T) {
 		url      string
 		expected ProviderName
 	}{
-		
+
 		{"https://api.anthropic.com/v1", ProviderAnthropic},
 		{"https://openrouter.ai/api/v1", ProviderOpenRouter},
 		{"https://litellm.example.com/v1", ProviderLiteLLM},
-				{"http://localhost:4000/v1", ProviderGeneric},
+		{"http://localhost:4000/v1", ProviderGeneric},
 		{"https://router.requesty.ai/v1", ProviderRequesty},
 		{"https://dashscope.aliyuncs.com/compatible-mode/v1", ProviderAliyun},
 		{"https://open.bigmodel.cn/api/paas/v4", ProviderZhipu},
@@ -63,8 +63,6 @@ func TestDetectProvider(t *testing.T) {
 		})
 	}
 }
-
-
 
 func TestAliyunProviderValidation(t *testing.T) {
 	p := &AliyunProvider{}
@@ -103,7 +101,6 @@ func TestAliyunModelDetection(t *testing.T) {
 	})
 }
 
-
 func TestZhipuProviderValidation(t *testing.T) {
 	p := &ZhipuProvider{}
 
@@ -124,7 +121,6 @@ func TestZhipuProviderValidation(t *testing.T) {
 	})
 }
 
-
 func TestListByModelType(t *testing.T) {
 	t.Run("chat models", func(t *testing.T) {
 		providers := ListByModelType(types.ModelTypeKnowledgeQA)
@@ -136,7 +132,6 @@ func TestListByModelType(t *testing.T) {
 	t.Run("rerank models", func(t *testing.T) {
 		providers := ListByModelType(types.ModelTypeRerank)
 		assert.NotEmpty(t, providers)
-							})
+	})
 
 }
-

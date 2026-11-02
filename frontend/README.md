@@ -55,27 +55,19 @@ npm run preview          # 本地预览生产构建，4173
 
 `npm run build-with-types` 并行跑 type-check 和 build，适合交付前使用。
 
-## 能力契约与路由
+## 路由与菜单
 
-- 单一事实源：`../app/contracts/capabilities.json`。
-- `src/config/capabilities.ts` 直接导入该文件；Vite 允许读取仓库根下的 `app/contracts`。
-- 路由通过 `meta.requiredCaps` / `meta.requiredAnyCaps` 粗筛；不满足进入 `/403`。
-- 菜单、设置分区、管理卡片都由能力推导，不在页面里写“角色 if-else”。
-- 后端资源守卫（部门、KB、ACL、CR、API Key）才是最终边界；前端隐藏不是安全措施。
-
-路由命名空间：
-
-- `/login`、`/register`、`/join`、`/403`：认证与错误页。
-- `/platform/*`：公司工作台（知识库、问答、精读、共享空间、治理、管理、设置）。
-- `/ops/*`：系统管理员运维工作台。
-- `/knowledgeBase`：兼容入口。
+- 个人版不再有角色/能力契约；后端认证只区分登录与未登录。
+- 侧栏五项目导航在 `src/stores/menu.ts`：问答、知识库、精读、技能、设置。
+- 路由守卫只校验登录态，未登录跳 `/login`。
+- `/platform/*` 是唯一业务命名空间；`/` 默认重定向到 `/platform/creatChat`。
 
 ## 数据与请求
 
 - `src/api/` 按域封装；统一请求工具在 `src/utils/request`。
-- 登录态、当前空间、角色/能力在 `src/stores/auth`；切换空间后菜单与路由重新按 caps 计算。
+- 登录态在 `src/stores/auth`；个人版单账号，不再有空间切换与角色计算。
 - 聊天/SSE、知识库、协作、治理、设置分别有独立 API 模块，不在页面里直接拼 URL。
-- 公共能力变更优先改 `contracts/capabilities.json` 和 `src/config/*`，再改页面。
+- 公共能力变更直接改页面与 `src/config/*`。
 
 ## i18n
 
@@ -100,13 +92,10 @@ npm run preview          # 本地预览生产构建，4173
 ## Docker 与 nginx
 
 ```bash
-docker build \
-  --build-context contracts=../app/contracts \
-  -f Dockerfile \
-  -t gaze-ui:latest .
+docker build -f Dockerfile -t gaze-ui:latest .
 ```
 
-- 构建阶段需要 `contracts` named context，产物不包含 `design/`。
+- 构建阶段不再需要 `contracts` named context；产物不包含 `design/`。
 - 运行阶段是 nginx，`nginx-api-proxy.conf` 关闭代理缓冲，适配 SSE。
 - 容器端口 80；`MAX_FILE_SIZE_MB` 控制上传限制。
 

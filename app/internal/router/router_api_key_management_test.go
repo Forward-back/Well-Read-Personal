@@ -72,7 +72,7 @@ func TestAPIKeyGateDeniesTenantKeyManagementPaths(t *testing.T) {
 func TestAPIKeyGateAllowsDeclaredTenantKVRead(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	g := &rbacGuards{}
+	g := newAPIKeyGuards()
 	v1 := gin.New().Group("/api/v1")
 	g.apiKeyRoute(v1.Group("/tenants"), http.MethodGet, "/kv/:key", apiKeyFullAccess(), reachedOK)
 

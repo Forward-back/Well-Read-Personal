@@ -1,12 +1,22 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"gaze/internal/config"
 	"gaze/internal/types"
+	"gaze/internal/types/interfaces"
 	"github.com/stretchr/testify/require"
 )
+
+type noDefaultWebSearchRepo struct {
+	interfaces.WebSearchProviderRepository
+}
+
+func (noDefaultWebSearchRepo) GetDefault(context.Context, uint64) (*types.WebSearchProviderEntity, error) {
+	return nil, nil
+}
 
 // buildAgentConfig copies CustomAgentConfig into the runtime AgentConfig field
 // by field, and MemoryEnabled was missing from that list. Nothing failed
@@ -25,7 +35,7 @@ func TestAgentConfigCarriesTheMemoryPreference(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			svc := &sessionService{
 				cfg:                   &config.Config{},
-				webSearchProviderRepo: &sharedAgentWebSearchRepo{},
+				webSearchProviderRepo: noDefaultWebSearchRepo{},
 			}
 			req := &types.QARequest{
 				Session: &types.Session{ID: "session-1", TenantID: 1},
@@ -48,7 +58,7 @@ func TestAgentConfigCarriesTheMemoryPreference(t *testing.T) {
 func TestAgentConfigCarriesMaxCompletionTokens(t *testing.T) {
 	svc := &sessionService{
 		cfg:                   &config.Config{},
-		webSearchProviderRepo: &sharedAgentWebSearchRepo{},
+		webSearchProviderRepo: noDefaultWebSearchRepo{},
 	}
 	req := &types.QARequest{
 		Session: &types.Session{ID: "session-1", TenantID: 1},

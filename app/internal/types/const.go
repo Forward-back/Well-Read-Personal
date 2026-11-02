@@ -32,12 +32,6 @@ const (
 	// in the currently active tenant (loaded by the auth middleware from
 	// the tenant_members table). See TenantRoleFromContext.
 	TenantRoleContextKey ContextKey = "TenantRole"
-	// DepartmentIDContextKey carries the caller's department inside the
-	// active tenant. Empty for company administrators without a department.
-	DepartmentIDContextKey ContextKey = "DepartmentID"
-	// DepartmentRoleContextKey carries the caller's business role inside
-	// DepartmentIDContextKey. Empty when no department is assigned.
-	DepartmentRoleContextKey ContextKey = "DepartmentRole"
 	// SessionTenantIDContextKey is the context key for session owner's tenant ID.
 	// When set (e.g. in pipeline with shared agent), session/message lookups use this instead of TenantIDContextKey.
 	SessionTenantIDContextKey ContextKey = "SessionTenantID"

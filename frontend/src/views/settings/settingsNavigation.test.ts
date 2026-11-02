@@ -4,43 +4,42 @@ import test from 'node:test'
 import { runInNewContext } from 'node:vm'
 import ts from 'typescript'
 import { computed } from 'vue'
-import { INTEGRATION_PREVIEW_ITEMS } from '../../config/integrations'
-import { integrationSectionKey } from '../../config/settingsRoute'
 
-// Exercise the actual sidebar grouping without mounting the settings panels.
+// Exercise the actual sidebar definition without mounting the settings panels.
 const source = readFileSync(new URL('./Settings.vue', import.meta.url), 'utf8')
 const script = source.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)![1]!
 const ast = ts.createSourceFile('Settings.ts', script, ts.ScriptTarget.Latest, true)
-const grouping = ast.statements.find((statement) =>
-  ts.isVariableStatement(statement) && statement.declarationList.declarations.some(
-    (declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === 'navGroups',
-  ),
-)
-assert.ok(grouping, 'Settings must define sidebar groups')
-const compiled = ts.transpileModule(grouping.getText(ast), {
-  compilerOptions: { target: ts.ScriptTarget.ES2022 },
-}).outputText
 
-function integrationMenu(visibleKeys: string[]): string[] {
-  const groups = runInNewContext(`${compiled}\nnavGroups.value`, {
-    computed,
-    navItems: { value: visibleKeys.map((key) => ({ key })) },
-    t: (key: string) => key,
-    integrationSectionKey,
-    INTEGRATION_PREVIEW_ITEMS,
-  }) as Array<{ key: string; items: Array<{ key: string }> }>
-  const integrationGroup = groups.find((group) => group.key === 'integrations')
-  return Array.from(integrationGroup?.items ?? [], (item) => item.key)
+function findVariable(name: string) {
+  return ast.statements.find((statement) =>
+    ts.isVariableStatement(statement) && statement.declarationList.declarations.some(
+      (declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === name,
+    ),
+  )
 }
 
-const integrationKeys = INTEGRATION_PREVIEW_ITEMS.map((item) => integrationSectionKey(item.key))
+function evaluate(name: string): unknown {
+  const statement = findVariable(name)
+  assert.ok(statement, `Settings must define ${name}`)
+  const compiled = ts.transpileModule(statement.getText(ast), {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText
+  return runInNewContext(`${compiled}\n${name}`, { computed })
+}
 
-test('settings sidebar includes every registered integration, including CLI, in navigation order', () => {
-  assert.deepEqual(integrationMenu(['general', ...integrationKeys]), integrationKeys)
+const navItems = evaluate('navItems') as { value: Array<{ key: string }> }
+const legacySectionMap = evaluate('LEGACY_SECTION_MAP') as Record<string, string>
+
+test('personal settings sidebar exposes exactly five panes', () => {
+  assert.deepEqual(
+    Array.from(navItems.value, (item) => item.key),
+    ['account', 'models', 'integrations', 'health', 'about'],
+  )
 })
 
-test('settings sidebar preserves visibility filtering without hiding CLI', () => {
-  const visible = integrationKeys.filter((key) => key !== 'integration-api' && key !== 'integration-im')
-  assert.deepEqual(integrationMenu(visible), visible)
-  assert.deepEqual(integrationMenu(['general']), [])
+test('legacy section links map onto the five panes', () => {
+  const paneKeys = new Set(Array.from(navItems.value, (item) => item.key))
+  for (const target of Object.values(legacySectionMap)) {
+    assert.ok(paneKeys.has(target), `legacy target ${target} must be a pane key`)
+  }
 })

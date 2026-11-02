@@ -298,22 +298,22 @@ func (r *gazePageRepository) UpdateMeta(ctx context.Context, page *types.GazePag
 		Model(page).
 		Where("id = ?", page.ID).
 		Updates(map[string]interface{}{
-			"in_links":            page.InLinks,
-			"out_links":           page.OutLinks,
-			"aliases":             page.Aliases,
-			"status":              page.Status,
-			"source_refs":         page.SourceRefs,
-			"chunk_refs":          page.ChunkRefs,
-			"page_metadata":       page.PageMetadata,
-			"parent_slug":         page.ParentSlug,
-			"folder_id":           page.FolderID,
-			"category_path":       page.CategoryPath,
-			"gaze_path":           page.GazePath,
-			"depth":               page.Depth,
-			"sort_order":          page.SortOrder,
-			"outdated":            page.Outdated,
-			"superseded_by_slug":  page.SupersededBySlug,
-			"updated_at":          page.UpdatedAt,
+			"in_links":           page.InLinks,
+			"out_links":          page.OutLinks,
+			"aliases":            page.Aliases,
+			"status":             page.Status,
+			"source_refs":        page.SourceRefs,
+			"chunk_refs":         page.ChunkRefs,
+			"page_metadata":      page.PageMetadata,
+			"parent_slug":        page.ParentSlug,
+			"folder_id":          page.FolderID,
+			"category_path":      page.CategoryPath,
+			"gaze_path":          page.GazePath,
+			"depth":              page.Depth,
+			"sort_order":         page.SortOrder,
+			"outdated":           page.Outdated,
+			"superseded_by_slug": page.SupersededBySlug,
+			"updated_at":         page.UpdatedAt,
 		})
 	if result.Error != nil {
 		return result.Error

@@ -98,12 +98,10 @@ type readingRunService struct {
 	knowledgeRepo interfaces.KnowledgeRepository
 	chunkRepo     interfaces.ChunkRepository
 	kbService     interfaces.KnowledgeBaseService
-	aclService    interfaces.KBAclService
 	tenantService interfaces.TenantService
 	modelService  interfaces.ModelService
 	skillRepo     repository.TenantSkillRepository
 	messageRepo   interfaces.MessageRepository
-	audit         interfaces.AuditLogService
 	ragEngine     engine.RAGEngine
 }
 
@@ -113,19 +111,17 @@ func NewReadingRunService(
 	knowledgeRepo interfaces.KnowledgeRepository,
 	chunkRepo interfaces.ChunkRepository,
 	kbService interfaces.KnowledgeBaseService,
-	aclService interfaces.KBAclService,
 	tenantService interfaces.TenantService,
 	modelService interfaces.ModelService,
 	skillRepo repository.TenantSkillRepository,
 	messageRepo interfaces.MessageRepository,
-	audit interfaces.AuditLogService,
 	ragEngine engine.RAGEngine,
 ) interfaces.ReadingRunService {
 	return &readingRunService{
 		repo: repo, sessionRepo: sessionRepo, knowledgeRepo: knowledgeRepo,
-		chunkRepo: chunkRepo, kbService: kbService, aclService: aclService,
+		chunkRepo: chunkRepo, kbService: kbService,
 		tenantService: tenantService, modelService: modelService,
-		skillRepo: skillRepo, messageRepo: messageRepo, audit: audit,
+		skillRepo: skillRepo, messageRepo: messageRepo,
 		ragEngine: ragEngine,
 	}
 }
@@ -215,9 +211,6 @@ func (s *readingRunService) Create(
 			}
 		}
 	}
-	s.logAudit(ctx, caller, types.AuditActionReadingRunCreated, run.ID, map[string]any{
-		"document_ids": docIDs, "skill_id": run.SkillID, "model_id": run.ReadingModelID,
-	})
 	stripReadingPlanContent(run)
 	return run, nil
 }
@@ -353,9 +346,6 @@ func (s *readingRunService) legacyStep(
 			Status: "done", CreatedAt: time.Now(),
 		}
 		_ = s.repo.CreateStep(ctx, step)
-		s.logAudit(ctx, caller, types.AuditActionReadingRunFinished, run.ID, map[string]any{
-			"step_count": run.StepCount, "token_usage": run.TokenUsage,
-		})
 		return s.Get(ctx, run.ID)
 	}
 
@@ -407,10 +397,6 @@ func (s *readingRunService) legacyStep(
 	if err := s.repo.CreateStep(ctx, step); err != nil {
 		return nil, err
 	}
-	s.logAudit(ctx, caller, types.AuditActionReadingSectionRead, run.ID, map[string]any{
-		"section_id": section.ID, "knowledge_id": section.KnowledgeID,
-		"action": action, "step": run.StepCount,
-	})
 	return s.Get(ctx, run.ID)
 }
 
@@ -472,9 +458,6 @@ func (s *readingRunService) legacyFeedback(
 	if err := s.repo.UpdateRun(ctx, run); err != nil {
 		return nil, err
 	}
-	s.logAudit(ctx, caller, types.AuditActionReadingFeedbackReceived, run.ID, map[string]any{
-		"feedback": feedback,
-	})
 	return s.Get(ctx, run.ID)
 }
 
@@ -525,7 +508,6 @@ func (s *readingRunService) AddDocuments(
 	if err := s.repo.UpdateRun(ctx, run); err != nil {
 		return nil, err
 	}
-	s.logAudit(ctx, caller, types.AuditActionReadingDocumentsAdded, run.ID, map[string]any{"document_ids": newDocs})
 	return s.Get(ctx, run.ID)
 }
 
@@ -544,9 +526,6 @@ func (s *readingRunService) Stop(ctx context.Context, runID string) (*types.Read
 		if err := s.repo.UpdateRun(ctx, run); err != nil {
 			return nil, err
 		}
-		s.logAudit(ctx, caller, types.AuditActionReadingRunStopped, run.ID, map[string]any{
-			"step_count": run.StepCount,
-		})
 	}
 	return s.Get(ctx, run.ID)
 }
@@ -596,9 +575,6 @@ func (s *readingRunService) Resume(ctx context.Context, runID string) (*types.Re
 	if err := s.repo.UpdateRun(ctx, run); err != nil {
 		return nil, err
 	}
-	s.logAudit(ctx, caller, types.AuditActionReadingRunResumed, run.ID, map[string]any{
-		"step_count": run.StepCount,
-	})
 	return s.Get(ctx, run.ID)
 }
 
@@ -694,9 +670,6 @@ func (s *readingRunService) Export(ctx context.Context, runID string, format str
 		result.Content = buildReadingMarkdown(run, plan, notes, final, docTitles, coverage, generatedAt)
 		result.Filename = fmt.Sprintf("wellread-reading-%s.md", run.ID)
 	}
-	s.logAudit(ctx, caller, types.AuditActionReadingRunExported, run.ID, map[string]any{
-		"format": format, "documents": len(documentIDs), "read_sections": readSections, "total_sections": len(plan.Sections),
-	})
 	return result, nil
 }
 
@@ -801,12 +774,6 @@ func (s *readingRunService) ensureDocumentReadable(
 	if !readable {
 		return nil, werrors.NewForbiddenError("无权精读该文档")
 	}
-	allowed, _, err := s.aclService.Evaluate(
-		ctx, kb.ID, string(types.KBAclResourceFile), knowledge.ID, knowledge.FolderID,
-	)
-	if err != nil || !allowed {
-		return nil, werrors.NewForbiddenError("文档被 ACL 拒绝，不能精读")
-	}
 	return knowledge, nil
 }
 
@@ -859,28 +826,7 @@ func (s *readingRunService) canReadKB(
 	if kb == nil {
 		return false, nil
 	}
-	if caller.Role == types.TenantRoleCompanyAdmin {
-		return true, nil
-	}
-	if kb.TenantID != caller.TenantID {
-		return false, nil
-	}
-	if kb.DepartmentID != "" && kb.DepartmentID == caller.DepartmentID {
-		return true, nil
-	}
-	if caller.DepartmentID == "" {
-		return false, nil
-	}
-	shared, err := s.kbService.GetKBDepartmentShareIDs(ctx, kb.TenantID, kb.ID)
-	if err != nil {
-		return false, err
-	}
-	for _, departmentID := range shared {
-		if departmentID == caller.DepartmentID {
-			return true, nil
-		}
-	}
-	return false, nil
+	return kb.TenantID == caller.TenantID, nil
 }
 
 func buildDocSections(knowledge *types.Knowledge, chunks []*types.Chunk, windowRunes int) []types.ReadingSection {
@@ -1206,18 +1152,4 @@ func readingAppendUnique(existing []string, values ...string) []string {
 
 func readingUniqueStrings(values []string) []string {
 	return readingAppendUnique(nil, values...)
-}
-
-func (s *readingRunService) logAudit(
-	ctx context.Context, caller types.Caller, action types.AuditAction, targetID string, details map[string]any,
-) {
-	if s.audit == nil {
-		return
-	}
-	raw, _ := json.Marshal(details)
-	_ = s.audit.Log(ctx, &types.AuditLog{
-		TenantID: caller.TenantID, ActorUserID: caller.UserID,
-		Action: action, TargetType: "reading_run", TargetID: targetID,
-		Outcome: types.AuditOutcomeSuccess, Details: types.JSON(raw),
-	})
 }

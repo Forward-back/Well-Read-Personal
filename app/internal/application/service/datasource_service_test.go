@@ -64,14 +64,6 @@ type processSyncKBService struct {
 	kb     *types.KnowledgeBase
 }
 
-func (s *processSyncKBService) SetKnowledgeBaseVisibility(context.Context, string, types.KBVisibility) (*types.KnowledgeBase, error) {
-	return nil, nil
-}
-
-func (s *processSyncKBService) ListPublicKnowledgeBases(context.Context) ([]*types.KnowledgeBase, error) {
-	return nil, nil
-}
-
 func (s *processSyncKBService) CreateKnowledgeBase(context.Context, *types.KnowledgeBase) (*types.KnowledgeBase, error) {
 	return nil, nil
 }

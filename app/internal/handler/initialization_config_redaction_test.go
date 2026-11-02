@@ -12,7 +12,7 @@ import (
 
 func TestBuildConfigResponse_ViewerOmitsModelBaseURL(t *testing.T) {
 	h := &InitializationHandler{}
-	ctx := context.WithValue(context.Background(), types.TenantRoleContextKey, types.TenantRoleViewer)
+	ctx := context.WithValue(context.Background(), types.TenantRoleContextKey, types.TenantRoleOwner)
 	models := []*types.Model{{
 		Type: types.ModelTypeKnowledgeQA,
 		Name: "custom-llm",
@@ -36,7 +36,7 @@ func TestBuildConfigResponse_ViewerOmitsModelBaseURL(t *testing.T) {
 
 func TestBuildConfigResponse_AdminKeepsModelBaseURL(t *testing.T) {
 	h := &InitializationHandler{}
-	ctx := context.WithValue(context.Background(), types.TenantRoleContextKey, types.TenantRoleAdmin)
+	ctx := context.WithValue(context.Background(), types.TenantRoleContextKey, types.TenantRoleOwner)
 	models := []*types.Model{{
 		Type: types.ModelTypeKnowledgeQA,
 		Name: "custom-llm",

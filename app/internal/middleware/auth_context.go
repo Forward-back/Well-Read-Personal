@@ -29,11 +29,6 @@ type authSession struct {
 	// TenantRoleFromContext's fail-closed Viewer default.
 	Role        types.TenantRole
 	SystemAdmin bool
-	// DepartmentID/DepartmentRole carry the caller's department space inside
-	// TenantID. Empty DepartmentID means a company administrator without a
-	// department; business guards fail closed in that case.
-	DepartmentID   string
-	DepartmentRole types.DepartmentRole
 	// APIKeyScope marks machine principals; the APIKeyGate authorizes them
 	// per-route from this scope.
 	APIKeyScope *types.TenantAPIKeyScope
@@ -74,12 +69,6 @@ func applyAuthSession(c *gin.Context, s authSession) {
 	if s.Role != "" {
 		set(types.TenantRoleContextKey, s.Role)
 	}
-	if s.DepartmentID != "" {
-		set(types.DepartmentIDContextKey, s.DepartmentID)
-	}
-	if s.DepartmentRole != "" {
-		set(types.DepartmentRoleContextKey, s.DepartmentRole)
-	}
 	set(types.SystemAdminContextKey, s.SystemAdmin)
 	if s.APIKeyScope != nil {
 		ctx = types.WithTenantAPIKeyScope(ctx, *s.APIKeyScope)
@@ -93,11 +82,9 @@ func applyAuthSession(c *gin.Context, s authSession) {
 		userID = s.User.ID
 	}
 	ctx = types.WithCaller(ctx, types.Caller{
-		TenantID:       s.TenantID,
-		UserID:         userID,
-		Role:           s.Role,
-		DepartmentID:   s.DepartmentID,
-		DepartmentRole: s.DepartmentRole,
+		TenantID: s.TenantID,
+		UserID:   userID,
+		Role:     s.Role,
 	})
 	c.Request = c.Request.WithContext(ctx)
 }

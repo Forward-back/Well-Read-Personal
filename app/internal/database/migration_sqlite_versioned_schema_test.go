@@ -36,7 +36,6 @@ var versionedSQLiteColumns = map[string][]string{
 	"users":                 {"is_system_admin"},                // 000053
 	"knowledges":            {"pending_subtasks_count"},         // 000056
 	"messages":              {"attachments", "usage"},           // 000034, 000085
-	"tenant_invitations":    {"token", "accepted_count"},        // 000054
 	"embed_channels":        {"allow_memory"},                   // 000060
 	"mcp_oauth_tokens":      {"principal_type", "principal_id"}, // 000064
 	"mcp_tool_approvals":    {"enabled"},                        // 000091
@@ -74,7 +73,6 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 		}
 	}
 
-	assertSQLiteShareLinkInvitationsWork(t, db)
 	assertSQLiteMCPOAuthPrincipalUpsertWorks(t, db)
 	require.False(t, sqliteColumnExists(t, db, "knowledges", "tag_id"),
 		"SQLite migrations must drop legacy knowledges.tag_id after multi-tag migration")
@@ -190,27 +188,6 @@ func sqliteColumnExists(t *testing.T, db *sql.DB, table, column string) bool {
 		column,
 	).Scan(&n))
 	return n == 1
-}
-
-func assertSQLiteShareLinkInvitationsWork(t *testing.T, db *sql.DB) {
-	t.Helper()
-	_, err := db.Exec("INSERT INTO tenants (name, business) VALUES (?, ?)", "share-link-tenant", "share-link-test")
-	require.NoError(t, err)
-
-	expiresAt := "2099-01-01 00:00:00"
-	shareLinkInsert := "INSERT INTO tenant_invitations " +
-		"(tenant_id, invitee_user_id, token, role, status, expires_at) " +
-		"VALUES (1, '', ?, 'member', 'pending', ?)"
-	_, err = db.Exec(shareLinkInsert, "token-a", expiresAt)
-	require.NoError(t, err)
-	_, err = db.Exec(shareLinkInsert, "token-b", expiresAt)
-	require.NoError(t, err)
-
-	var count int
-	require.NoError(t, db.QueryRow(
-		"SELECT COUNT(*) FROM tenant_invitations WHERE tenant_id = 1 AND invitee_user_id = '' AND status = 'pending'",
-	).Scan(&count))
-	require.Equal(t, 2, count)
 }
 
 func assertSQLiteMCPOAuthPrincipalUpsertWorks(t *testing.T, db *sql.DB) {

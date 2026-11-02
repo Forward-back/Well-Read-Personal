@@ -109,9 +109,6 @@ type KnowledgeService interface {
 	GetKnowledgeFile(ctx context.Context, id string) (io.ReadCloser, string, error)
 	// UpdateKnowledge updates knowledge information.
 	UpdateKnowledge(ctx context.Context, knowledge *types.Knowledge) error
-	// SetKnowledgeLifecycle changes a document's lifecycle status (draft /
-	// effective / expired) and propagates it to the retrieval engine.
-	SetKnowledgeLifecycle(ctx context.Context, knowledgeID string, req *types.KnowledgeLifecycleRequest) (*types.Knowledge, error)
 	// RegenerateKnowledgeSummary refreshes the document description and summary retrieval chunk.
 	RegenerateKnowledgeSummary(ctx context.Context, knowledgeID string) (*types.Knowledge, error)
 	// RequestKnowledgeSummaryRefresh enqueues an async summary refresh.
@@ -214,8 +211,6 @@ type KnowledgeService interface {
 	ProcessKnowledgeListReparse(ctx context.Context, t *asynq.Task) error
 	// ProcessEnginePushRetry handles Asynq YLSW dual-write push retry tasks
 	ProcessEnginePushRetry(ctx context.Context, t *asynq.Task) error
-	// ProcessMetadataExtract handles Asynq enterprise-metadata LLM extraction
-	ProcessMetadataExtract(ctx context.Context, t *asynq.Task) error
 	// RetryEnginePush re-runs convert → engine push for a knowledge whose
 	// YLSW dual-write failed or went missing (asynq retry + daily reconcile).
 	RetryEnginePush(ctx context.Context, tenantID uint64, knowledgeID, kbID string) error
@@ -278,9 +273,6 @@ type KnowledgeRepository interface {
 	ListKnowledgeByEngineSyncStatus(
 		ctx context.Context, kbID string, statuses []string,
 	) ([]*types.Knowledge, error)
-	// ListLifecycleScheduled lists documents whose lifecycle may change by date:
-	// status draft/effective with a non-empty effective or expiry date.
-	ListLifecycleScheduled(ctx context.Context) ([]*types.Knowledge, error)
 	// CheckKnowledgeExists checks if knowledge already exists.
 	// For file types, check by fileHash or (fileName+fileSize).
 	// For URL types, check by URL.
@@ -386,8 +378,4 @@ type KnowledgeRepository interface {
 	GetKnowledgeTags(ctx context.Context, knowledgeIDs []string) (map[string][]*types.KnowledgeTag, error)
 	// DeleteKnowledgeTagRelations deletes all tag relations for a knowledge entry.
 	DeleteKnowledgeTagRelations(ctx context.Context, knowledgeID string) error
-	// ListCustomFieldDefs returns the metadata field definitions visible to a
-	// tenant: its own rows plus the global defaults (tenant_id=0), tenant rows
-	// shadowing same-named defaults (§2.14 维度 D).
-	ListCustomFieldDefs(ctx context.Context, tenantID uint64) ([]*types.KnowledgeCustomFieldDef, error)
 }

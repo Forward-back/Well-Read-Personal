@@ -11,10 +11,10 @@ func RoleFromContext(ctx context.Context) types.TenantRole {
 	return types.TenantRoleFromContext(ctx)
 }
 
-// CanViewIntegrationSecrets is true for Admin+ tenant members and for API keys
-// with full tenant access or the manage_tenant_settings capability.
+// CanViewIntegrationSecrets is true for the owner and for API keys with full
+// tenant access or the manage_tenant_settings capability.
 func CanViewIntegrationSecrets(ctx context.Context) bool {
-	if RoleFromContext(ctx).HasPermission(types.TenantRoleAdmin) {
+	if RoleFromContext(ctx).IsValid() {
 		return true
 	}
 	return apiKeyCanManageIntegrationSecrets(ctx)
@@ -31,12 +31,12 @@ func apiKeyCanManageIntegrationSecrets(ctx context.Context) bool {
 	return scope.HasCapability(types.APIKeyCapabilityManageTenantSettings)
 }
 
-// RoleCanViewTenantAPIKey is true for Owner+ only.
+// RoleCanViewTenantAPIKey is true for the owner (the only role).
 func RoleCanViewTenantAPIKey(role types.TenantRole) bool {
-	return role.HasPermission(types.TenantRoleOwner)
+	return role.IsValid()
 }
 
-// CanViewTenantAPIKey is true for Owner+ only.
+// CanViewTenantAPIKey is true for the owner (the only role).
 func CanViewTenantAPIKey(ctx context.Context) bool {
 	return RoleCanViewTenantAPIKey(RoleFromContext(ctx))
 }

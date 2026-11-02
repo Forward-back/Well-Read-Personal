@@ -184,8 +184,6 @@ func (s *knowledgeService) CreateKnowledgeFromFile(ctx context.Context,
 	if uid, ok := types.UserIDFromContext(ctx); ok && !types.IsSyntheticUserID(uid) {
 		knowledge.CreatedBy = uid
 	}
-	// 企业级元数据人工表单路（§2.14 赋值双路之一）
-	applyEnterpriseMetadataFromMap(knowledge, metadata)
 
 	if processOverrides != nil {
 		if err := knowledge.SetProcessOverrides(processOverrides); err != nil {
@@ -247,13 +245,7 @@ func (s *knowledgeService) CreateKnowledgeFromFile(ctx context.Context,
 	payloadBytes, err := json.Marshal(taskPayload)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to marshal document process task payload: %v", err)
-		s.markKnowledgeEnqueueFailed(ctx, knowledge)
-		recordKBActivity(ctx, s.audit, knowledge.TenantID, kbID, types.AuditActionKnowledgeCreated,
-			"knowledge", knowledge.ID, types.AuditOutcomeFailed, map[string]any{
-				"title": knowledge.Title, "source_type": "file", "file_type": knowledge.FileType,
-				"processing_status": "failed", "failure_stage": "enqueue",
-			})
-		// 即使入队失败，也返回knowledge，因为文件已保存
+		s.markKnowledgeEnqueueFailed(ctx, knowledge) // 即使入队失败，也返回knowledge，因为文件已保存
 		return knowledge, nil
 	}
 
@@ -265,20 +257,9 @@ func (s *knowledgeService) CreateKnowledgeFromFile(ctx context.Context,
 	info, err := s.task.Enqueue(task)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to enqueue document process task: %v", err)
-		s.markKnowledgeEnqueueFailed(ctx, knowledge)
-		recordKBActivity(ctx, s.audit, knowledge.TenantID, kbID, types.AuditActionKnowledgeCreated,
-			"knowledge", knowledge.ID, types.AuditOutcomeFailed, map[string]any{
-				"title": knowledge.Title, "source_type": "file", "file_type": knowledge.FileType,
-				"processing_status": "failed", "failure_stage": "enqueue",
-			})
-		// 即使入队失败，也返回knowledge，因为文件已保存
+		s.markKnowledgeEnqueueFailed(ctx, knowledge) // 即使入队失败，也返回knowledge，因为文件已保存
 		return knowledge, nil
 	}
-	recordKBActivity(ctx, s.audit, knowledge.TenantID, kbID, types.AuditActionKnowledgeCreated,
-		"knowledge", knowledge.ID, types.AuditOutcomeAccepted, map[string]any{
-			"title": knowledge.Title, "source_type": "file", "file_type": knowledge.FileType,
-			"processing_status": "pending", "task_id": info.ID, "trigger": kbActivityTrigger(ctx),
-		})
 	logger.Infof(
 		ctx,
 		"Enqueued document process task: id=%s queue=%s knowledge_id=%s",
@@ -447,11 +428,6 @@ func (s *knowledgeService) CreateKnowledgeFromURL(ctx context.Context,
 	if err != nil {
 		logger.Errorf(ctx, "Failed to marshal URL process task payload: %v", err)
 		s.markKnowledgeEnqueueFailed(ctx, knowledge)
-		recordKBActivity(ctx, s.audit, tenantID, kbID, types.AuditActionKnowledgeCreated,
-			"knowledge", knowledge.ID, types.AuditOutcomeFailed, map[string]any{
-				"title": knowledge.Title, "source_type": "url", "file_type": knowledge.FileType,
-				"processing_status": "failed", "failure_stage": "enqueue",
-			})
 		return knowledge, nil
 	}
 
@@ -464,18 +440,8 @@ func (s *knowledgeService) CreateKnowledgeFromURL(ctx context.Context,
 	if err != nil {
 		logger.Errorf(ctx, "Failed to enqueue URL process task: %v", err)
 		s.markKnowledgeEnqueueFailed(ctx, knowledge)
-		recordKBActivity(ctx, s.audit, tenantID, kbID, types.AuditActionKnowledgeCreated,
-			"knowledge", knowledge.ID, types.AuditOutcomeFailed, map[string]any{
-				"title": knowledge.Title, "source_type": "url", "file_type": knowledge.FileType,
-				"processing_status": "failed", "failure_stage": "enqueue",
-			})
 		return knowledge, nil
 	}
-	recordKBActivity(ctx, s.audit, tenantID, kbID, types.AuditActionKnowledgeCreated,
-		"knowledge", knowledge.ID, types.AuditOutcomeAccepted, map[string]any{
-			"title": knowledge.Title, "source_type": "url", "file_type": knowledge.FileType,
-			"processing_status": "pending", "task_id": info.ID, "trigger": kbActivityTrigger(ctx),
-		})
 	logger.Infof(ctx, "Enqueued URL process task: id=%s queue=%s knowledge_id=%s", info.ID, info.Queue, knowledge.ID)
 
 	logger.Infof(ctx, "Knowledge from URL created successfully, ID: %s", knowledge.ID)
@@ -694,11 +660,6 @@ func (s *knowledgeService) createKnowledgeFromFileURL(
 	if err != nil {
 		logger.Errorf(ctx, "Failed to marshal file URL process task payload: %v", err)
 		s.markKnowledgeEnqueueFailed(ctx, knowledge)
-		recordKBActivity(ctx, s.audit, tenantID, kbID, types.AuditActionKnowledgeCreated,
-			"knowledge", knowledge.ID, types.AuditOutcomeFailed, map[string]any{
-				"title": knowledge.Title, "source_type": "file_url", "file_type": knowledge.FileType,
-				"processing_status": "failed", "failure_stage": "enqueue",
-			})
 		return knowledge, nil
 	}
 
@@ -711,18 +672,8 @@ func (s *knowledgeService) createKnowledgeFromFileURL(
 	if err != nil {
 		logger.Errorf(ctx, "Failed to enqueue file URL process task: %v", err)
 		s.markKnowledgeEnqueueFailed(ctx, knowledge)
-		recordKBActivity(ctx, s.audit, tenantID, kbID, types.AuditActionKnowledgeCreated,
-			"knowledge", knowledge.ID, types.AuditOutcomeFailed, map[string]any{
-				"title": knowledge.Title, "source_type": "file_url", "file_type": knowledge.FileType,
-				"processing_status": "failed", "failure_stage": "enqueue",
-			})
 		return knowledge, nil
 	}
-	recordKBActivity(ctx, s.audit, tenantID, kbID, types.AuditActionKnowledgeCreated,
-		"knowledge", knowledge.ID, types.AuditOutcomeAccepted, map[string]any{
-			"title": knowledge.Title, "source_type": "file_url", "file_type": knowledge.FileType,
-			"processing_status": "pending", "task_id": info.ID, "trigger": kbActivityTrigger(ctx),
-		})
 	logger.Infof(ctx, "Enqueued file URL process task: id=%s queue=%s knowledge_id=%s", info.ID, info.Queue, knowledge.ID)
 
 	enqueueDataTableSummaryIfNeeded(ctx, s.task, tenantID, knowledge.ID, fileName, fileType, kb.SummaryModelID, kb.EmbeddingModelID)
@@ -848,30 +799,13 @@ func (s *knowledgeService) CreateKnowledgeFromManual(ctx context.Context,
 
 	if status == types.ManualKnowledgeStatusPublish {
 		logger.Infof(ctx, "Manual knowledge created, enqueuing async processing task, ID: %s", knowledge.ID)
-		taskID, err := s.enqueueManualProcessing(ctx, knowledge, cleanContent, false)
-		if err != nil {
+		if _, err := s.enqueueManualProcessing(ctx, knowledge, cleanContent, false); err != nil {
 			logger.Errorf(ctx, "Failed to enqueue manual processing task for new knowledge: %v", err)
 			// Non-fatal: mark as failed so user can retry
 			knowledge.ParseStatus = "failed"
 			knowledge.ErrorMessage = "Failed to enqueue processing task"
 			s.repo.UpdateKnowledge(ctx, knowledge)
-			recordKBActivity(ctx, s.audit, tenantID, kbID, types.AuditActionKnowledgeCreated,
-				"knowledge", knowledge.ID, types.AuditOutcomeFailed, map[string]any{
-					"title": knowledge.Title, "source_type": "manual", "status": status,
-					"processing_status": "failed", "failure_stage": "enqueue",
-				})
-		} else {
-			recordKBActivity(ctx, s.audit, tenantID, kbID, types.AuditActionKnowledgeCreated,
-				"knowledge", knowledge.ID, types.AuditOutcomeAccepted, map[string]any{
-					"title": knowledge.Title, "source_type": "manual", "status": status,
-					"processing_status": "pending", "task_id": taskID, "trigger": kbActivityTrigger(ctx),
-				})
 		}
-	} else {
-		recordKBActivity(ctx, s.audit, tenantID, kbID, types.AuditActionKnowledgeCreated,
-			"knowledge", knowledge.ID, types.AuditOutcomeSuccess, map[string]any{
-				"title": knowledge.Title, "source_type": "manual", "status": status,
-			})
 	}
 
 	return knowledge, nil
@@ -940,10 +874,6 @@ func (s *knowledgeService) createKnowledgeFromPassageInternal(ctx context.Contex
 	if syncMode {
 		logger.Info(ctx, "Processing passage synchronously")
 		s.processDocumentFromPassage(ctx, kb, knowledge, safePassages)
-		recordKBActivity(ctx, s.audit, knowledge.TenantID, kbID, types.AuditActionKnowledgeCreated,
-			"knowledge", knowledge.ID, types.AuditOutcomeSuccess, map[string]any{
-				"title": knowledge.Title, "source_type": "passage", "processing_status": knowledge.ParseStatus,
-			})
 		logger.Infof(ctx, "Knowledge from passage created successfully (sync), ID: %s", knowledge.ID)
 	} else {
 		// Enqueue passage processing task to Asynq
@@ -976,13 +906,7 @@ func (s *knowledgeService) createKnowledgeFromPassageInternal(ctx context.Contex
 		payloadBytes, err := json.Marshal(taskPayload)
 		if err != nil {
 			logger.Errorf(ctx, "Failed to marshal passage process task payload: %v", err)
-			s.markKnowledgeEnqueueFailed(ctx, knowledge)
-			recordKBActivity(ctx, s.audit, knowledge.TenantID, kbID, types.AuditActionKnowledgeCreated,
-				"knowledge", knowledge.ID, types.AuditOutcomeFailed, map[string]any{
-					"title": knowledge.Title, "source_type": "passage",
-					"processing_status": "failed", "failure_stage": "enqueue",
-				})
-			// 即使入队失败，也返回knowledge
+			s.markKnowledgeEnqueueFailed(ctx, knowledge) // 即使入队失败，也返回knowledge
 			return knowledge, nil
 		}
 
@@ -995,18 +919,8 @@ func (s *knowledgeService) createKnowledgeFromPassageInternal(ctx context.Contex
 		if err != nil {
 			logger.Errorf(ctx, "Failed to enqueue passage process task: %v", err)
 			s.markKnowledgeEnqueueFailed(ctx, knowledge)
-			recordKBActivity(ctx, s.audit, knowledge.TenantID, kbID, types.AuditActionKnowledgeCreated,
-				"knowledge", knowledge.ID, types.AuditOutcomeFailed, map[string]any{
-					"title": knowledge.Title, "source_type": "passage",
-					"processing_status": "failed", "failure_stage": "enqueue",
-				})
 			return knowledge, nil
 		}
-		recordKBActivity(ctx, s.audit, knowledge.TenantID, kbID, types.AuditActionKnowledgeCreated,
-			"knowledge", knowledge.ID, types.AuditOutcomeAccepted, map[string]any{
-				"title": knowledge.Title, "source_type": "passage", "processing_status": "pending",
-				"task_id": info.ID, "trigger": kbActivityTrigger(ctx),
-			})
 		logger.Infof(ctx, "Enqueued passage process task: id=%s queue=%s knowledge_id=%s", info.ID, info.Queue, knowledge.ID)
 		logger.Infof(ctx, "Knowledge from passage created successfully, ID: %s", knowledge.ID)
 	}
@@ -1094,10 +1008,6 @@ func (s *knowledgeService) UpdateManualKnowledge(ctx context.Context,
 			return nil, err
 		}
 		s.bindContentResources(ctx, tenantID, existing.ID, cleanContent)
-		recordKBActivity(ctx, s.audit, tenantID, existing.KnowledgeBaseID, types.AuditActionKnowledgeUpdated,
-			"knowledge", existing.ID, types.AuditOutcomeSuccess, map[string]any{
-				"title": existing.Title, "status": status,
-			})
 		return existing, nil
 	}
 
@@ -1116,25 +1026,15 @@ func (s *knowledgeService) UpdateManualKnowledge(ctx context.Context,
 	}
 
 	logger.Infof(ctx, "Manual knowledge updated, enqueuing async processing task, ID: %s", existing.ID)
-	taskID, err := s.enqueueManualProcessing(ctx, existing, cleanContent, true)
+	_, err = s.enqueueManualProcessing(ctx, existing, cleanContent, true)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to enqueue manual processing task: %v", err)
 		// Non-fatal: mark as failed so user can retry
 		existing.ParseStatus = "failed"
 		existing.ErrorMessage = "Failed to enqueue processing task"
 		s.repo.UpdateKnowledge(ctx, existing)
-		recordKBActivity(ctx, s.audit, tenantID, existing.KnowledgeBaseID, types.AuditActionKnowledgeUpdated,
-			"knowledge", existing.ID, types.AuditOutcomeFailed, map[string]any{
-				"title": existing.Title, "status": status,
-				"processing_status": "failed", "failure_stage": "enqueue",
-			})
 		return nil, werrors.NewInternalServerError("Failed to submit processing task")
 	}
-	recordKBActivity(ctx, s.audit, tenantID, existing.KnowledgeBaseID, types.AuditActionKnowledgeUpdated,
-		"knowledge", existing.ID, types.AuditOutcomeAccepted, map[string]any{
-			"title": existing.Title, "status": status, "processing_status": "pending",
-			"task_id": taskID, "trigger": kbActivityTrigger(ctx),
-		})
 	return existing, nil
 }
 

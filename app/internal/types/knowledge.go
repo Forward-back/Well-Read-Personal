@@ -121,10 +121,6 @@ type KnowledgeListFilter struct {
 	// descendants, computed by the folder service). Non-empty wins over
 	// FolderPath/FolderScope.
 	FolderIDs []string
-	// ACLActive true means AllowedKnowledgeIDs is authoritative; empty list
-	// means the caller has no readable documents in this KB.
-	ACLActive           bool
-	AllowedKnowledgeIDs []string
 }
 
 // Knowledge represents a knowledge entity in the system.
@@ -201,13 +197,6 @@ type Knowledge struct {
 	DocNumber   string `json:"doc_number"   gorm:"type:varchar(100);index"`
 	DocDate     string `json:"doc_date"     gorm:"type:varchar(50)"`
 	ProductName string `json:"product_name" gorm:"type:varchar(100)"`
-	// 企业级元数据（§2.14 生命周期/密级/部门，迁移 000098；赋值=人工表单+LLM 异步抽取）
-	LifecycleStatus string `json:"lifecycle_status" gorm:"type:varchar(20);default:'effective'"`
-	EffectiveDate   string `json:"effective_date"   gorm:"type:varchar(50)"`
-	ExpiryDate      string `json:"expiry_date"      gorm:"type:varchar(50)"`
-	SupersededBy    string `json:"superseded_by"    gorm:"type:varchar(100)"`
-	Sensitivity     string `json:"sensitivity"      gorm:"type:varchar(20);default:'internal'"`
-	Department      string `json:"department"       gorm:"type:varchar(100)"`
 	// CustomMetadata is user-authored descriptive metadata. It is deliberately
 	// separate from Metadata, which contains internal ingestion state and IDs.
 	CustomMetadata JSON `json:"custom_metadata" gorm:"type:json;not null"`
@@ -527,33 +516,4 @@ type KnowledgeCheckParams struct {
 	Passages []string
 	// Knowledge type
 	Type string
-}
-
-// KnowledgeCustomFieldDef is one row of knowledge_custom_field_defs (§2.14 维度 D).
-// tenant_id=0 rows are global defaults; per-tenant rows with the same name
-// override them. The "department" row carries the fixed-column enum values.
-type KnowledgeCustomFieldDef struct {
-	ID          string `json:"id" gorm:"type:varchar(36);primaryKey"`
-	TenantID    uint64 `json:"tenant_id" gorm:"column:tenant_id;not null;default:0"`
-	Name        string `json:"name" gorm:"type:varchar(100);not null"`
-	FieldType   string `json:"field_type" gorm:"type:varchar(20);not null;default:'string'"`
-	Options     JSON   `json:"options" gorm:"type:json"`
-	Description string `json:"description" gorm:"type:varchar(500)"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
-}
-
-// KnowledgeLifecycleRequest changes one document's lifecycle status. Status is
-// effective|expired|draft; optional fields are only written when provided.
-type KnowledgeLifecycleRequest struct {
-	Status        string `json:"status"`
-	EffectiveDate string `json:"effective_date"`
-	ExpiryDate    string `json:"expiry_date"`
-	SupersededBy  string `json:"superseded_by"`
-	Reason        string `json:"reason"`
-}
-
-// TableName specifies the database table name
-func (KnowledgeCustomFieldDef) TableName() string {
-	return "knowledge_custom_field_defs"
 }

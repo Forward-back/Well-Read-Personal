@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"gaze/internal/application/access"
 	"gaze/internal/types"
 	"gaze/internal/types/interfaces"
 )
@@ -165,17 +164,6 @@ func TestUpdateDocumentChunkPreservesGeneratedQuestionsAcrossRevision(t *testing
 		kbRepository:    editableChunkKBRepo{},
 	}
 	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1))
-	ctx = (&access.KBAccess{
-		KnowledgeBase: &types.KnowledgeBase{
-			ID:       "kb",
-			TenantID: 1,
-		},
-		Caller:            types.CallerFromContext(ctx),
-		EffectiveTenantID: 1,
-		Permission:        types.OrgRoleEditor,
-	}).Context(
-		ctx,
-	)
 	newContent := "new body"
 
 	updated, err := service.UpdateDocumentChunk(ctx, "chunk", &newContent, nil, nil)

@@ -7,10 +7,10 @@ import (
 
 func TestTaskInitiatorRoundTrip(t *testing.T) {
 	requestCtx := context.WithValue(context.Background(), UserIDContextKey, "user-1")
-	requestCtx = context.WithValue(requestCtx, TenantRoleContextKey, TenantRoleAdmin)
+	requestCtx = context.WithValue(requestCtx, TenantRoleContextKey, TenantRoleOwner)
 
 	initiator := TaskInitiatorFromContext(requestCtx)
-	if initiator.UserID != "user-1" || initiator.Role != TenantRoleAdmin {
+	if initiator.UserID != "user-1" || initiator.Role != TenantRoleOwner {
 		t.Fatalf("TaskInitiatorFromContext() = %#v", initiator)
 	}
 
@@ -18,7 +18,7 @@ func TestTaskInitiatorRoundTrip(t *testing.T) {
 	if userID, ok := UserIDFromContext(workerCtx); !ok || userID != "user-1" {
 		t.Fatalf("restored user = %q, %v", userID, ok)
 	}
-	if role := TenantRoleFromContext(workerCtx); role != TenantRoleAdmin {
+	if role := TenantRoleFromContext(workerCtx); role != TenantRoleOwner {
 		t.Fatalf("restored role = %q", role)
 	}
 }

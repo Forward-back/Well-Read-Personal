@@ -57,9 +57,11 @@ func main() {
 	// Build dependency injection container
 	c := container.BuildContainer(runtime.GetContainer())
 
-	// One-shot bootstrap hooks (e.g. promote env-named user to system
-	// admin). Best-effort: never aborts startup — see bootstrap.go.
-	runStartupBootstrap(c)
+	// Owner bootstrap is fail-fast: a deployment without a usable owner
+	// account would serve a locked instance — see bootstrap.go.
+	if err := runStartupBootstrap(c); err != nil {
+		logger.Fatalf(context.Background(), "[bootstrap] %v", err)
+	}
 
 	// Run application
 	err := c.Invoke(func(

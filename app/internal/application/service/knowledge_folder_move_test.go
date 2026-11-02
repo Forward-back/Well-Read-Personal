@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"gaze/internal/application/access"
 	"gaze/internal/types"
 	"gaze/internal/types/interfaces"
 	"github.com/stretchr/testify/assert"
@@ -41,18 +40,7 @@ func (r *folderMoveRepoStub) RenameKnowledgeFolderPath(
 }
 
 func folderMoveContext() context.Context {
-	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1))
-	return (&access.KBAccess{
-		KnowledgeBase: &types.KnowledgeBase{
-			ID:       "kb-1",
-			TenantID: 1,
-		},
-		Caller:            types.CallerFromContext(ctx),
-		EffectiveTenantID: 1,
-		Permission:        types.OrgRoleEditor,
-	}).Context(
-		ctx,
-	)
+	return context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1))
 }
 
 func TestMoveKnowledgeToFolderNormalizesDestination(t *testing.T) {

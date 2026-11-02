@@ -47,27 +47,19 @@ func runtimeMayBypassAdminConsoleRead(
 	}
 }
 
-// loadSessionForRead loads a session honoring the caller's per-user scope, with
-// an Admin+ fallback that additionally permits reading tenant channel sessions
-// (API-key, IM, and embed) from the Web console. Non-admin callers must not
-// open channel-managed rows even when legacy empty user_id scope would match.
-// Write paths keep the strict scope and must not use this helper.
+// loadSessionForRead loads a session honoring the caller's per-user scope. The
+// personal edition has one owner, so channel-managed sessions (API-key, IM,
+// embed) remain readable from the Web console. Write paths keep the strict
+// owner scope and must not use this helper.
 func loadSessionForRead(
 	ctx context.Context,
 	repo interfaces.SessionRepository,
 	tenantID uint64,
 	ownerID, sessionID string,
 ) (*types.Session, error) {
-	isAdmin := types.TenantRoleFromContext(ctx).HasPermission(types.TenantRoleAdmin)
-
 	session, err := repo.Get(ctx, tenantID, ownerID, sessionID)
 	if err == nil {
 		imPlatform, _ := repo.GetIMPlatform(ctx, tenantID, sessionID)
-		if types.SessionRequiresAdminConsoleRead(session, imPlatform) &&
-			!isAdmin &&
-			!runtimeMayBypassAdminConsoleRead(ctx, session, imPlatform) {
-			return nil, apperrors.ErrSessionNotFound
-		}
 		if imPlatform != "" {
 			session.IMPlatform = imPlatform
 		}
@@ -75,9 +67,6 @@ func loadSessionForRead(
 	}
 	if !stderrors.Is(err, apperrors.ErrSessionNotFound) {
 		return session, err
-	}
-	if !isAdmin {
-		return nil, err
 	}
 	s, e := repo.GetByID(ctx, tenantID, sessionID)
 	if e != nil {
@@ -114,7 +103,6 @@ type sessionService struct {
 	chunkService          interfaces.ChunkService                // Service for chunk operations
 	webSearchStateRepo    interfaces.WebSearchStateService       // Service for web search state
 	webSearchProviderRepo interfaces.WebSearchProviderRepository // Repository for web search provider entities
-	kbShareService        interfaces.KBShareService              // Service for KB sharing operations
 	suggestionRepo        interfaces.MessageSuggestionRepository
 	sandboxMgr            sandbox.Manager // Default sandbox backend; used to reclaim per-session MicroVMs on delete
 	sandboxResolver       sandbox.TenantSandboxResolver
@@ -126,8 +114,7 @@ type sessionService struct {
 	// TenantSkillService because that service depends on this one.
 	sandboxConfigRepo repository.TenantSandboxConfigRepository
 	tenantSkillRepo   repository.TenantSkillRepository
-	ragEngine         engine.RAGEngine // Retrieval/generation engine (YLSW)
-	aclService        interfaces.KBAclService
+	ragEngine         engine.RAGEngine                  // Retrieval/generation engine (YLSW)
 	docVersions       interfaces.DocumentVersionService // Citation version binding
 }
 
@@ -143,7 +130,6 @@ func NewSessionService(cfg *config.Config,
 	agentService interfaces.AgentService,
 	webSearchStateRepo interfaces.WebSearchStateService,
 	webSearchProviderRepo interfaces.WebSearchProviderRepository,
-	kbShareService interfaces.KBShareService,
 	suggestionRepo interfaces.MessageSuggestionRepository,
 	sandboxMgr sandbox.Manager,
 	sandboxResolver sandbox.TenantSandboxResolver,
@@ -153,7 +139,6 @@ func NewSessionService(cfg *config.Config,
 	sandboxConfigRepo repository.TenantSandboxConfigRepository,
 	tenantSkillRepo repository.TenantSkillRepository,
 	ragEngine engine.RAGEngine,
-	aclService interfaces.KBAclService,
 	docVersions interfaces.DocumentVersionService,
 ) interfaces.SessionService {
 	return &sessionService{
@@ -168,7 +153,6 @@ func NewSessionService(cfg *config.Config,
 		agentService:          agentService,
 		webSearchStateRepo:    webSearchStateRepo,
 		webSearchProviderRepo: webSearchProviderRepo,
-		kbShareService:        kbShareService,
 		suggestionRepo:        suggestionRepo,
 		sandboxMgr:            sandboxMgr,
 		sandboxResolver:       sandboxResolver,
@@ -178,7 +162,6 @@ func NewSessionService(cfg *config.Config,
 		sandboxConfigRepo:     sandboxConfigRepo,
 		tenantSkillRepo:       tenantSkillRepo,
 		ragEngine:             ragEngine,
-		aclService:            aclService,
 		docVersions:           docVersions,
 	}
 }
@@ -336,16 +319,9 @@ func (s *sessionService) ListSessions(
 		query = &types.SessionListQuery{}
 	}
 	query.TenantID = types.MustTenantIDFromContext(ctx)
-	// API / IM / embed source filters are tenant-wide admin views over channel
-	// traffic. Gate them behind Admin+ and drop the per-user owner scope so an
-	// Owner/admin can observe sessions that are otherwise isolated per key,
-	// visitor, or IM identity; everyone else stays scoped to their own principal.
+	// API / IM / embed source filters list every channel session instead of
+	// applying the per-user owner scope: the personal edition has one owner.
 	if types.SessionListSourceRequiresAdmin(query.Source) {
-		if !types.TenantRoleFromContext(ctx).HasPermission(types.TenantRoleAdmin) {
-			return nil, apperrors.NewForbiddenError(
-				"listing channel sessions requires tenant admin or owner role",
-			)
-		}
 		query.UserID = ""
 	} else if uid := types.SessionOwnerIDFromContext(ctx); uid != "" {
 		query.UserID = uid

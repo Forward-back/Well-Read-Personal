@@ -435,9 +435,9 @@ func TestCaptureSkillEnvSkipsUndeclaredAndReservedNames(t *testing.T) {
 
 	require.NoError(t, svc.CaptureSkillEnv(
 		userEnvCtx(userEnvTenantID, "alice"), "cfg-1", "pdf-tools", map[string]string{
-			"USER_TOKEN":        "keep-me",
-			"INVENTED":          "no",
-			"PATH":              "/bin",
+			"USER_TOKEN":     "keep-me",
+			"INVENTED":       "no",
+			"PATH":           "/bin",
 			"GAZE_SKILL_DIR": "no",
 		}))
 

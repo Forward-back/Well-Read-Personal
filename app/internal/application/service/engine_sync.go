@@ -31,7 +31,6 @@ type EngineSyncService struct {
 	kbService     interfaces.KnowledgeBaseService
 	tenantRepo    interfaces.TenantRepository
 	ragEngine     engine.RAGEngine
-	audit         interfaces.AuditLogService
 
 	cron    *cron.Cron
 	mu      sync.Mutex
@@ -46,7 +45,6 @@ func NewEngineSyncService(
 	kbService interfaces.KnowledgeBaseService,
 	tenantRepo interfaces.TenantRepository,
 	ragEngine engine.RAGEngine,
-	audit interfaces.AuditLogService,
 ) *EngineSyncService {
 	return &EngineSyncService{
 		knowledgeRepo: knowledgeRepo,
@@ -54,7 +52,6 @@ func NewEngineSyncService(
 		kbService:     kbService,
 		tenantRepo:    tenantRepo,
 		ragEngine:     ragEngine,
-		audit:         audit,
 		running:       make(map[string]struct{}),
 		cron: cron.New(cron.WithSeconds(), cron.WithChain(
 			cron.Recover(cron.DefaultLogger),
@@ -71,9 +68,6 @@ func (s *EngineSyncService) TriggerKBSync(
 	kb, err := s.kbService.GetKnowledgeBaseByID(ctx, kbID)
 	if err != nil || kb == nil {
 		return 0, werrors.NewNotFoundError("知识库不存在")
-	}
-	if !canModerateDoc(ctx, kb) {
-		return 0, werrors.NewForbiddenError("仅管理员可触发文档重推")
 	}
 
 	targets := make([]*types.Knowledge, 0, len(knowledgeIDs))
@@ -182,44 +176,26 @@ func (s *EngineSyncService) PublishKnowledgeChange(ctx context.Context, tenantID
 	}
 }
 
-// Start registers the daily sweeps: index resync (tenant opt-in) and the
-// lifecycle date sweep. Kill switches: GAZE_ENGINE_SYNC_CRON_ENABLED=0,
-// GAZE_LIFECYCLE_SWEEP_ENABLED=0.
+// Start registers the daily index resync sweep. Kill switch:
+// GAZE_ENGINE_SYNC_CRON_ENABLED=0.
 func (s *EngineSyncService) Start(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.started {
 		return nil
 	}
-	registered := false
-	if engineSyncCronEnabled() {
-		if _, err := s.cron.AddFunc("0 30 3 * * *", func() {
-			s.runDaily(context.Background())
-		}); err != nil {
-			return err
-		}
-		registered = true
-	} else {
+	if !engineSyncCronEnabled() {
 		logger.Infof(ctx, "[EngineSync] daily sweep disabled via GAZE_ENGINE_SYNC_CRON_ENABLED=false")
-	}
-	if lifecycleSweepEnabled() {
-		if _, err := s.cron.AddFunc("0 15 3 * * *", func() {
-			if _, sweepErr := s.RunLifecycleSweep(context.Background()); sweepErr != nil {
-				logger.Warnf(context.Background(), "[Lifecycle] daily sweep failed: %v", sweepErr)
-			}
-		}); err != nil {
-			return err
-		}
-		registered = true
-	} else {
-		logger.Infof(ctx, "[Lifecycle] scheduled sweep disabled via GAZE_LIFECYCLE_SWEEP_ENABLED=false")
-	}
-	if !registered {
 		return nil
+	}
+	if _, err := s.cron.AddFunc("0 30 3 * * *", func() {
+		s.runDaily(context.Background())
+	}); err != nil {
+		return err
 	}
 	s.cron.Start()
 	s.started = true
-	logger.Infof(ctx, "[EngineSync] daily sweeps registered (index 03:30, lifecycle 03:15)")
+	logger.Infof(ctx, "[EngineSync] daily sweep registered (index 03:30)")
 	return nil
 }
 
@@ -388,96 +364,4 @@ func engineSyncCronEnabled() bool {
 		return false
 	}
 	return true
-}
-
-// lifecycleSweepEnabled mirrors the other kill switches: default on.
-func lifecycleSweepEnabled() bool {
-	v := strings.TrimSpace(os.Getenv("GAZE_LIFECYCLE_SWEEP_ENABLED"))
-	if v == "" {
-		return true
-	}
-	switch strings.ToLower(v) {
-	case "0", "false", "off", "no":
-		return false
-	}
-	return true
-}
-
-// lifecycleDate parses the leading date of a stored metadata value. The column
-// is free text, so unparseable values simply never trigger a transition.
-func lifecycleDate(value string) (time.Time, bool) {
-	v := strings.TrimSpace(value)
-	if len(v) < 10 {
-		return time.Time{}, false
-	}
-	v = v[:10]
-	for _, layout := range []string{"2006-01-02", "2006/01/02", "2006.01.02"} {
-		if parsed, err := time.ParseInLocation(layout, v, time.Local); err == nil {
-			return parsed, true
-		}
-	}
-	return time.Time{}, false
-}
-
-// RunLifecycleSweep advances draft→effective (effective_date reached) and
-// effective→expired (expiry_date passed). Transitions are forward-only:
-// expired documents never auto-reactivate, that stays a manager action.
-func (s *EngineSyncService) RunLifecycleSweep(ctx context.Context) (int, error) {
-	rows, err := s.knowledgeRepo.ListLifecycleScheduled(ctx)
-	if err != nil {
-		return 0, err
-	}
-	if len(rows) == 0 {
-		return 0, nil
-	}
-	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
-	changed := 0
-	for _, knowledge := range rows {
-		if knowledge == nil {
-			continue
-		}
-		next := ""
-		switch knowledge.LifecycleStatus {
-		case "draft":
-			if due, ok := lifecycleDate(knowledge.EffectiveDate); ok && !due.After(today) {
-				next = "effective"
-			}
-		case "effective":
-			if due, ok := lifecycleDate(knowledge.ExpiryDate); ok && due.Before(today) {
-				next = "expired"
-			}
-		}
-		if next == "" {
-			continue
-		}
-		previous := knowledge.LifecycleStatus
-		if err := s.knowledgeRepo.UpdateKnowledgeColumns(ctx, knowledge.ID, map[string]interface{}{
-			"lifecycle_status": next,
-			"updated_at":       now,
-		}); err != nil {
-			logger.Warnf(ctx, "[Lifecycle] update %s failed: %v", knowledge.ID, err)
-			continue
-		}
-		knowledge.LifecycleStatus = next
-		knowledge.UpdatedAt = now
-		if s.ragEngine != nil {
-			if err := s.ragEngine.UpdateDocumentMetadata(
-				ctx, knowledge.KnowledgeBaseID, knowledge.ID, buildEngineDocumentMetadata(knowledge),
-			); err != nil {
-				logger.Warnf(ctx, "[Lifecycle] metadata update failed for %s, falling back: %v", knowledge.ID, err)
-				s.ScheduleKnowledgeSync(ctx, knowledge.TenantID, knowledge.ID)
-			}
-		}
-		recordKBActivity(ctx, s.audit, knowledge.TenantID, knowledge.KnowledgeBaseID,
-			types.AuditActionKnowledgeLifecycleChanged, "knowledge", knowledge.ID,
-			types.AuditOutcomeSuccess, map[string]any{
-				"from": previous, "to": next, "trigger": "scheduled",
-			})
-		changed++
-	}
-	if changed > 0 {
-		logger.Infof(ctx, "[Lifecycle] scheduled sweep advanced %d documents", changed)
-	}
-	return changed, nil
 }
