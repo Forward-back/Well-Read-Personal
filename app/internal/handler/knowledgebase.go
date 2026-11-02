@@ -333,7 +333,7 @@ func (h *KnowledgeBaseHandler) HybridSearch(c *gin.Context) {
 	if topK <= 0 {
 		topK = types.DefaultRetrievalTopK
 	}
-	results, err := h.ragEngine.Search(c.Request.Context(), []string{req.QueryText}, []string{id}, types.TenantWideScope(), topK)
+	results, err := h.ragEngine.Search(c.Request.Context(), []string{req.QueryText}, []string{id}, topK)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, nil)
 		c.Error(apperrors.NewInternalServerError(err.Error()))

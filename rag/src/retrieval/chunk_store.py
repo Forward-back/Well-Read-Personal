@@ -21,7 +21,7 @@ class ChunkStore:
         self._parent_of: dict = {}         # chunk_id -> parent 行（启动时反查好）
         self._children_by_doc: dict = {}   # document_id -> [(start, end, text), ...] 按 start 排序
         self._child_pos: dict = {}         # (document_id, position_start) -> chunk_id
-        self._doc_meta: dict = {}          # document_id -> 企业级元数据(§2.14 生命周期/密级/部门)
+        self._doc_meta: dict = {}          # document_id -> 文档级元数据（生命周期/来源）
         self._summaries: dict = {}         # document_id -> doc_summary（多步题上下文前置）
         self._source_chunk_id: dict = {}   # ylsw chunk_id -> app chunk id（数据归属映射）
         self._load(pool)
@@ -59,7 +59,7 @@ class ChunkStore:
 
                 cur.execute(
                     "SELECT id, lifecycle_status, effective_date, expiry_date, "
-                    "sensitivity, department, source_doc_id, knowledge_base_id "
+                    "source_doc_id, knowledge_base_id "
                     "FROM documents"
                 )
                 doc_meta = cur.fetchall()
@@ -84,8 +84,6 @@ class ChunkStore:
                 "lifecycle_status": row.get("lifecycle_status") or "effective",
                 "effective_date": row.get("effective_date"),
                 "expiry_date": row.get("expiry_date"),
-                "sensitivity": row.get("sensitivity") or "internal",
-                "department": row.get("department") or "",
                 "source_doc_id": row.get("source_doc_id") or "",
                 "knowledge_base_id": row.get("knowledge_base_id") or "",
             }
@@ -133,7 +131,7 @@ class ChunkStore:
 
     # ── 查询 ──────────────────────────────────────────
     def doc_meta(self, document_id) -> dict:
-        """document_id → 企业级元数据（生命周期/密级/部门）；未知返回空 dict。"""
+        """document_id → 文档级元数据（生命周期/来源）；未知返回空 dict。"""
         return self._doc_meta.get(document_id) or {}
 
     def patch_doc_meta(self, document_id, **fields) -> bool:
@@ -142,7 +140,7 @@ class ChunkStore:
         if meta is None:
             return False
         for key in ("lifecycle_status", "effective_date", "expiry_date",
-                    "sensitivity", "department", "source_doc_id", "knowledge_base_id"):
+                    "source_doc_id", "knowledge_base_id"):
             if key in fields and fields[key] is not None:
                 meta[key] = fields[key]
         return True

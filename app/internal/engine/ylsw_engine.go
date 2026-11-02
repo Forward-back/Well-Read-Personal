@@ -78,15 +78,11 @@ func (e *ylswEngine) StreamChat(
 	ctx context.Context,
 	question string,
 	knowledgeBaseIDs []string,
-	aclScope *types.ACLScope,
 	skill *types.SkillInjection,
 	onDelta func(string),
 	onReferences func([]*types.SearchResult),
 	onStage func(stage string, counts map[string]int, tMs int64, detail map[string]interface{}),
 ) (string, []*types.SearchResult, error) {
-	if !aclScope.Valid() {
-		return "", nil, fmt.Errorf("retrieval acl scope is missing or invalid")
-	}
 	baseURL := YLSWBaseURL()
 	if baseURL == "" {
 		return "", nil, fmt.Errorf("YLSW_BASE_URL is not configured")
@@ -96,7 +92,6 @@ func (e *ylswEngine) StreamChat(
 		"question":           question,
 		"knowledge_base_ids": knowledgeBaseIDs,
 		"knowledge_base_id":  firstOrEmpty(knowledgeBaseIDs),
-		"acl_scope":          aclScope,
 		"skill":              skill,
 	})
 	if err != nil {
@@ -154,7 +149,7 @@ func (e *ylswEngine) StreamChat(
 				}
 			}
 		case "references":
-			refs = filterResultsByScope(mapReferences(evt.References), aclScope)
+			refs = mapReferences(evt.References)
 			if onReferences != nil {
 				onReferences(refs)
 			}
@@ -163,7 +158,7 @@ func (e *ylswEngine) StreamChat(
 				onStage(evt.Stage, evt.Counts, evt.TMs, evt.Detail)
 			}
 		case "done":
-			refs = filterResultsByScope(mapReferences(evt.References), aclScope)
+			refs = mapReferences(evt.References)
 		case "error":
 			return answer.String(), refs, fmt.Errorf("YLSW engine error: %s", evt.Message)
 		}
@@ -172,33 +167,6 @@ func (e *ylswEngine) StreamChat(
 		return answer.String(), refs, fmt.Errorf("read YLSW stream: %w", err)
 	}
 	return answer.String(), refs, nil
-}
-
-func filterResultsByScope(results []*types.SearchResult, scope *types.ACLScope) []*types.SearchResult {
-	if scope == nil || scope.Mode == types.ACLScopeAll {
-		return results
-	}
-	allowed := make(map[string]struct{}, len(scope.DocIDs))
-	for _, id := range scope.DocIDs {
-		allowed[id] = struct{}{}
-	}
-	kept := make([]*types.SearchResult, 0, len(results))
-	for _, result := range results {
-		if result == nil {
-			continue
-		}
-		if scope.Mode == types.ACLScopeDeny {
-			if _, denied := allowed[result.KnowledgeID]; denied {
-				continue
-			}
-			kept = append(kept, result)
-			continue
-		}
-		if _, ok := allowed[result.KnowledgeID]; ok {
-			kept = append(kept, result)
-		}
-	}
-	return kept
 }
 
 func mapReferences(ylswRefs []ylswReference) []*types.SearchResult {
@@ -269,10 +237,9 @@ func (e *ylswEngine) Search(
 	ctx context.Context,
 	queries []string,
 	knowledgeBaseIDs []string,
-	aclScope *types.ACLScope,
 	topK int,
 ) ([]*types.SearchResult, error) {
-	return e.search(ctx, queries, knowledgeBaseIDs, nil, aclScope, topK)
+	return e.search(ctx, queries, knowledgeBaseIDs, nil, topK)
 }
 
 // SearchDocuments restricts retrieval to the selected app-side documents.
@@ -281,10 +248,9 @@ func (e *ylswEngine) SearchDocuments(
 	queries []string,
 	knowledgeBaseIDs []string,
 	documentIDs []string,
-	aclScope *types.ACLScope,
 	topK int,
 ) ([]*types.SearchResult, error) {
-	return e.search(ctx, queries, knowledgeBaseIDs, documentIDs, aclScope, topK)
+	return e.search(ctx, queries, knowledgeBaseIDs, documentIDs, topK)
 }
 
 func (e *ylswEngine) search(
@@ -292,12 +258,8 @@ func (e *ylswEngine) search(
 	queries []string,
 	knowledgeBaseIDs []string,
 	documentIDs []string,
-	aclScope *types.ACLScope,
 	topK int,
 ) ([]*types.SearchResult, error) {
-	if !aclScope.Valid() {
-		return nil, fmt.Errorf("retrieval acl scope is missing or invalid")
-	}
 	baseURL := YLSWBaseURL()
 	if baseURL == "" {
 		return nil, fmt.Errorf("YLSW_BASE_URL is not configured")
@@ -306,7 +268,6 @@ func (e *ylswEngine) search(
 	payloadMap := map[string]interface{}{
 		"queries":            queries,
 		"knowledge_base_ids": knowledgeBaseIDs,
-		"acl_scope":          aclScope,
 		"top_k":              topK,
 	}
 	if len(documentIDs) > 0 {
@@ -384,7 +345,7 @@ func (e *ylswEngine) search(
 			},
 		})
 	}
-	return filterResultsByScope(results, aclScope), nil
+	return results, nil
 }
 
 // IngestDocument pushes parsed markdown (or the raw file for xlsx) to the

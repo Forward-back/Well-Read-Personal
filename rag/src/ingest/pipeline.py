@@ -96,17 +96,16 @@ class DB:
                         source_doc_id: str = "", knowledge_base_id: str = "",
                         lifecycle_status: str = "effective",
                         effective_date: str = "", expiry_date: str = "",
-                        superseded_by: str = "", sensitivity: str = "internal",
-                        department: str = "", custom_metadata: dict | None = None) -> int:
+                        superseded_by: str = "", custom_metadata: dict | None = None) -> int:
         sql = """
             INSERT INTO documents (file_name, file_type, file_size, file_path,
                                    file_hash, doc_number, org_name, doc_date, doc_title,
                                    doc_type, product_name, source_doc_id, knowledge_base_id,
                                    lifecycle_status, effective_date, expiry_date,
-                                   superseded_by, sensitivity, department, custom_metadata,
+                                   superseded_by, custom_metadata,
                                    parse_status)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, 'parsing')
+                    %s, %s, %s, %s, %s, 'parsing')
         """
         file_hash = _compute_file_hash(os.path.join(
             os.path.dirname(DATA_DIR), file_path
@@ -130,8 +129,7 @@ class DB:
                 doc_type, product_name,
                 source_doc_id or None, knowledge_base_id or None,
                 lifecycle_status or "effective", eff_date, exp_date,
-                superseded_by or None, sensitivity or "internal",
-                department or None,
+                superseded_by or None,
                 json.dumps(custom_metadata, ensure_ascii=False) if custom_metadata else None,
             ))
             self.conn.commit()
@@ -157,15 +155,14 @@ class DB:
                      product_name: str = "", knowledge_base_id: str = "",
                      lifecycle_status: str = "effective",
                      effective_date: str = "", expiry_date: str = "",
-                     sensitivity: str = "internal", department: str = "",
                      source_chunk_id: str = "") -> int:
         sql = """
             INSERT INTO chunks (document_id, chunk_index, chunk_text, chunk_level,
                                 parent_chunk_id, keywords, position_start, position_end,
                                 org_name, doc_type, product_name, knowledge_base_id,
                                 lifecycle_status, effective_date, expiry_date,
-                                sensitivity, department, source_chunk_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                source_chunk_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         try:
             eff_date = _parse_date(effective_date) if effective_date else None
@@ -181,7 +178,7 @@ class DB:
                 parent_chunk_id, keywords, pos_start, pos_end,
                 org_name, doc_type, product_name, knowledge_base_id or None,
                 lifecycle_status or "effective", eff_date, exp_date,
-                sensitivity or "internal", department or None, source_chunk_id or None,
+                source_chunk_id or None,
             ))
             return cur.lastrowid
 

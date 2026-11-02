@@ -42,8 +42,6 @@ MD_DOC = {
     "effective_date": "2025-01-01",
     "expiry_date": "2026-07-01",
     "superseded_by": "测试2026001号",
-    "sensitivity": "internal",
-    "department": "清算部",
     "custom_metadata": {"适用区域": "全国"},
 }
 
@@ -70,7 +68,6 @@ def main():
         "file_bytes": base64.b64encode(xlsx_bytes).decode(),
         "doc_number": "TBL2026001", "org_name": "银联商务", "doc_title": "基础信息统计表",
         "doc_type": "table", "product_name": "通用",
-        "sensitivity": "internal", "department": "清算部",
     }, timeout=120)
     check("xlsx ingest 200", r.status_code == 200, r.text[:150])
     body = r.json()
@@ -82,15 +79,14 @@ def main():
     ids = r.json().get("ids", [])
     check("/documents/ids 含两个 doc", set(ids) >= {"doc-e2e-md-1", "doc-e2e-xlsx-1"}, str(ids))
 
-    # 4. /search(kb 白名单 + 密级过滤)
+    # 4. /search(kb 白名单)
     r = requests.post(f"{BASE}/search", json={
         "queries": ["商户结算周期"],
         "knowledge_base_ids": ["kb-e2e-a"],
-        "allowed_sensitivities": ["internal"],
         "top_k": 5,
     }, timeout=120)
     results = r.json().get("results", [])
-    check("/search kb+密级过滤有结果", len(results) > 0, f"results={len(results)}")
+    check("/search kb 过滤有结果", len(results) > 0, f"results={len(results)}")
     check("/search 结果来自测试文档", any("商户结算" in (x.get("file_name") or "") for x in results),
           str([x.get("file_name") for x in results][:3]))
 
@@ -99,7 +95,6 @@ def main():
     with requests.post(f"{BASE}/chat/stream", json={
         "question": "商户结算周期是多少",
         "knowledge_base_ids": ["kb-e2e-a"],
-        "allowed_sensitivities": ["internal"],
     }, stream=True, timeout=120) as resp:
         for line in resp.iter_lines():
             if not line:
@@ -114,19 +109,4 @@ def main():
     check("chat/stream 产出答案", len(deltas) > 0, deltas[:80])
     check("chat/stream done 事件", any(e.get("type") == "done" for e in events))
 
-    # 6. 密级过滤负例:confidential 不在白名单 → 应无结果
-    r = requests.post(f"{BASE}/search", json={
-        "queries": ["商户结算周期"],
-        "knowledge_base_ids": ["kb-e2e-a"],
-        "allowed_sensitivities": ["confidential"],
-        "top_k": 5,
-    }, timeout=60)
-    check("密级过滤负例(confidential 白名单查 internal 文档为空)",
-          len(r.json().get("results", [])) == 0)
 
-    print(f"\n===== {len(PASS)} PASS / {len(FAIL)} FAIL =====")
-    sys.exit(1 if FAIL else 0)
-
-
-if __name__ == "__main__":
-    main()

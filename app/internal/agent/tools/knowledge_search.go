@@ -237,7 +237,7 @@ func (t *KnowledgeSearchTool) Execute(ctx context.Context, args json.RawMessage)
 
 	// 检索统一走 YLSW 引擎（唯一检索引擎）：多查询合并去重 + RRF + 精排
 	// 由引擎完成，工具层不再做二次 rerank/MMR。
-	engineResults, err := t.ragEngine.Search(ctx, queries, kbIDs, types.TenantWideScope(), topK)
+	engineResults, err := t.ragEngine.Search(ctx, queries, kbIDs, topK)
 	if err != nil {
 		logger.Errorf(ctx, "[Tool][KnowledgeSearch] Engine search failed: %v", err)
 		return &types.ToolResult{

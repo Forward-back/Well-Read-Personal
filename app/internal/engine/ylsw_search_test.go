@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"gaze/internal/types"
 )
 
 func TestYLSWSearchDocumentsSendsDocumentIDs(t *testing.T) {
@@ -25,12 +23,9 @@ func TestYLSWSearchDocumentsSendsDocumentIDs(t *testing.T) {
 	defer server.Close()
 	t.Setenv("YLSW_BASE_URL", server.URL)
 
-	scope := &types.ACLScope{
-		Mode: types.ACLScopeAllow, DocIDs: []string{"doc1"}, Version: 1,
-	}
 	results, err := NewYLSWEngine().SearchDocuments(
 		context.Background(), []string{"退款期限"}, []string{"kb1"},
-		[]string{"doc1"}, scope, 5,
+		[]string{"doc1"}, 5,
 	)
 	if err != nil {
 		t.Fatalf("SearchDocuments: %v", err)

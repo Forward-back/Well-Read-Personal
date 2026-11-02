@@ -808,7 +808,7 @@ func (h *Handler) SearchKnowledge(c *gin.Context) {
 	// Pure retrieval through the YLSW engine (§2.15). Tag scopes and
 	// knowledge-ID filters are not supported by the engine and are ignored;
 	// the only frontend caller (GlobalCommandPalette) sends query + KB IDs.
-	searchResults, err := h.ragEngine.Search(ctx, []string{request.Query}, knowledgeBaseIDs, types.TenantWideScope(), types.DefaultRetrievalTopK)
+	searchResults, err := h.ragEngine.Search(ctx, []string{request.Query}, knowledgeBaseIDs, types.DefaultRetrievalTopK)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, nil)
 		c.Error(errors.NewInternalServerError(err.Error()))

@@ -40,9 +40,6 @@ type RetrievalAuditEvent struct {
 	SessionID        string
 	Query            string
 	KnowledgeBaseIDs []string
-	ScopeMode        string
-	ScopeVersion     int64
-	ScopeDocCount    int
 	HitDocumentIDs   []string
 	Decision         string
 	Error            string
@@ -66,7 +63,6 @@ type RAGEngine interface {
 		ctx context.Context,
 		question string,
 		knowledgeBaseIDs []string,
-		aclScope *types.ACLScope,
 		skill *types.SkillInjection,
 		onDelta func(string),
 		onReferences func([]*types.SearchResult),
@@ -80,7 +76,6 @@ type RAGEngine interface {
 		ctx context.Context,
 		queries []string,
 		knowledgeBaseIDs []string,
-		aclScope *types.ACLScope,
 		topK int,
 	) ([]*types.SearchResult, error)
 
@@ -92,7 +87,6 @@ type RAGEngine interface {
 		queries []string,
 		knowledgeBaseIDs []string,
 		documentIDs []string,
-		aclScope *types.ACLScope,
 		topK int,
 	) ([]*types.SearchResult, error)
 

@@ -54,7 +54,6 @@ def _kb_clause(kb_ids) -> str:
         return ""
     return " AND knowledge_base_id IN ('" + "','".join(ids) + "')"
 
-_SENSITIVITY_RANK = {"internal": 0, "confidential": 1}
 
 
 SQL_TABLE_TRIGGERS = {
@@ -875,7 +874,7 @@ class TextToSQLEngine:
         """执行 Text-to-SQL 查询：模板优先，LLM 生成兜底。
 
         kb_ids：KB 白名单行级作用域；None/空 = 全库。
-        Returns: {"sql": "...", "result": [...], "answer_hint": "...", "sensitivity": "..."} 或 None
+        Returns: {"sql": "...", "result": [...], "answer_hint": "..."} 或 None
         """
         prev = getattr(self._local, "kb_ids", None)
         self._local.kb_ids = [
@@ -1001,7 +1000,6 @@ class TextToSQLEngine:
                 "sql": sql,
                 "result": rows,
                 "answer_hint": hint,
-                "sensitivity": self._sql_sensitivity(sql),
             }
         except Exception as e:
             logger.warning(f"[SQL] 执行失败: {e} ({_ms()})")
@@ -1043,45 +1041,6 @@ class TextToSQLEngine:
             (k for k in SQL_TABLE_TRIGGERS if m and k in m.group(1)), None
         )
         return _strip_code_fences(sql), table_key
-
-    def _sql_sensitivity(self, sql: str) -> str:
-        """SQL 候选密级：所涉 tables_structured 行所属文档的最严格密级。"""
-        patterns = re.findall(
-            r"table_name\s*(=|LIKE)\s*'([^']+)'", sql or "", re.IGNORECASE
-        )
-        if not patterns:
-            return "internal"
-        ids = [k for k in self._current_kb_ids() if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", k)]
-        kb_cond = (
-            " AND t.knowledge_base_id IN ('" + "','".join(ids) + "')" if ids else ""
-        )
-        worst = 0
-        seen = set()
-        for op, name in patterns:
-            key = (op.upper(), name)
-            if key in seen:
-                continue
-            seen.add(key)
-            cond = "t.table_name LIKE %s" if op.upper() == "LIKE" else "t.table_name = %s"
-            q = (
-                "SELECT DISTINCT d.sensitivity FROM tables_structured t "
-                "JOIN documents d ON t.document_id = d.id "
-                "WHERE " + cond + kb_cond
-            )
-            try:
-                with self._lock:
-                    with self.conn.cursor() as cur:
-                        cur.execute(q, (name,))
-                        for (sens,) in cur.fetchall():
-                            if sens:
-                                worst = max(
-                                    worst,
-                                    _SENSITIVITY_RANK.get(str(sens).strip().lower(), 0),
-                                )
-            except Exception as e:
-                logger.warning(f"[SQL] 密级反查失败，按 internal 处理: {e}")
-                return "internal"
-        return "confidential" if worst >= 1 else "internal"
 
     def _call_llm_for_sql(self, prompt: str) -> str | None:
         """调 DeepSeek 生成 SQL。重试策略见 http_client。"""

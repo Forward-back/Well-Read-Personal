@@ -169,8 +169,6 @@ class FusionEngine:
             "lifecycle_status": item.get("lifecycle_status", ""),
             "effective_date": item.get("effective_date", ""),
             "expiry_date": item.get("expiry_date", ""),
-            "sensitivity": item.get("sensitivity", ""),
-            "department": item.get("department", ""),
             "position_start": item.get("position_start"),
             "position_end": item.get("position_end"),
         }
@@ -245,8 +243,6 @@ class FusionEngine:
                 "text": sql_results.get("answer_hint", ""),
                 "sql": sql_results.get("sql", ""),
                 "rows": sql_results.get("result", []),
-                # §2.14：SQL 候选密级=所涉表格所属文档最严格值（text_to_sql 反查）
-                "sensitivity": sql_results.get("sensitivity", ""),
             }
 
         ranked = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)

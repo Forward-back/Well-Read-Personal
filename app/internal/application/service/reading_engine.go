@@ -493,7 +493,6 @@ func (s *readingRunService) runReadingRound(
 	searchUsed := 0
 	reasoningParts := make([]string, 0, 2)
 	searchTraces := make([]readingSearchTrace, 0, readingSearchQueryCap)
-	semanticScope := s.readingSemanticScope(ctx, plan)
 	for iteration := 0; iteration < readingSearchIterations; iteration++ {
 		parsed, raw, reasoning, usage, err := s.callReadingRoundModel(ctx, model, messages, depth)
 		totalUsage += usage
@@ -524,7 +523,7 @@ func (s *readingRunService) runReadingRound(
 			go func(index int, query string) {
 				defer waitGroup.Done()
 				resultsByQuery[index] = s.searchReadingEvidenceMerged(
-					ctx, query, semanticScope, run, plan, docs, chunkInfo, chunkSection,
+					ctx, query, run, plan, docs, chunkInfo, chunkSection,
 				)
 			}(index, query)
 		}
@@ -612,7 +611,7 @@ func (s *readingRunService) runReadingRound(
 			query = text
 		}
 		results := s.searchReadingEvidenceMerged(
-			ctx, query, semanticScope, run, plan, docs, chunkInfo, chunkSection,
+			ctx, query, run, plan, docs, chunkInfo, chunkSection,
 		)
 		searchEvidence[query] = results
 		questionOrder[i].SearchQuery = query
@@ -1371,25 +1370,16 @@ func (s *readingRunService) searchReadingEvidence(
 	return out
 }
 
-func (s *readingRunService) readingSemanticScope(
-	ctx context.Context, plan *types.ReadingPlan,
-) *types.ACLScope {
-	if s.ragEngine == nil || plan == nil || strings.TrimSpace(plan.KnowledgeBaseID) == "" {
-		return nil
-	}
-	return types.TenantWideScope()
-}
-
 // searchReadingEvidenceMerged combines YLSW semantic retrieval with the local
 // keyword fallback. Semantic hits are capped and deduped by app chunk ID; if
 // YLSW is unavailable or returns chunks the app cannot map, keyword search
 // still answers within the selected documents.
 func (s *readingRunService) searchReadingEvidenceMerged(
-	ctx context.Context, query string, scope *types.ACLScope,
+	ctx context.Context, query string,
 	run *types.ReadingRun, plan *types.ReadingPlan,
 	docs []*readingDocument, chunkInfo map[string]*readingChunkInfo, chunkSection map[string]string,
 ) []types.ReadingEvidence {
-	semantic := s.semanticSearchSelectedDocs(ctx, query, scope, run, plan, chunkInfo, chunkSection)
+	semantic := s.semanticSearchSelectedDocs(ctx, query, run, plan, chunkInfo, chunkSection)
 	keyword := s.searchReadingEvidence(query, docs, chunkSection)
 	out := make([]types.ReadingEvidence, 0, readingSearchEvidenceCap)
 	seen := map[string]struct{}{}
@@ -1415,11 +1405,11 @@ func (s *readingRunService) searchReadingEvidenceMerged(
 }
 
 func (s *readingRunService) semanticSearchSelectedDocs(
-	ctx context.Context, query string, scope *types.ACLScope,
+	ctx context.Context, query string,
 	run *types.ReadingRun, plan *types.ReadingPlan,
 	chunkInfo map[string]*readingChunkInfo, chunkSection map[string]string,
 ) []types.ReadingEvidence {
-	if s.ragEngine == nil || scope == nil || plan == nil || strings.TrimSpace(plan.KnowledgeBaseID) == "" {
+	if s.ragEngine == nil || plan == nil || strings.TrimSpace(plan.KnowledgeBaseID) == "" {
 		return nil
 	}
 	documentIDs := planDocumentIDs(run)
@@ -1430,7 +1420,7 @@ func (s *readingRunService) semanticSearchSelectedDocs(
 	defer cancel()
 	results, err := s.ragEngine.SearchDocuments(
 		searchCtx, []string{query}, []string{plan.KnowledgeBaseID},
-		documentIDs, scope, 8,
+		documentIDs, 8,
 	)
 	if err != nil {
 		return nil

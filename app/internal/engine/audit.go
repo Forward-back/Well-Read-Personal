@@ -21,17 +21,16 @@ func (e *auditedEngine) StreamChat(
 	ctx context.Context,
 	question string,
 	knowledgeBaseIDs []string,
-	aclScope *types.ACLScope,
 	skill *types.SkillInjection,
 	onDelta func(string),
 	onReferences func([]*types.SearchResult),
 	onStage func(stage string, counts map[string]int, tMs int64, detail map[string]interface{}),
 ) (string, []*types.SearchResult, error) {
 	answer, refs, err := e.inner.StreamChat(
-		ctx, question, knowledgeBaseIDs, aclScope, skill,
+		ctx, question, knowledgeBaseIDs, skill,
 		onDelta, onReferences, onStage,
 	)
-	e.emit(ctx, question, knowledgeBaseIDs, aclScope, refs, err)
+	e.emit(ctx, question, knowledgeBaseIDs, refs, err)
 	return answer, refs, err
 }
 
@@ -39,11 +38,10 @@ func (e *auditedEngine) Search(
 	ctx context.Context,
 	queries []string,
 	knowledgeBaseIDs []string,
-	aclScope *types.ACLScope,
 	topK int,
 ) ([]*types.SearchResult, error) {
-	results, err := e.inner.Search(ctx, queries, knowledgeBaseIDs, aclScope, topK)
-	e.emit(ctx, strings.Join(queries, " | "), knowledgeBaseIDs, aclScope, results, err)
+	results, err := e.inner.Search(ctx, queries, knowledgeBaseIDs, topK)
+	e.emit(ctx, strings.Join(queries, " | "), knowledgeBaseIDs, results, err)
 	return results, err
 }
 
@@ -52,11 +50,10 @@ func (e *auditedEngine) SearchDocuments(
 	queries []string,
 	knowledgeBaseIDs []string,
 	documentIDs []string,
-	aclScope *types.ACLScope,
 	topK int,
 ) ([]*types.SearchResult, error) {
-	results, err := e.inner.SearchDocuments(ctx, queries, knowledgeBaseIDs, documentIDs, aclScope, topK)
-	e.emit(ctx, strings.Join(queries, " | "), knowledgeBaseIDs, aclScope, results, err)
+	results, err := e.inner.SearchDocuments(ctx, queries, knowledgeBaseIDs, documentIDs, topK)
+	e.emit(ctx, strings.Join(queries, " | "), knowledgeBaseIDs, results, err)
 	return results, err
 }
 
@@ -94,7 +91,6 @@ func (e *auditedEngine) emit(
 	ctx context.Context,
 	query string,
 	knowledgeBaseIDs []string,
-	scope *types.ACLScope,
 	results []*types.SearchResult,
 	callErr error,
 ) {
@@ -122,11 +118,6 @@ func (e *auditedEngine) emit(
 	}
 	if sessionID, ok := types.SessionIDFromContext(ctx); ok {
 		event.SessionID = sessionID
-	}
-	if scope != nil {
-		event.ScopeMode = string(scope.Mode)
-		event.ScopeVersion = scope.Version
-		event.ScopeDocCount = len(scope.DocIDs)
 	}
 	switch {
 	case callErr != nil:
