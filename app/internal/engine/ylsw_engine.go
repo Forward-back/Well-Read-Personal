@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -348,12 +347,11 @@ func (e *ylswEngine) search(
 	return results, nil
 }
 
-// IngestDocument pushes parsed markdown (or the raw file for xlsx) to the
+// IngestDocument pushes app-parsed markdown and app-owned chunks to the
 // YLSW /ingest endpoint.
 func (e *ylswEngine) IngestDocument(
 	ctx context.Context,
 	knowledgeBaseID, documentID, fileName, fileType, markdown string,
-	fileBytes []byte,
 	chunks []IngestChunk,
 	meta *DocumentMetadata,
 ) error {
@@ -371,9 +369,6 @@ func (e *ylswEngine) IngestDocument(
 	}
 	if len(chunks) > 0 {
 		payload["chunks"] = chunks
-	}
-	if len(fileBytes) > 0 {
-		payload["file_bytes"] = base64.StdEncoding.EncodeToString(fileBytes)
 	}
 	if meta != nil {
 		payload["doc_number"] = meta.DocNumber

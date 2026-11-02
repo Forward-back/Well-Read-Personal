@@ -60,12 +60,11 @@ func (e *auditedEngine) SearchDocuments(
 func (e *auditedEngine) IngestDocument(
 	ctx context.Context,
 	knowledgeBaseID, documentID, fileName, fileType, markdown string,
-	fileBytes []byte,
 	chunks []IngestChunk,
 	meta *DocumentMetadata,
 ) error {
 	return e.inner.IngestDocument(
-		ctx, knowledgeBaseID, documentID, fileName, fileType, markdown, fileBytes, chunks, meta,
+		ctx, knowledgeBaseID, documentID, fileName, fileType, markdown, chunks, meta,
 	)
 }
 

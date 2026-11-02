@@ -24,13 +24,11 @@ CREATE TABLE IF NOT EXISTS documents (
     product_name    VARCHAR(200)  COMMENT '关联产品名，通用表示无特定产品',
     file_hash       VARCHAR(64)   COMMENT '文件 SHA256 哈希，用于幂等检测',
 
-    -- 企业级元数据(§2.14):生命周期/密级/部门/自定义
+    -- 文档元数据：生命周期与自定义 KV
     lifecycle_status VARCHAR(20)   DEFAULT 'effective' COMMENT '生命周期: draft/effective/expired',
     effective_date  DATE          COMMENT '生效日期',
     expiry_date     DATE          COMMENT '废止/失效日期',
     superseded_by   VARCHAR(100)  COMMENT '替代本文号',
-    sensitivity     VARCHAR(20)   DEFAULT 'internal' COMMENT '密级: internal/confidential',
-    department      VARCHAR(100)  COMMENT '归属部门(静态枚举)',
     custom_metadata JSON          COMMENT '自定义受控 KV(app 侧字段定义表驱动)',
 
     -- 解析状态
@@ -85,12 +83,10 @@ CREATE TABLE IF NOT EXISTS chunks (
     -- app 数据归属：YLSW 内部 chunk 回指 app chunk id
     source_chunk_id VARCHAR(64) COMMENT 'app 侧 chunk UUID(引用/锚点/统计使用)',
 
-    -- 企业级元数据反范式(§2.14,检索过滤+降权免 JOIN;superseded_by 不进 chunks)
+    -- 文档元数据反范式（检索降权免 JOIN；superseded_by 不进 chunks）
     lifecycle_status VARCHAR(20)  DEFAULT 'effective' COMMENT '生命周期',
     effective_date  DATE          COMMENT '生效日期',
     expiry_date     DATE          COMMENT '废止/失效日期',
-    sensitivity     VARCHAR(20)   DEFAULT 'internal' COMMENT '密级',
-    department      VARCHAR(100)  COMMENT '归属部门',
 
     -- 状态
     status          ENUM('pending','embedded','failed') DEFAULT 'pending',
@@ -223,17 +219,13 @@ CREATE TABLE IF NOT EXISTS product_mentions (
 -- ALTER TABLE documents ADD COLUMN effective_date DATE COMMENT '生效日期' AFTER lifecycle_status;
 -- ALTER TABLE documents ADD COLUMN expiry_date DATE COMMENT '废止/失效日期' AFTER effective_date;
 -- ALTER TABLE documents ADD COLUMN superseded_by VARCHAR(100) COMMENT '替代本文号' AFTER expiry_date;
--- ALTER TABLE documents ADD COLUMN sensitivity VARCHAR(20) DEFAULT 'internal' COMMENT '密级' AFTER superseded_by;
--- ALTER TABLE documents ADD COLUMN department VARCHAR(100) COMMENT '归属部门' AFTER sensitivity;
--- ALTER TABLE documents ADD COLUMN custom_metadata JSON COMMENT '自定义受控 KV' AFTER department;
+-- ALTER TABLE documents ADD COLUMN custom_metadata JSON COMMENT '自定义受控 KV' AFTER superseded_by;
 -- ALTER TABLE chunks ADD COLUMN lifecycle_status VARCHAR(20) DEFAULT 'effective' COMMENT '生命周期' AFTER knowledge_base_id;
 -- ALTER TABLE chunks ADD COLUMN effective_date DATE COMMENT '生效日期' AFTER lifecycle_status;
 -- ALTER TABLE chunks ADD COLUMN expiry_date DATE COMMENT '废止/失效日期' AFTER effective_date;
--- ALTER TABLE chunks ADD COLUMN sensitivity VARCHAR(20) DEFAULT 'internal' COMMENT '密级' AFTER expiry_date;
--- ALTER TABLE chunks ADD COLUMN department VARCHAR(100) COMMENT '归属部门' AFTER sensitivity;
 -- UPDATE chunks c JOIN documents d ON c.document_id = d.id SET
 --   c.lifecycle_status = d.lifecycle_status, c.effective_date = d.effective_date,
---   c.expiry_date = d.expiry_date, c.sensitivity = d.sensitivity, c.department = d.department;
+--   c.expiry_date = d.expiry_date;
 
 -- ============================================================
 -- 10. 分块嵌入缓存（P1 增量索引：相同文本跨版本复用向量，避免整篇重嵌）

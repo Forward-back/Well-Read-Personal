@@ -3758,8 +3758,8 @@ func (s *knowledgeService) ProcessDocument(ctx context.Context, t *asynq.Task) e
 	return nil
 }
 
-// pushToEngine forwards the parsed markdown (or the raw file for xlsx) to the
-// RAG engine (YLSW) for domain chunking + indexing. Returns the engine error
+// pushToEngine forwards the parsed markdown and app-owned chunks to the RAG
+// engine (YLSW) for indexing. Returns the engine error
 // (nil on success) so callers pick the recovery: the main pipeline enqueues an
 // engine:push_retry task, the retry handler lets asynq retry it, and the daily
 // reconciliation logs and moves on (§2.2 ③).
@@ -3774,25 +3774,11 @@ func (s *knowledgeService) pushToEngine(
 	}
 	meta := buildEngineDocumentMetadata(knowledge)
 
-	// xlsx：≤20MB 推原始文件走 YLSW Text2SQL 管线；读不到或超限回退 markdown。
-	var fileBytes []byte
-	if strings.EqualFold(knowledge.FileType, "xlsx") && knowledge.FileSize > 0 &&
-		knowledge.FileSize <= maxEngineRawPushSize && knowledge.FilePath != "" {
-		raw, err := s.readKnowledgeRawBytes(ctx, kb, knowledge)
-		if err != nil || len(raw) > maxEngineRawPushSize {
-			logger.Warnf(ctx,
-				"Read raw xlsx for engine push failed or oversize (knowledge %s), fallback to markdown: %v",
-				knowledge.ID, err)
-		} else {
-			fileBytes = raw
-		}
-	}
-	if markdown == "" && fileBytes == nil {
+	if markdown == "" {
 		return nil
 	}
 
-	// app chunks accompany the markdown so YLSW can map its domain chunks
-	// back to the app-owned chunk ids used by citations and collaboration.
+	// App chunks define the index boundaries; RAG no longer chunks on its own.
 	var ingestChunks []engine.IngestChunk
 	if s.chunkRepo != nil {
 		if rows, listErr := s.chunkRepo.ListChunksByKnowledgeID(ctx, knowledge.TenantID, knowledge.ID); listErr != nil {
@@ -3808,7 +3794,7 @@ func (s *knowledgeService) pushToEngine(
 	defer cancel()
 	if err := s.ragEngine.IngestDocument(
 		pushCtx, kb.ID, knowledge.ID, knowledge.FileName, knowledge.FileType,
-		markdown, fileBytes, ingestChunks, meta,
+		markdown, ingestChunks, meta,
 	); err != nil {
 		logger.Warnf(ctx, "Push to RAG engine failed for knowledge %s: %v", knowledge.ID, err)
 		return err
@@ -3816,10 +3802,6 @@ func (s *knowledgeService) pushToEngine(
 	logger.Infof(ctx, "Pushed knowledge %s to RAG engine", knowledge.ID)
 	return nil
 }
-
-// maxEngineRawPushSize caps raw-file pushes to the engine at 20MB (base64
-// inflates by ~33%; larger xlsx fall back to markdown).
-const maxEngineRawPushSize = 20 << 20
 
 // buildEngineDocumentMetadata maps the knowledge row's enterprise metadata onto
 // the engine payload. Shared by the initial dual-write and the chunk resync.
@@ -3978,7 +3960,6 @@ func buildEnginePushPayload(k *types.Knowledge) (types.DocumentProcessPayload, b
 	return payload, true
 }
 
-// readKnowledgeRawBytes reads the original stored file bytes for raw engine push.
 func (s *knowledgeService) readKnowledgeRawBytes(
 	ctx context.Context,
 	kb *types.KnowledgeBase,

@@ -58,7 +58,7 @@ conn.close()
 print(f'{len(stmts)} statements executed.')
 PYEOF
 
-# 本地语料目录：默认挂载在 /app/external，允许空目录（app 栈不跑离线摄取）。
+# 数据目录只存放索引与模型；语料解析由 App 负责。
 echo "===== Prepare external data directory ====="
 python - <<'PYEOF'
 import os
@@ -98,15 +98,7 @@ else:
     print(f"Empty FAISS index created: {index_path} (d={EMBEDDING_DIM}, ntotal=0)")
 PYEOF
 
-# 幂等管线：文件哈希跳过已入库 → 无 pending chunk 时直接跳过 embedding →
-# 索引缺失走自愈全量重建 → product_mentions 刷新。每次启动跑一遍是安全的。
-# RUN_OFFLINE_INGEST=0 时跳过（app 栈内 YLSW 为纯检索侧车，存量走 app 上传路径 §2.2 ②）
-if [ "${RUN_OFFLINE_INGEST:-1}" = "1" ]; then
-    echo "===== Running ingest pipeline (idempotent) ====="
-    python -m src.ingest.pipeline
-else
-    echo "===== Skipping offline ingest pipeline (RUN_OFFLINE_INGEST=0) ====="
-fi
+# 解析与分块由 App 完成；RAG 启动只负责数据库/索引就绪，不再扫描语料目录。
 
 # 预热：本地开关对应的模型加载进内存（避免首问付加载代价）；
 # gateway 开关对应的网关 serverless 实例提前拉起（冷启动 40-60s）。

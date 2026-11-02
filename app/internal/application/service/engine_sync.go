@@ -302,7 +302,7 @@ func (s *EngineSyncService) syncOne(ctx context.Context, knowledge *types.Knowle
 	defer cancel()
 	if err := s.ragEngine.IngestDocument(
 		pushCtx, kb.ID, knowledge.ID, knowledge.FileName, knowledge.FileType,
-		markdown, nil, toEngineIngestChunks(chunks), buildEngineDocumentMetadata(knowledge),
+		markdown, toEngineIngestChunks(chunks), buildEngineDocumentMetadata(knowledge),
 	); err != nil {
 		return fail(err)
 	}

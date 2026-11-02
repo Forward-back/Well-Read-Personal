@@ -93,14 +93,13 @@ type RAGEngine interface {
 	// IngestDocument pushes parsed markdown to the engine for domain chunking,
 	// embedding and indexing. documentID is the app-side document UUID and acts
 	// as the idempotency key: re-pushing the same ID replaces the previous
-	// version. fileBytes, when non-nil, pushes the raw file instead (xlsx
-	// Text2SQL path); otherwise markdown is pushed. The app-side ingest
+	// version. Parsing and chunking happen in the app; chunks carries the
+	// app-owned chunk boundaries the engine indexes. The app-side ingest
 	// pipeline stays untouched (dual-write) until FAQ/memory migration retires
 	// the native vector store.
 	IngestDocument(
 		ctx context.Context,
 		knowledgeBaseID, documentID, fileName, fileType, markdown string,
-		fileBytes []byte,
 		chunks []IngestChunk,
 		meta *DocumentMetadata,
 	) error
