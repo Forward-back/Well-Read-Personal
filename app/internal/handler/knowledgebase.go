@@ -477,6 +477,22 @@ func (h *KnowledgeBaseHandler) GetKnowledgeBase(c *gin.Context) {
 // @Security     Bearer
 // @Security     ApiKeyAuth
 // @Router       /knowledge-bases [get]
+// SyncCodeSource scans a local directory or clones a Git repository and
+// indexes its text/code files into the knowledge base.
+func (h *KnowledgeBaseHandler) SyncCodeSource(c *gin.Context) {
+	var req types.CodeSourceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(apperrors.NewValidationError("Invalid request data").WithDetails(err.Error()))
+		return
+	}
+	result, err := h.knowledgeService.SyncCodeSource(c.Request.Context(), c.Param("id"), &req)
+	if err != nil {
+		c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
+}
+
 func (h *KnowledgeBaseHandler) ListKnowledgeBases(c *gin.Context) {
 	ctx := c.Request.Context()
 

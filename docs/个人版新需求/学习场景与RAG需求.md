@@ -86,8 +86,8 @@ RAG 不再自带 PDF/DOCX 解析器、领域分块器或 OCR；入库请求必�
 
 ## 7. 验收
 
-1. 从根目录 `data/` 选取一个文档完成入库与检索，回答带可定位引用。
-2. 选择一个本地代码目录或 Git 仓库完成增量入库，能按符号/路径检索并返回行号。
+1. 从根目录 `data/rag/Data` 选取一个文档完成入库与检索，回答带可定位引用。
+2. 用 `https://github.com/Forward-back/Forward-Blog` 完成一次 Git 同步，能按符号/路径检索并返回行号；后续再用同一仓库验证增量同步。
 3. RAG 镜像内不存在 PDF/DOCX/XLSX 解析与分块入口；入库请求缺少 chunks 时拒绝或明确报错。
 4. 删除文件后重新同步，检索不再返回已删除块。
 5. `cd rag && python -m compileall -q src` 通过；后端 `go build ./internal/...` 通过。

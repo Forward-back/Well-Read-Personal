@@ -15,6 +15,7 @@ import { useAuthStore } from '@/stores/auth';
 import { useChatResourcesStore } from '@/stores/chatResources';
 import { useEditorResourcesStore } from '@/stores/editorResources';
 import KnowledgeBaseEditorModal from './KnowledgeBaseEditorModal.vue';
+import CodeSourceDialog from './components/CodeSourceDialog.vue';
 const usemenuStore = useMenuStore();
 const uiStore = useUIStore();
 const authStore = useAuthStore();
@@ -84,6 +85,7 @@ const route = useRoute();
 const { t } = useI18n();
 const kbId = computed(() => (route.params as any).kbId as string || '');
 const kbInfo = ref<any>(null);
+const codeSourceVisible = ref(false);
 const uploadSourceRef = ref<InstanceType<typeof KbUploadSourceDropdown> | null>(null);
 const uploading = ref(false);
 const kbLoading = ref(false);
@@ -2001,6 +2003,10 @@ const handleManualCreate = () => {
   });
 };
 
+function handleCodeSourceSynced() {
+  if (kbId.value) void loadKnowledgeFiles(kbId.value)
+}
+
 const handleOpenKBSettings = () => {
   if (!kbId.value) {
     MessagePlugin.warning(t('knowledgeEditor.messages.missingId'));
@@ -2703,6 +2709,11 @@ async function createNewSession(value: string): Promise<void> {
                   </t-dropdown-item>
                 </t-dropdown-menu>
               </t-dropdown>
+              <t-tooltip v-if="canManage && kbId" content="添加代码项目" placement="top">
+                <button type="button" class="kb-settings-button" @click="codeSourceVisible = true">
+                  <t-icon name="code" size="16px" />
+                </button>
+              </t-tooltip>
               <t-tooltip v-if="canManage && authStore.currentDepartmentRole === 'manager'" :content="$t('knowledgeBase.settings')" placement="top">
                 <button type="button" class="kb-settings-button" :disabled="!kbId" @click="handleOpenKBSettings">
                   <t-icon name="setting" size="16px" />
@@ -3112,6 +3123,8 @@ async function createNewSession(value: string): Promise<void> {
   <KnowledgeBaseEditorModal :visible="uiStore.showKBEditorModal" :mode="uiStore.kbEditorMode"
     :kb-id="uiStore.currentKBId || undefined" :initial-type="uiStore.kbEditorType"
     @update:visible="(val) => val ? null : uiStore.closeKBEditor()" @success="handleKBEditorSuccess" />
+
+  <CodeSourceDialog v-model:visible="codeSourceVisible" :kb-id="kbId" @synced="handleCodeSourceSynced" />
 
   <t-dialog
     v-model:visible="folderCreateVisible"

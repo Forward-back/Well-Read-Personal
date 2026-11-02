@@ -517,3 +517,6 @@ type KnowledgeCheckParams struct {
 	// Knowledge type
 	Type string
 }
+
+// KnowledgeTypeCode represents an indexed source file from a code project.
+const KnowledgeTypeCode = "code"

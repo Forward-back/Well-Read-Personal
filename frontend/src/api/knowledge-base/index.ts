@@ -635,3 +635,28 @@ export function createKBAclRule(kbId: string, body: KBAclRuleRequest) {
 export function deleteKBAclRule(kbId: string, ruleId: string) {
   return del(`/api/v1/knowledge-bases/${kbId}/acl/${ruleId}`)
 }
+
+export interface CodeSourceRequest {
+  kind: 'local' | 'git'
+  path?: string
+  url?: string
+  branch?: string
+  ignore?: string[]
+  max_files?: number
+}
+
+export interface CodeSourceSyncResult {
+  source_root: string
+  commit?: string
+  files: number
+  chunks: number
+  skipped: number
+  deleted: number
+}
+
+export function syncCodeSource(kbId: string, body: CodeSourceRequest) {
+  return post(`/api/v1/knowledge-bases/${kbId}/code-source`, body) as unknown as Promise<{
+    success: boolean
+    data?: CodeSourceSyncResult
+  }>
+}

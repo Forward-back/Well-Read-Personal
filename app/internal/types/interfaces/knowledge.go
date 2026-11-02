@@ -231,6 +231,9 @@ type KnowledgeService interface {
 	SearchKnowledge(ctx context.Context, keyword string, offset, limit int, fileTypes []string) ([]*types.Knowledge, bool, int64, error)
 	// SearchKnowledgeForScopes searches knowledge within the given (tenant_id, kb_id) scopes (e.g. for shared agent context).
 	SearchKnowledgeForScopes(ctx context.Context, scopes []types.KnowledgeSearchScope, keyword string, offset, limit int, fileTypes []string) ([]*types.Knowledge, bool, int64, error)
+	// SyncCodeSource scans a local directory or Git repository, chunks text and
+	// source files in the app, and upserts them into the knowledge base.
+	SyncCodeSource(ctx context.Context, kbID string, req *types.CodeSourceRequest) (*types.CodeSourceSyncResult, error)
 }
 
 // KnowledgeRepository defines the interface for knowledge repositories.
