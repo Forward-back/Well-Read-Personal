@@ -760,8 +760,9 @@ import { useChatResourcesStore } from '@/stores/chatResources'
 import { formatStringDate } from '@/utils/index'
 import { useUIStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
-import { useOrganizationStore } from '@/stores/organization'
-import { listOrganizationSharedKnowledgeBases, type SharedKnowledgeBase, type OrganizationSharedKnowledgeBaseItem, type SourceFromAgentInfo } from '@/api/organization'
+type SharedKnowledgeBase = any
+type OrganizationSharedKnowledgeBaseItem = any
+type SourceFromAgentInfo = any
 import { mergeAllScopeKnowledgeBases, type OwnedKnowledgeBase, type SharedKnowledgeBaseLike } from './kbListMerge'
 import KnowledgeBaseEditorModal from './KnowledgeBaseEditorModal.vue'
 import KbGazeBadge from './components/KbGazeBadge.vue'
@@ -779,7 +780,6 @@ const route = useRoute()
 const uiStore = useUIStore()
 const authStore = useAuthStore()
 const { loaded: modelsReadyLoaded, isReadyForDocumentKb } = useTenantModelReadiness()
-const orgStore = useOrganizationStore()
 const chatResources = useChatResourcesStore()
 const { t } = useI18n()
 
@@ -847,7 +847,7 @@ const UPLOAD_CLEANUP_DELAY = 10000
 // viewer-only). Used by the per-space views and the "all" aggregate so
 // readers still see read-only shares — those are valid resources, just
 // not editable.
-const sharedKbs = computed<SharedKnowledgeBase[]>(() => orgStore.sharedKnowledgeBases || [])
+const sharedKbs = computed<SharedKnowledgeBase[]>(() => [])
 
 const allKnowledgeBases = computed(() => kbs.value.length + sharedKbs.value.length)
 
@@ -922,14 +922,6 @@ const spaceCountByOrg = ref<Record<string, number>>({})
 // 各空间下的共享知识库数量（用于侧栏展示）：优先用接口返回的该空间总数，否则用「共享给我」数量
 const sharedCountByOrg = computed<Record<string, number>>(() => {
   const map: Record<string, number> = {}
-  sharedKbs.value.forEach(s => {
-    const id = s.organization_id
-    if (!id) return
-    map[id] = (map[id] || 0) + 1
-  })
-    ; (orgStore.organizations || []).forEach(org => {
-      if (map[org.id] === undefined) map[org.id] = 0
-    })
   return map
 })
 const effectiveSharedCountByOrg = computed<Record<string, number>>(() => {
@@ -1172,31 +1164,13 @@ const fetchList = (force = false) => {
     .finally(() => { loading.value = false })
 }
 
-// 选中空间时请求该空间内全部知识库（含我共享的）
+// 个人版不再有跨空间共享视图；非保留 scope 统一回到「全部」。
 watch(spaceSelection, (val) => {
-  // Stale URL guard: an older "协作" view used scope=shared; that view
-  // was removed, so normalize back to "all" instead of letting the
-  // value fall through to the per-space fetch branch (which would 404
-  // on the string "shared").
-  if (val === 'shared' || val === 'favorites') {
+  if (val !== 'all' && val !== 'mine' && val !== 'recents' && val) {
     spaceSelection.value = 'all'
-    return
   }
-  if (val === 'all' || val === 'mine' || val === 'recents' || !val) {
-    spaceKbsList.value = []
-    return
-  }
-  spaceKbsLoading.value = true
-  listOrganizationSharedKnowledgeBases(val).then((res) => {
-    if (res.success && res.data) {
-      spaceKbsList.value = res.data
-      spaceCountByOrg.value = { ...spaceCountByOrg.value, [val]: res.data.length }
-    } else {
-      spaceKbsList.value = []
-    }
-  }).finally(() => {
-    spaceKbsLoading.value = false
-  })
+  spaceKbsList.value = []
+  spaceKbsLoading.value = false
 }, { immediate: true })
 
 // Refetch when the creator filter flips. We re-pull the whole list rather

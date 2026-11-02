@@ -5,7 +5,6 @@ import { listAgents, type CustomAgent } from '@/api/agent'
 import { listModels, type ModelConfig } from '@/api/model'
 import { listWebSearchProviders, type WebSearchProviderEntity } from '@/api/web-search-provider'
 import { isNamedSandboxBackend, listSandboxConfigs, type SandboxConfigRecord } from '@/api/system'
-import { useOrganizationStore } from '@/stores/organization'
 import { getCurrentLanguage } from '@/utils/request'
 import {
   isLocalizedCacheFresh,
@@ -128,8 +127,6 @@ export const useChatResourcesStore = defineStore('chatResources', () => {
         const data = res?.data && Array.isArray(res.data) ? res.data : []
         rawKnowledgeBases.value = data
         loadedAt.value.knowledgeBases = Date.now()
-        const orgStore = useOrganizationStore()
-        await orgStore.fetchSharedKnowledgeBases({ force })
         return data
       } finally {
         if (kbAllGen === gen) kbAllInflight = null

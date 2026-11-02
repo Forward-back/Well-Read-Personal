@@ -11,14 +11,12 @@ import KBSwitcherDropdown from '@/components/KBSwitcherDropdown.vue';
 import { getSessionsList, createSessions, generateSessionsTitle } from "@/api/chat/index";
 import { useMenuStore } from '@/stores/menu';
 import { useUIStore } from '@/stores/ui';
-import { useOrganizationStore } from '@/stores/organization';
 import { useAuthStore } from '@/stores/auth';
 import { useChatResourcesStore } from '@/stores/chatResources';
 import { useEditorResourcesStore } from '@/stores/editorResources';
 import KnowledgeBaseEditorModal from './KnowledgeBaseEditorModal.vue';
 const usemenuStore = useMenuStore();
 const uiStore = useUIStore();
-const orgStore = useOrganizationStore();
 const authStore = useAuthStore();
 const chatResources = useChatResourcesStore();
 const editorResources = useEditorResourcesStore();
@@ -263,64 +261,15 @@ const isOwner = computed(() => {
   return creatorId === userId;
 });
 
-const isOwnDepartment = computed(() => {
-  const dept = (kbInfo.value as any)?.department_id || '';
-  return !!dept && dept === authStore.currentDepartmentId;
-});
+const isOwnDepartment = computed(() => true);
 
-// A KB owned by another department, even inside the same company, is a
-// read-only shared-space entry. Company admins may read it through, but
-// they do not gain business write rights.
-const isSharedInDept = computed(() => {
-  const dept = (kbInfo.value as any)?.department_id || '';
-  return !!dept && !isOwnDepartment.value;
-});
-
-// Current KB's shared record (when accessed via organization share)
-const currentSharedKb = computed(() =>
-  orgStore.sharedKnowledgeBases.find((s) => s.knowledge_base?.id === kbId.value) ?? null,
-);
-
-// Accessed via organization share: when the KB shows up in our
-// sharedKnowledgeBases list it means we reached it through a shared space,
-// not because we own/manage it in our tenant. In that case the user's local
-// tenant role does NOT grant edit/manage — only the share grant does.
-// Without this guard a local tenant Admin would see edit/upload entries on
-// a read-only shared KB and get 403'd by the backend on click.
-//
-// Note: tenant_id comparison alone is unreliable — a user can be a member of
-// both the source and receiving tenants, and currentTenantId reflects the
-// active switcher rather than "how this KB became visible to me". Presence
-// in the share list is the authoritative signal.
-const isViaShare = computed(() => !!currentSharedKb.value || isSharedInDept.value);
-
-// Can edit: a shared-in department KB is always read-only. For a KB in the
-// caller's own department, the department role is authoritative (editor+).
-// The legacy owner/admin checks remain only for rows without a department.
-const canEdit = computed(() => {
-  if (isSharedInDept.value) return false;
-  if (isOwnDepartment.value) return authStore.hasDepartmentRole('editor');
-  if (isViaShare.value) return orgStore.canEditKB(kbId.value, false);
-  if (isOwner.value) return true;
-  return orgStore.canEditKB(kbId.value, false);
-});
-
-// Can manage (delete, settings, etc.): shared-in is always read-only; own
-// department requires manager.
-const canManage = computed(() => {
-  if (isSharedInDept.value) return false;
-  if (isOwnDepartment.value) return authStore.hasDepartmentRole('knowledge_admin');
-  if (isViaShare.value) return orgStore.canManageKB(kbId.value, false);
-  if (isOwner.value) return true;
-  return orgStore.canManageKB(kbId.value, false);
-});
-
-// 消费者门户发布: 仅源租户 Owner/Admin 可操作(§2.13)。共享视图下不显示,
-// 发布权始终属于内容所有者租户。
-const canPublish = computed(() => {
-  if (isViaShare.value) return false;
-  return isOwnDepartment.value && authStore.currentDepartmentRole === 'manager';
-});
+// 个人版只有 owner 一个主体：知识库的读、写、管理权都归 owner，
+// 不再存在部门共享或跨租户授权。
+const isSharedInDept = computed(() => false);
+const isViaShare = computed(() => false);
+const canEdit = computed(() => true);
+const canManage = computed(() => true);
+const canPublish = computed(() => true);
 
 const kbVisibilityOptions = [
   { value: 'private', labelKey: 'knowledgeBase.visibility.private', hintKey: 'knowledgeBase.visibility.privateHint' },
@@ -360,28 +309,10 @@ async function handleKBVisibilityChange(data: { value: string | number }) {
 // the "Move" / "Batch manage" entries and 403 on click. For shared KBs
 // the local tenant role is irrelevant — canEdit already encodes the share
 // grant, so trust it.
-const canMutateKnowledge = computed(() => {
-  if (isSharedInDept.value || !canEdit.value) return false;
-  return isOwnDepartment.value && authStore.hasDepartmentRole('knowledge_admin');
-});
-
-const canManageFolders = computed(() =>
-  isOwnDepartment.value && authStore.hasDepartmentRole('knowledge_admin'),
-);
-
-// Effective permission: from direct org share list or from GET /knowledge-bases/:id (e.g. agent-visible KB)
-const effectiveKBPermission = computed(() => orgStore.getKBPermission(kbId.value) || kbInfo.value?.my_permission || '');
-
-// Downloading returns the original source file, which is intentionally more
-// restrictive than viewing parsed content or using the preview tab. A tenant
-// Viewer can never download; for cross-tenant KBs the effective share
-// permission must additionally be Editor or Admin.
-const canDownloadKnowledge = computed(() => {
-  if (isSharedInDept.value) return false;
-  if (!authStore.hasRole('contributor')) return false;
-  const permission = effectiveKBPermission.value;
-  return !permission || permission === 'owner' || permission === 'admin' || permission === 'editor';
-});
+const canMutateKnowledge = computed(() => true);
+const canManageFolders = computed(() => true);
+const effectiveKBPermission = computed(() => 'owner');
+const canDownloadKnowledge = computed(() => true);
 
 const knowledgeList = ref<Array<{ id: string; name: string; type?: string }>>([]);
 let { cardList, total, moreIndex, details, getKnowled, openMore, onVisibleChange: _onVisibleChange, getCardDetails, getfDetails } = useKnowledgeBase(kbId.value)
@@ -1292,20 +1223,7 @@ const loadKnowledgeList = async () => {
       type: item.type || 'document',
     }));
 
-    // Also include shared knowledge bases from orgStore
-    const sharedKbs = (orgStore.sharedKnowledgeBases || [])
-      .filter(s => s.knowledge_base != null)
-      .map(s => ({
-        id: String(s.knowledge_base.id),
-        name: s.knowledge_base.name,
-        type: s.knowledge_base.type || 'document',
-      }));
-
-    // Merge and deduplicate by id (my KBs take precedence)
-    const myKbIds = new Set(myKbs.map(kb => kb.id));
-    const uniqueSharedKbs = sharedKbs.filter(kb => !myKbIds.has(kb.id));
-
-    knowledgeList.value = [...myKbs, ...uniqueSharedKbs];
+    knowledgeList.value = myKbs;
   } catch (error) {
     console.error('Failed to load knowledge list:', error);
   }
@@ -2793,10 +2711,6 @@ async function createNewSession(value: string): Promise<void> {
             </div>
           </div>
           <p class="document-subtitle">{{ $t('knowledgeEditor.document.subtitle') }}</p>
-          <div v-if="isSharedInDept" class="shared-readonly-banner">
-            <t-icon name="browse" size="16px" />
-            <span>{{ $t('knowledgeBase.sharedReadonlyBanner') }}</span>
-          </div>
           <p v-if="unsupportedFileTypes.length" class="parser-hint" @click="goToParserSettings">
             <t-icon name="info-circle" class="parser-hint-icon" />
             <span>{{$t('knowledgeBase.unsupportedTypesHint', {

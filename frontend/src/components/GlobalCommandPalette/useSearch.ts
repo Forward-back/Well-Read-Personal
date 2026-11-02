@@ -1,7 +1,6 @@
 import { ref, watch, onMounted, computed } from 'vue'
 import { knowledgeSemanticSearch } from '@/api/knowledge-base'
 import { searchMessages, type MessageSearchGroupItem } from '@/api/chat-history'
-import { useOrganizationStore } from '@/stores/organization'
 import { useChatResourcesStore } from '@/stores/chatResources'
 import { useMenuStore } from '@/stores/menu'
 
@@ -97,7 +96,6 @@ export function useCmdkSearch(options: {
   const agentsLoaded = ref(false)
   let agentsLoadingPromise: Promise<void> | null = null
 
-  const orgStore = useOrganizationStore()
   const menuStore = useMenuStore()
 
   const ensureKbs = async (): Promise<void> => {
@@ -112,16 +110,7 @@ export function useCmdkSearch(options: {
           name: kb.name || '',
           type: kb.type,
         }))
-        const ownIds = new Set(own.map(k => k.id))
-        const sharedList: CmdkKb[] = (orgStore.sharedKnowledgeBases || [])
-          .filter((s: any) => s?.knowledge_base != null)
-          .map((s: any) => ({
-            id: String(s.knowledge_base.id),
-            name: s.knowledge_base.name || '',
-            type: s.knowledge_base.type,
-          }))
-          .filter((k: CmdkKb) => !ownIds.has(k.id))
-        knowledgeBases.value = [...own, ...sharedList]
+        knowledgeBases.value = own
         kbsLoaded.value = true
       } catch (e) {
         console.error('[cmdk] failed to load knowledge bases', e)
@@ -166,20 +155,7 @@ export function useCmdkSearch(options: {
           isBuiltin: !!a.is_builtin,
           source: 'own',
         }))
-        const ownIds = new Set(own.map(a => a.id))
-        const sharedList: CmdkAgent[] = (orgStore.sharedAgents || [])
-          .filter((s: any) => s?.agent != null)
-          .map((s: any) => ({
-            id: String(s.agent.id),
-            name: s.agent.name || '',
-            description: s.agent.description,
-            avatar: s.agent.avatar,
-            isBuiltin: !!s.agent.is_builtin,
-            source: 'shared' as const,
-            orgName: s.org_name,
-          }))
-          .filter((a: CmdkAgent) => !ownIds.has(a.id))
-        agents.value = [...own, ...sharedList]
+        agents.value = own
         agentsLoaded.value = true
       } catch (e) {
         console.error('[cmdk] failed to load agents', e)

@@ -280,7 +280,6 @@ import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { getKnowledgeBaseById } from '@/api/knowledge-base';
 import { getKnowledgeDetails } from '@/api/knowledge-base';
-import { useOrganizationStore } from '@/stores/organization';
 import { useSettingsStore } from '@/stores/settings';
 import { SKILL_ICON, type MentionItem, type MentionItemType } from '@/types/mention';
 
@@ -305,7 +304,6 @@ const emit = defineEmits(['select', 'update:activeIndex', 'loadMore']);
 
 const router = useRouter();
 const { t } = useI18n();
-const orgStore = useOrganizationStore();
 const settingsStore = useSettingsStore();
 const menuRef = ref<HTMLElement | null>(null);
 const listRef = ref<HTMLElement | null>(null);
@@ -494,20 +492,7 @@ function handleKbClick(kbId: string | undefined) {
   router.push(`/platform/knowledge-bases/${kbId}`);
 }
 
-function handleOrgClick(orgName: string) {
-  if (!orgName) return;
-  // 从共享知识库列表中找到对应的组织 ID
-  const sharedKb = orgStore.sharedKnowledgeBases.find(
-    (s: any) => s.org_name === orgName
-  );
-  if (sharedKb?.organization_id) {
-    // 跳转到组织列表页（目前组织详情页可能不存在，先跳转到列表页）
-    router.push('/platform/organizations');
-  } else {
-    // 如果找不到组织 ID，也跳转到组织列表页
-    router.push('/platform/organizations');
-  }
-}
+function handleOrgClick(_orgName: string) {}
 
 const onScroll = (e: Event) => {
   isScrolling.value = true;

@@ -12,7 +12,6 @@ import { listSelectableSkills, type SelectableSkill } from '@/api/skill';
 import { stopSession } from '@/api/chat';
 import type { SteerQueueItem } from '@/api/chat/steer';
 import { chatSubmitShortcut } from '@/utils/chatSubmitShortcut';
-import { useOrganizationStore } from '@/stores/organization';
 import KnowledgeBaseSelector from './KnowledgeBaseSelector.vue';
 import MentionSelector from './MentionSelector.vue';
 import { getCaretCoordinates } from '@/utils/caret';
@@ -53,7 +52,6 @@ const route = useRoute();
 const router = useRouter();
 const settingsStore = useSettingsStore();
 const uiStore = useUIStore();
-const orgStore = useOrganizationStore();
 const menuStore = useMenuStore();
 const chatResources = useChatResourcesStore();
 const editorResources = useEditorResourcesStore();
@@ -189,17 +187,6 @@ const selectedAgentId = computed({
   set: (val: string) => settingsStore.selectAgent(val)
 });
 const selectedAgent = computed(() => {
-  // When a shared-agent source tenant is set, resolve from sharedAgents FIRST.
-  // Builtin agents (e.g. builtin-smart-reasoning) use the same constant ID across
-  // tenants, so falling back to agents.value first would incorrectly return the
-  // current tenant's own builtin instead of the shared one.
-  const sourceTenantId = settingsStore.selectedAgentSourceTenantId;
-  if (sourceTenantId && orgStore.sharedAgents?.length) {
-    const shared = orgStore.sharedAgents.find(
-      s => s.agent.id === selectedAgentId.value && String(s.source_tenant_id) === sourceTenantId
-    );
-    if (shared?.agent) return shared.agent as CustomAgent;
-  }
   const mine = agents.value.find(a => a.id === selectedAgentId.value);
   if (mine) return mine;
   return {
@@ -209,13 +196,7 @@ const selectedAgent = computed(() => {
     config: { agent_mode: 'quick-answer' as const }
   } as CustomAgent;
 });
-const selectedSharedAgent = computed(() => {
-  const sourceTenantId = settingsStore.selectedAgentSourceTenantId;
-  if (!sourceTenantId) return undefined;
-  return orgStore.sharedAgents?.find(
-    s => s.agent.id === selectedAgentId.value && String(s.source_tenant_id) === sourceTenantId
-  );
-});
+const selectedSharedAgent = computed<any>(() => undefined);
 
 // 判断是否为自定义智能体（非内置）
 const isCustomAgent = computed(() => {
@@ -493,16 +474,7 @@ const mentionLoading = ref(false);
 const mentionOffset = ref(0);
 const MENTION_PAGE_SIZE = 20;
 
-// 共享智能体时用于标识「共享空间」的展示名（组织名或共享者），供 @ 列表与已选标签显示角标
-const sharedAgentOrgName = computed(() => {
-  const sourceTenantId = settingsStore.selectedAgentSourceTenantId;
-  const agentId = selectedAgentId.value;
-  if (!sourceTenantId || !agentId || !orgStore.sharedAgents?.length) return '';
-  const shared = orgStore.sharedAgents.find(
-    (s: any) => s.agent?.id === agentId && String(s.source_tenant_id) === sourceTenantId
-  );
-  return shared?.org_name || shared?.shared_by_username || '';
-});
+const sharedAgentOrgName = computed(() => '');
 
 const props = defineProps({
   autoFocus: {
@@ -552,17 +524,7 @@ const fileList = ref<Array<{ id: string; name: string }>>([]);
 // 选中的知识库：包含自己的 + 组织共享的 + 共享智能体下的（用于展示已选列表与 org 角标）
 const selectedKbs = computed(() => {
   const own = knowledgeBases.value.filter(kb => selectedKbIds.value.includes(kb.id));
-  const sharedList = orgStore.sharedKnowledgeBases || [];
-  const sharedMapped = sharedList
-    .filter((s: any) => s.knowledge_base != null && selectedKbIds.value.includes(s.knowledge_base.id))
-    .map((s: any) => ({
-      id: s.knowledge_base.id,
-      name: s.knowledge_base.name,
-      type: s.knowledge_base.type || 'document',
-      knowledge_count: s.knowledge_base.knowledge_count,
-      chunk_count: s.knowledge_base.chunk_count,
-      org_name: s.org_name || ''
-    }));
+  const sharedMapped: any[] = [];
   const ownIds = new Set(own.map(kb => kb.id));
   const sharedOnly = sharedMapped.filter((kb: any) => !ownIds.has(kb.id));
   const sharedOnlyIds = new Set(sharedOnly.map((kb: any) => kb.id));
@@ -619,11 +581,6 @@ const allSelectedItems = computed(() => {
 
   // 用户选择的文件（根据 fileIdToKbId + 共享列表/共享智能体补全 org_name，用于角标）
   const sharedKbOrgMap: Record<string, string> = {};
-  (orgStore.sharedKnowledgeBases || []).forEach((s: any) => {
-    if (s.knowledge_base?.id != null && s.org_name) {
-      sharedKbOrgMap[String(s.knowledge_base.id)] = s.org_name;
-    }
-  });
   if (sharedAgentOrgName.value) {
     (sharedAgentKbList.value || []).forEach((kb) => {
       sharedKbOrgMap[String(kb.id)] = sharedAgentOrgName.value;
@@ -734,9 +691,7 @@ const loadKnowledgeBases = async (force = false) => {
     const validKbs = knowledgeBases.value;
 
     const validKbIds = new Set(validKbs.map((kb: any) => kb.id));
-    const sharedKbIds = new Set(
-      (orgStore.sharedKnowledgeBases || []).map((s: any) => s.knowledge_base?.id).filter(Boolean)
-    );
+    const sharedKbIds = new Set<string>();
     let sharedAgentKbIdSet = new Set<string>();
     const sourceTenantId = settingsStore.selectedAgentSourceTenantId;
     const agentId = settingsStore.selectedAgentId;
@@ -769,8 +724,7 @@ const ensureDefaultKbSelection = () => {
   if (agentKBSelectionMode.value === 'none') return
   const agentKb = (agentKnowledgeBases.value || []).find(Boolean)
   const ownKb = knowledgeBases.value.find(kb => kb.id)?.id
-  const sharedKb = (orgStore.sharedKnowledgeBases || []).find((s: any) => s.knowledge_base?.id)?.knowledge_base?.id
-  const fallback = agentKb || ownKb || sharedKb
+  const fallback = agentKb || ownKb
   if (fallback) settingsStore.selectKnowledgeBases([fallback])
 }
 
@@ -1248,26 +1202,6 @@ const loadMentionItems = async (q: string, resetIndex = true, append = false) =>
     } else {
       sharedAgentKbList.value = [];
       availableKbs = [...knowledgeBases.value];
-      const sharedList = orgStore.sharedKnowledgeBases || [];
-      const sharedKbsForMention = sharedList
-        .filter((s: any) => s.knowledge_base != null)
-        .map((s: any) => ({
-          id: s.knowledge_base.id,
-          name: s.knowledge_base.name,
-          type: s.knowledge_base.type || 'document',
-          knowledge_count: s.knowledge_base.knowledge_count,
-          chunk_count: s.knowledge_base.chunk_count,
-          org_name: s.org_name || '',
-          capabilities: s.knowledge_base.capabilities,
-          indexing_strategy: s.knowledge_base.indexing_strategy,
-        }));
-      const ownIds = new Set(availableKbs.map((kb: any) => kb.id));
-      sharedKbsForMention.forEach((kb: any) => {
-        if (!ownIds.has(kb.id)) {
-          availableKbs.push(kb);
-          ownIds.add(kb.id);
-        }
-      });
     }
 
     if (hasAgentConfig.value) {
@@ -1414,11 +1348,6 @@ const loadMentionItems = async (q: string, resetIndex = true, append = false) =>
           });
         }
         const sharedKbOrgMap: Record<string, string> = {};
-        (orgStore.sharedKnowledgeBases || []).forEach((s: any) => {
-          if (s.knowledge_base?.id != null && s.org_name) {
-            sharedKbOrgMap[String(s.knowledge_base.id)] = s.org_name;
-          }
-        });
         const agentOrgLabel = sourceTenantId && agentId ? sharedAgentOrgName.value : '';
         fileItems = files.map((f: any) => {
           const kbId = f.knowledge_base_id ?? f.kb_id;
