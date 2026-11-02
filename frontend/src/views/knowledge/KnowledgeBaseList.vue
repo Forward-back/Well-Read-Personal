@@ -5,14 +5,6 @@
         <div class="header-title" style="--wails-draggable: drag">
           <div class="title-row" style="--wails-draggable: drag">
             <h2 style="--wails-draggable: drag">{{ $t('knowledgeBase.title') }}</h2>
-            <div v-if="authStore.isCompanyAdmin" class="department-scope" style="--wails-draggable: no-drag">
-              <t-select v-model="selectedDepartmentId" size="small" class="department-select"
-                :placeholder="$t('knowledgeList.department.allDepartments')">
-                <t-option value="" :label="$t('knowledgeList.department.allDepartments')" />
-                <t-option v-for="dept in departments" :key="dept.id" :value="dept.id" :label="dept.name" />
-              </t-select>
-            </div>
-            <span v-else class="department-scope-label">{{ selectedDepartmentName }}</span>
             <t-tooltip v-if="canCreateKb" :content="$t('knowledgeList.create')" placement="bottom">
               <t-button variant="text" theme="default" size="small" class="header-action-btn"
                 data-guide="kb-list-create" style="--wails-draggable: no-drag" @click="handleCreateKnowledgeBase">
@@ -769,7 +761,6 @@ import { formatStringDate } from '@/utils/index'
 import { useUIStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
 import { useOrganizationStore } from '@/stores/organization'
-import { listDepartments, type Department } from '@/api/department'
 import { listOrganizationSharedKnowledgeBases, type SharedKnowledgeBase, type OrganizationSharedKnowledgeBaseItem, type SourceFromAgentInfo } from '@/api/organization'
 import { mergeAllScopeKnowledgeBases, type OwnedKnowledgeBase, type SharedKnowledgeBaseLike } from './kbListMerge'
 import KnowledgeBaseEditorModal from './KnowledgeBaseEditorModal.vue'
@@ -792,7 +783,6 @@ const orgStore = useOrganizationStore()
 const chatResources = useChatResourcesStore()
 const { t } = useI18n()
 
-// 主列表只展示当前部门。公司管理员可切换部门查看；普通成员固定本部门。
 // State lives in `?scope=` so links are shareable/bookmarkable.
 const defaultScope: 'all' | 'mine' = 'all'
 const { scope: spaceSelection, creator: creatorFilter } = useListUrlState({
@@ -800,32 +790,7 @@ const { scope: spaceSelection, creator: creatorFilter } = useListUrlState({
   defaultCreator: 'all',
 })
 
-const departments = ref<Department[]>([])
-const selectedDepartmentId = ref<string>(
-  authStore.isCompanyAdmin ? '' : (authStore.currentDepartmentId || ''),
-)
-const departmentFilter = computed(() => (
-  authStore.isCompanyAdmin
-    ? selectedDepartmentId.value
-    : (authStore.currentDepartmentId || '')
-))
-const selectedDepartmentName = computed(() => {
-  if (!departmentFilter.value) return t('knowledgeList.department.allDepartments')
-  return departments.value.find(d => d.id === departmentFilter.value)?.name
-    || t('knowledgeList.department.current')
-})
 const canCreateKb = computed(() => authStore.hasDepartmentRole('knowledge_admin'))
-
-const loadDepartments = async () => {
-  const tenantId = authStore.effectiveTenantId
-  if (!tenantId) return
-  try {
-    const res = await listDepartments(Number(tenantId))
-    departments.value = Array.isArray(res.data) ? res.data : []
-  } catch {
-    departments.value = []
-  }
-}
 
 // Per-user recents (localStorage-backed). touchRecent is wired into the card
 // click handlers below.
@@ -1202,17 +1167,10 @@ const fetchList = (force = false) => {
   return chatResources
     .fetchKnowledgeBasesForList({
       creator: creatorFilter.value,
-      department_id: departmentFilter.value || undefined,
     }, force)
     .then(applyKbListData)
     .finally(() => { loading.value = false })
 }
-
-// Switching department re-scopes the server query. The old organization
-// sidebar state is gone; keep the scope pinned to the current department.
-watch(selectedDepartmentId, () => {
-  fetchList(true)
-})
 
 // 选中空间时请求该空间内全部知识库（含我共享的）
 watch(spaceSelection, (val) => {
@@ -1249,7 +1207,6 @@ watch(creatorFilter, () => {
 })
 
 onMounted(() => {
-  loadDepartments()
   fetchList().then(() => {
     // 检查路由参数中是否有需要高亮的知识库ID
     const highlightKbId = route.query.highlightKbId as string

@@ -354,19 +354,6 @@
                   <DataSourceSettings :kb-id="activeKbId" @count="dsCount = $event" />
                 </div>
 
-                <!-- 共享设置（仅编辑模式） -->
-                <div v-if="editorMode === 'edit' && activeKbId && currentSection === 'share'" class="section">
-                  <KBShareSettings :kb-id="activeKbId" :can-share="canShareKB" />
-                </div>
-
-                <div v-if="editorMode === 'edit' && activeKbId && currentSection === 'acl'" class="section">
-                  <KBAclSettings :kb-id="activeKbId" :can-manage="canManageACL" />
-                </div>
-
-                <!-- 活动记录（仅编辑模式，KB 所属租户内 Owner/Admin） -->
-                <div v-if="editorMode === 'edit' && activeKbId && canViewActivity && currentSection === 'activity'" class="section">
-                  <KnowledgeBaseActivitySettings :kb-id="activeKbId" :active="currentSection === 'activity'" />
-                </div>
               </div>
 
               <!-- 保存按钮 -->
@@ -418,10 +405,7 @@ import KBStorageSettings from './settings/KBStorageSettings.vue'
 import KBChunkingSettings from './settings/KBChunkingSettings.vue'
 import KBAdvancedSettings from './settings/KBAdvancedSettings.vue'
 import ModelSelector from '@/components/ModelSelector.vue'
-import KBShareSettings from './settings/KBShareSettings.vue'
-import KBAclSettings from './settings/KBAclSettings.vue'
 import DataSourceSettings from './settings/DataSourceSettings.vue'
-import KnowledgeBaseActivitySettings from './settings/KnowledgeBaseActivitySettings.vue'
 import { useI18n } from 'vue-i18n'
 
 const uiStore = useUIStore()
@@ -484,39 +468,8 @@ const initialStorageProvider = ref<string>('')
 const tenantDefaultStorageProvider = ref('local')
 const initialIndexingStrategy = ref<any>(null)
 const dsCount = ref(0)
-// Identifier of the user who created this KB. Empty for older rows
-// that predate per-KB ownership tracking; those KBs have no "owner" and
-// only tenant Admin+ can mutate their share settings.
-const kbCreatorId = ref<string>('')
-const kbTenantId = ref<number>(0)
 
-// Backend gate for /knowledge-bases/:id/shares (POST/PUT/DELETE) is
-// g.OwnedKBOrAdmin(): only the KB creator or tenant Admin+ may mutate
-// shares. Org-admins on a shared KB do NOT pass this guard, so they
-// would only see 403s if we let them try. Mirror the matrix here so
-// the buttons disappear instead of failing.
 const canManageTechnical = computed(() => authStore.hasCaps(['kb:settings_manage']))
-
-const canShareKB = computed(() => {
-  if (!activeKbId.value) return false
-  return authStore.hasCaps(['kb:share_manage'])
-})
-
-const canManageACL = computed(() => {
-  if (!activeKbId.value) return false
-  return authStore.hasCaps(['kb:acl_manage'])
-})
-
-const isKbOwner = computed(() => {
-  const userId = authStore.user?.id || ''
-  return Boolean(kbCreatorId.value && userId && kbCreatorId.value === userId)
-})
-
-const canViewActivity = computed(() => {
-  if (editorMode.value !== 'edit' || !activeKbId.value) return false
-  if (Number(kbTenantId.value || 0) !== Number(authStore.currentTenantId || 0)) return false
-  return isKbOwner.value || authStore.hasRole('admin')
-})
 // 用户是否在分块设置中手动改过任何值。一旦为 true，就不再根据索引策略自动调整默认分块参数。
 const chunkingDirty = ref(false)
 
@@ -561,17 +514,6 @@ const navItems = computed(() => {
       items.push({ key: 'datasource', icon: 'cloud-download', label: t('knowledgeEditor.sidebar.datasource'), badge: dsCount.value || undefined })
     }
   }
-  if (editorMode.value === 'edit' && activeKbId.value && !authStore.isLiteMode) {
-    if (canShareKB.value) {
-      items.push({ key: 'share', icon: 'share', label: t('knowledgeEditor.sidebar.share') })
-    }
-    if (canManageACL.value) {
-      items.push({ key: 'acl', icon: 'lock-on', label: t('knowledgeEditor.sidebar.acl') })
-    }
-  }
-  if (canViewActivity.value) {
-    items.push({ key: 'activity', icon: 'history', label: t('knowledgeEditor.sidebar.activity') })
-  }
   return items
 })
 
@@ -595,16 +537,6 @@ const navGroups = computed(() => {
       key: 'data',
       label: t('knowledgeEditor.navGroups.data'),
       items: pickItems(['storage', 'datasource']),
-    },
-    {
-      key: 'integration',
-      label: t('knowledgeEditor.navGroups.integration'),
-      items: pickItems(['share', 'acl']),
-    },
-    {
-      key: 'management',
-      label: t('knowledgeEditor.navGroups.management'),
-      items: pickItems(['activity']),
     },
   ].filter((group) => group.items.length > 0)
 })
@@ -781,8 +713,6 @@ const loadKBData = async (
 
     const kb = kbInfo.data
     hasFiles.value = (filesResult as any)?.total > 0
-    kbCreatorId.value = (kb as any).creator_id || ''
-    kbTenantId.value = Number((kb as any).tenant_id || 0)
 
     // 设置表单数据
     const kbType = (kb.type as 'document' | 'faq') || 'document'
@@ -1423,8 +1353,6 @@ const resetState = () => {
   saving.value = false
   loading.value = false
   chunkingDirty.value = false
-  kbCreatorId.value = ''
-  kbTenantId.value = 0
 }
 
 // 关闭弹窗

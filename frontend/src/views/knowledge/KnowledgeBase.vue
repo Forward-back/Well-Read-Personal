@@ -60,7 +60,6 @@ import KbTagManageDrawer from './components/KbTagManageDrawer.vue';
 import type { KnowledgeProcessOverrides } from '@/types/knowledgeProcess';
 import { useUploadConfirmStore, type UploadConfirmResult } from '@/stores/uploadConfirm';
 import GazeBrowser from './gaze/GazeBrowser.vue';
-import CollaborationWorkbench from './collaboration/CollaborationWorkbench.vue';
 import { getGazeStats } from '@/api/gaze';
 import {
   isKnowledgeParseInFlight,
@@ -93,7 +92,7 @@ const kbLoading = ref(false);
 const docListLoading = ref(true);
 const isFAQ = computed(() => (kbInfo.value?.type || '') === 'faq');
 const isGaze = computed(() => !!kbInfo.value?.indexing_strategy?.gaze_enabled);
-const validTabs = ['documents', 'gaze', 'graph', 'collab'] as const
+const validTabs = ['documents', 'gaze', 'graph'] as const
 type KbTab = typeof validTabs[number]
 const initTab = validTabs.includes(route.query.tab as any) ? (route.query.tab as KbTab) : 'documents'
 const activeKbTab = ref<KbTab>(initTab);
@@ -2758,16 +2757,10 @@ async function createNewSession(value: string): Promise<void> {
                     </t-tooltip>
                   </span>
                 </t-tooltip>
-                <span class="breadcrumb-tab-sep">/</span>
-                <span :class="['breadcrumb-tab', { active: activeKbTab === 'collab' }]"
-                  @click="activeKbTab = 'collab'">{{ $t('collaboration.tab') }}</span>
               </template>
               <template v-else>
                 <span :class="['breadcrumb-tab', { active: activeKbTab === 'documents' }]"
                   @click="activeKbTab = 'documents'">{{ $t('knowledgeEditor.document.title') }}</span>
-                <span class="breadcrumb-tab-sep">/</span>
-                <span :class="['breadcrumb-tab', { active: activeKbTab === 'collab' }]"
-                  @click="activeKbTab = 'collab'">{{ $t('collaboration.tab') }}</span>
               </template>
             </h2>
             <!-- 标题行右侧的动作锚点：聚拢"信息"和"设置"两个圆形按钮。 -->
@@ -2827,11 +2820,7 @@ async function createNewSession(value: string): Promise<void> {
           @view-graph="onViewGazeInGraph" />
       </div>
 
-      <div v-else-if="activeKbTab === 'collab'" class="kb-collab-main">
-        <CollaborationWorkbench v-if="kbId" :kb-id="kbId" :can-edit="canEdit" :can-manage="canManage" />
-      </div>
-
-      <template v-if="activeKbTab === 'documents' || (!isGaze && activeKbTab !== 'collab')">
+      <template v-if="activeKbTab === 'documents' || !isGaze">
         <div class="knowledge-main">
           <KbFolderTree v-if="showFolderTree && !folderTreeCollapsed" :tree="folderTree" :selected-path="selectedFolderPath"
             :loading="folderTreeLoading" :can-edit="canManageFolders"
