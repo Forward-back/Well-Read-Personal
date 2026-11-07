@@ -79,15 +79,19 @@ func TestResolveRefusesMissingConfig(t *testing.T) {
 }
 
 // Construction must not perform a Health round-trip (it happens per request).
-// A tenant that chose E2B must fail at first use if that backend is unreachable,
-// rather than substituting a different execution environment.
+// The daemon socket below does not have to exist: a resolve that probed would
+// fail here instead of at first use.
 func TestResolveBuildsRemoteManagerWithoutHealthProbe(t *testing.T) {
+	t.Setenv("DOCKER_HOST", "unix:///var/run/docker.sock")
+	isolateDockerEnabled(t)
+	t.Setenv(DockerBackendEnabledEnv, "true")
+
 	resolver, fallback := newTestResolver(t, &stubTenantConfigLoader{
 		result: ResolvedTenantSandboxConfig{
 			Config: &types.TenantSandboxConfig{
-				SandboxType: "e2b",
-				E2B: &types.E2BSandboxConfig{
-					APIKey: "tenant-key", TemplateID: "tenant-template",
+				SandboxType: "docker",
+				Docker: &types.DockerSandboxConfig{
+					Image: "gaze-sandbox:test",
 				},
 			},
 			Found: true,
@@ -196,12 +200,16 @@ func TestResolveRefusesStoredLocalConfig(t *testing.T) {
 // No caching: the loader is consulted on every Resolve, which is what makes a
 // config change take effect on the next request with no invalidation step.
 func TestResolveBuildsFreshManagerEveryCall(t *testing.T) {
+	t.Setenv("DOCKER_HOST", "unix:///var/run/docker.sock")
+	isolateDockerEnabled(t)
+	t.Setenv(DockerBackendEnabledEnv, "true")
+
 	loader := &stubTenantConfigLoader{
 		result: ResolvedTenantSandboxConfig{
 			Config: &types.TenantSandboxConfig{
-				SandboxType: "e2b",
-				E2B: &types.E2BSandboxConfig{
-					APIKey: "tenant-key", TemplateID: "tenant-template",
+				SandboxType: "docker",
+				Docker: &types.DockerSandboxConfig{
+					Image: "gaze-sandbox:test",
 				},
 			},
 			Found: true,

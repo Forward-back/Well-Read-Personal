@@ -71,19 +71,9 @@ func (v *VectorStore) BeforeCreate(tx *gorm.DB) error {
 
 // validEngineTypes defines the engine types that can be registered as a
 // DB-managed VectorStore (i.e., persisted to the vector_stores table and
-// listed in GetVectorStoreTypes for the UI dropdown).
-//
-// Excluded engines:
-//   - Infinity / ElasticFaiss — legacy/experimental, no standalone deployable instance.
-//   - Postgres / SQLite — only meaningful when bound to the app's default DB
-//     connection (UseDefaultConnection=true). The Postgres retriever's
-//     embeddings table is a single hard-coded name with no per-store
-//     partitioning, so registering a second Postgres store on the same
-//     instance has no separation effect — every KB sharing this engine
-//     ends up in the same physical table. These engines are still
-//     reachable via env stores (RETRIEVE_DRIVER=postgres/sqlite), which
-//     route through a separate code path (BuildEnvVectorStores) and do
-//     not pass through this validation.
+// listed in GetVectorStoreTypes for the UI dropdown). The personal edition
+// supports only the application's own PostgreSQL database and local SQLite;
+// both can also be reached as env stores via RETRIEVE_DRIVER.
 var validEngineTypes = map[RetrieverEngineType]bool{
 	PostgresRetrieverEngineType: true,
 	SQLiteRetrieverEngineType:   true,
@@ -638,122 +628,33 @@ type VectorStoreFieldInfo struct {
 	Enum []string `json:"enum,omitempty"`
 }
 
-// GetVectorStoreTypes returns metadata for all supported engine types.
+// GetVectorStoreTypes returns metadata for the engine types the personal
+// edition supports: the application's own PostgreSQL database or a local
+// SQLite file. The external vector databases of the enterprise edition were
+// removed, so they are neither listed nor registerable.
 func GetVectorStoreTypes() []VectorStoreTypeInfo {
-	tencentVectorDBReplicaNumber := resolveTencentVectorDBReplicaNumber(os.Getenv)
-
 	return []VectorStoreTypeInfo{
 		{
-			Type:        "elasticsearch",
-			DisplayName: "Elasticsearch",
+			Type:        string(PostgresRetrieverEngineType),
+			DisplayName: "PostgreSQL",
 			ConnectionFields: []VectorStoreFieldInfo{
-				{Name: "addr", Type: "string", Required: true, Description: "URL", Default: "http://localhost:9200"},
-				{Name: "username", Type: "string", Required: false, Description: "Username", Default: "elastic"},
+				{Name: "use_default_connection", Type: "boolean", Required: false, Description: "Use the application's default PostgreSQL connection", Default: false},
+				{Name: "addr", Type: "string", Required: false, Description: "PostgreSQL connection string (required unless use_default_connection is set)"},
+				{Name: "username", Type: "string", Required: false, Description: "Username", Default: "postgres"},
 				{Name: "password", Type: "string", Required: false, Sensitive: true, Description: "Password"},
-			},
-			IndexFields: []VectorStoreFieldInfo{
-				{Name: "index_name", Type: "string", Required: false, Description: "Index Name", Default: "gaze"},
-				{Name: "number_of_shards", Type: "number", Required: false, Description: "Shards", Default: 4},
-				{Name: "number_of_replicas", Type: "number", Required: false, Description: "Replicas", Default: 1},
-			},
-		},
-		// PostgreSQL and SQLite are excluded from the type list because they only support
-		// the app's default DB connection (UseDefaultConnection=true). They appear as
-		// env stores when configured via RETRIEVE_DRIVER but cannot be added as DB stores.
-		{
-			Type:        "qdrant",
-			DisplayName: "Qdrant",
-			ConnectionFields: []VectorStoreFieldInfo{
-				{Name: "host", Type: "string", Required: true, Description: "Host", Default: "localhost"},
-				{Name: "port", Type: "number", Required: false, Description: "Port", Default: 6334},
-				{Name: "api_key", Type: "string", Required: false, Sensitive: true, Description: "API Key"},
-				{Name: "use_tls", Type: "boolean", Required: false, Description: "Use TLS", Default: false},
 			},
 			IndexFields: []VectorStoreFieldInfo{
 				{Name: "collection_prefix", Type: "string", Required: false, Description: "Collection Prefix", Default: "gaze_embeddings"},
-				{Name: "shard_number", Type: "number", Required: false, Description: "Shard Number", Default: 1},
-				{Name: "replication_factor", Type: "number", Required: false, Description: "Replication Factor", Default: 1},
-			},
-		},
-		{
-			Type:        "milvus",
-			DisplayName: "Milvus",
-			ConnectionFields: []VectorStoreFieldInfo{
-				{Name: "addr", Type: "string", Required: true, Description: "Address", Default: "localhost:19530"},
-				{Name: "database", Type: "string", Required: false, Description: "Database Name"},
-				{Name: "username", Type: "string", Required: false, Description: "Username", Default: "root"},
-				{Name: "password", Type: "string", Required: false, Sensitive: true, Description: "Password"},
-			},
-			IndexFields: []VectorStoreFieldInfo{
 				{Name: "collection_name", Type: "string", Required: false, Description: "Collection Name", Default: "gaze_embeddings"},
-				{Name: "shards_num", Type: "number", Required: false, Description: "Shards (write parallelism)", Default: 1},
-				{Name: "replica_number", Type: "number", Required: false, Description: "In-memory Replicas (read HA)", Default: 1},
 			},
 		},
 		{
-			Type:        "tencent_vectordb",
-			DisplayName: "Tencent VectorDB",
-			ConnectionFields: []VectorStoreFieldInfo{
-				{Name: "addr", Type: "string", Required: true, Description: "Address", Default: "http://localhost:8080"},
-				{Name: "username", Type: "string", Required: true, Description: "Username"},
-				{Name: "api_key", Type: "string", Required: true, Sensitive: true, Description: "API Key"},
-				{Name: "database", Type: "string", Required: false, Description: "Database", Default: "gaze"},
-			},
+			Type:             string(SQLiteRetrieverEngineType),
+			DisplayName:      "SQLite",
+			ConnectionFields: nil,
 			IndexFields: []VectorStoreFieldInfo{
+				{Name: "collection_prefix", Type: "string", Required: false, Description: "Collection Prefix", Default: "gaze_embeddings"},
 				{Name: "collection_name", Type: "string", Required: false, Description: "Collection Name", Default: "gaze_embeddings"},
-				{Name: "shards_num", Type: "number", Required: false, Description: "Shards", Default: 1},
-				{Name: "replica_number", Type: "number", Required: false, Description: "Replicas", Default: tencentVectorDBReplicaNumber},
-			},
-		},
-		{
-			Type:        "weaviate",
-			DisplayName: "Weaviate",
-			ConnectionFields: []VectorStoreFieldInfo{
-				{Name: "host", Type: "string", Required: true, Description: "Host", Default: "weaviate:8080"},
-				{Name: "grpc_address", Type: "string", Required: false, Description: "gRPC Address", Default: "weaviate:50051"},
-				{Name: "scheme", Type: "string", Required: false, Description: "Scheme", Default: "http"},
-				{Name: "api_key", Type: "string", Required: false, Sensitive: true, Description: "API Key"},
-			},
-			IndexFields: []VectorStoreFieldInfo{
-				{Name: "collection_prefix", Type: "string", Required: false, Description: "Collection Prefix", Default: "Gaze_embeddings"},
-				{Name: "desired_shard_count", Type: "number", Required: false, Description: "Shard Count", Default: 1},
-				{Name: "replication_factor", Type: "number", Required: false, Description: "Replication Factor", Default: 1},
-			},
-		},
-		{
-			Type:        "doris",
-			DisplayName: "Apache Doris",
-			ConnectionFields: []VectorStoreFieldInfo{
-				{Name: "addr", Type: "string", Required: true, Description: "FE MySQL Address (host:port)", Default: "doris-fe:9030"},
-				{Name: "http_port", Type: "number", Required: false, Description: "FE HTTP Port (Stream Load)", Default: 8030},
-				{Name: "database", Type: "string", Required: true, Description: "Database", Default: "gaze"},
-				{Name: "username", Type: "string", Required: false, Description: "Username", Default: "root"},
-				{Name: "password", Type: "string", Required: false, Sensitive: true, Description: "Password"},
-			},
-			IndexFields: []VectorStoreFieldInfo{
-				{Name: "collection_prefix", Type: "string", Required: false, Description: "Table Prefix", Default: "gaze_embeddings"},
-				{Name: "buckets_num", Type: "number", Required: false, Description: "Buckets per table", Default: 10},
-				{Name: "replication_num", Type: "number", Required: false, Description: "Replication Num", Default: 1},
-			},
-		},
-		{
-			Type:        "opensearch",
-			DisplayName: "OpenSearch",
-			ConnectionFields: []VectorStoreFieldInfo{
-				{Name: "addr", Type: "string", Required: true, Description: "URL", Default: "https://localhost:9200"},
-				{Name: "username", Type: "string", Required: false, Description: "Username", Default: "admin"},
-				{Name: "password", Type: "string", Required: false, Sensitive: true, Description: "Password"},
-				{Name: "insecure_skip_verify", Type: "boolean", Required: false, Default: false,
-					Description: "Skip TLS certificate verification. For self-signed dev clusters only — never enable in production."},
-			},
-			IndexFields: []VectorStoreFieldInfo{
-				{Name: "index_name", Type: "string", Required: false, Description: "Index Name", Default: "gaze"},
-				{Name: "number_of_shards", Type: "number", Required: false, Description: "Shards", Default: 4, Min: floatPtr(1), Max: floatPtr(64)},
-				{Name: "number_of_replicas", Type: "number", Required: false, Description: "Replicas", Default: 1, Min: floatPtr(0), Max: floatPtr(10)},
-				{Name: "hnsw_m", Type: "number", Required: false, Description: "HNSW graph degree (M). Immutable after index creation.", Default: 16, Min: floatPtr(2), Max: floatPtr(100), Immutable: true},
-				{Name: "hnsw_ef_construction", Type: "number", Required: false, Description: "HNSW build candidate list. Higher (e.g. 200-512) improves recall at the cost of build time. Immutable after creation.", Default: 100, Min: floatPtr(2), Max: floatPtr(4096), Immutable: true},
-				{Name: "hnsw_ef_search", Type: "number", Required: false, Description: "HNSW search candidate list. Effective on the faiss engine; the lucene engine reads it at query time. Immutable (no settings-update path).", Default: 100, Min: floatPtr(1), Max: floatPtr(10000), Immutable: true},
-				{Name: "knn_engine", Type: "string", Required: false, Description: "k-NN backend.", Default: "lucene", Enum: []string{"lucene", "faiss"}, Immutable: true},
 			},
 		},
 	}

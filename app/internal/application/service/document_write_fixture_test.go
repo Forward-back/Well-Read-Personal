@@ -255,6 +255,7 @@ func newDocumentWriteFixture(t *testing.T) *documentWriteFixture {
 		types.Caller{TenantID: 7, UserID: "owner", Role: types.TenantRoleOwner},
 	)
 	ctx = context.WithValue(ctx, types.TenantInfoContextKey, &types.Tenant{ID: 7})
+	ctx = types.WithExecutionTenant(ctx, 7)
 	return &documentWriteFixture{
 		svc:       svc,
 		chunks:    chunks,

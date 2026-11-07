@@ -407,7 +407,9 @@ func TestSwitchImagePointerAbandonsSnapshotWhenCredentialsRotate(t *testing.T) {
 	// snapshot to the new account. Stamping the new fingerprint onto that ID
 	// would make every session trust a snapshot the live key cannot resolve.
 	fx.configRepo.editAfterFirstRead = func(e *types.TenantSandboxConfigEntity) {
-		e.Config.E2B.APIKey = "key-2"
+		// Re-pointing the daemon is the docker equivalent of rotating the
+		// provider account: the snapshot was committed on the old one.
+		e.Config.Docker.Host = "tcp://other-daemon:2375"
 	}
 
 	err := fx.svc.runInstall(context.Background(), 7, "cfg-1", "sk-1", fx.bundle)
@@ -1699,7 +1701,7 @@ func TestRunInstallRefusesAnImageThatBelongsToAnotherProviderAccount(t *testing.
 		SnapshotID: "snap-old", Generation: 3,
 		BaseTemplateID: "base-template", OwnerFingerprint: fx.fingerprint,
 	}
-	fx.configRepo.entity.Config.E2B.APIKey = "key-2"
+	fx.configRepo.entity.Config.Docker.Host = "tcp://other-daemon:2375"
 
 	err := fx.svc.runInstall(context.Background(), 7, "cfg-1", "sk-1", fx.bundle)
 
@@ -2023,7 +2025,10 @@ func newInstallFixture(t *testing.T) *installFixture {
 	t.Helper()
 
 	fx := &installFixture{t: t}
-	fx.fingerprint = sandbox.SkillImageFingerprint("e2b", "key-1", "https://e2b.example")
+	// The personal edition has one snapshot-capable backend: Docker. Both the
+	// config block and the expected fingerprint come from the same stored
+	// fields, exactly as the install path computes them.
+	fx.fingerprint = sandbox.SkillImageFingerprint("docker", "", "unix:///var/run/docker.sock")
 	// The checker's own wording for a missing dependency, so a test reading the
 	// repair prompt sees what a real run would put in it.
 	fx.loadCheckStderr = "scripts/extract.py imports pandas, " +
@@ -2046,10 +2051,9 @@ func newInstallFixture(t *testing.T) *installFixture {
 		SandboxType: string(sandbox.SandboxTypeDocker),
 		Config: &types.TenantSandboxConfig{
 			SandboxType: string(sandbox.SandboxTypeDocker),
-			E2B: &types.E2BSandboxConfig{
-				APIURL:     "https://e2b.example",
-				APIKey:     "key-1",
-				TemplateID: "base-template",
+			Docker: &types.DockerSandboxConfig{
+				Image: "base-template",
+				Host:  "unix:///var/run/docker.sock",
 			},
 		},
 	}}
@@ -2209,6 +2213,10 @@ func (r *installConfigRepo) GetByID(
 		if r.entity.Config.Cube != nil {
 			cube := *r.entity.Config.Cube
 			cfg.Cube = &cube
+		}
+		if r.entity.Config.Docker != nil {
+			docker := *r.entity.Config.Docker
+			cfg.Docker = &docker
 		}
 		if r.entity.Config.SkillImage != nil {
 			image := *r.entity.Config.SkillImage

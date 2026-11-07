@@ -98,17 +98,10 @@ services:
       - AUTO_RECOVER_DIRTY=${AUTO_RECOVER_DIRTY:-true}
       # ========== 检索（仅 postgres+pgvector） ==========
       - RETRIEVE_DRIVER=${RETRIEVE_DRIVER:-postgres}
-      # ========== YLSW 检索引擎（银联商务 RAG 侧车） ==========
+      # ========== YLSW 检索引擎（RAG 侧车） ==========
       - YLSW_BASE_URL=${YLSW_BASE_URL:-http://ylsw:5000}
-      # 服务间共享密钥（§2.13 P2，与 ylsw 服务同值；空=不启用）
+      # 服务间共享密钥（与 ylsw 服务同值；空=不启用）
       - YLSW_ENGINE_TOKEN=${YLSW_ENGINE_TOKEN:-}
-      # ========== 员工表校验(注册工号):银联商务业务 MySQL ==========
-      # 注意:app 容器内的 YLSW_MYSQL_DATABASE 指向员工表库(ylsw 服务的 RAG 库走 YLSW_MYSQL_DATABASE 宿主变量)
-      - YLSW_MYSQL_HOST=${YLSW_MYSQL_HOST:-host.docker.internal}
-      - YLSW_MYSQL_PORT=${YLSW_MYSQL_PORT:-3306}
-      - YLSW_MYSQL_USER=${YLSW_MYSQL_USER:-root}
-      - YLSW_MYSQL_PASSWORD=${YLSW_MYSQL_PASSWORD:-}
-      - YLSW_MYSQL_DATABASE=${YLSW_EMPLOYEE_DB:-ums_employee}
       # ========== 向量库杂项 ==========
       - BATCH_EMBED_SIZE=${BATCH_EMBED_SIZE:-}
       - VLM_HTTP_TIMEOUT_SECONDS=${VLM_HTTP_TIMEOUT_SECONDS:-}
@@ -129,6 +122,9 @@ services:
       - IMAGE_HOST_KEEP_URL=${IMAGE_HOST_KEEP_URL:-}
       - CONCURRENCY_POOL_SIZE=${CONCURRENCY_POOL_SIZE:-5}
       - JWT_SECRET=${JWT_SECRET:-}
+      # 个人版唯一 owner：首次启动创建账号；两个值必须配置
+      - OWNER_EMAIL=${OWNER_EMAIL:-}
+      - OWNER_PASSWORD=${OWNER_PASSWORD:-}
       - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-50}
       # 文档处理
       - GAZE_DOCUMENT_PROCESS_TIMEOUT=${GAZE_DOCUMENT_PROCESS_TIMEOUT:-}

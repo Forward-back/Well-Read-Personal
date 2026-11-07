@@ -3,6 +3,7 @@ package chat
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"gaze/internal/models/provider"
 	"gaze/internal/types"
@@ -104,11 +105,87 @@ type genericProvider struct{ baseProvider }
 func (genericProvider) Name() provider.ProviderName { return provider.ProviderGeneric }
 func (genericProvider) Thinking() ThinkingStrategy  { return chatTemplateKwargs{} }
 
+// --- LKEAP: thinking object, except DeepSeek-R1 which takes no thinking field ---
+
+type lkeapReasoningProvider struct{ baseProvider }
+
+func (lkeapReasoningProvider) Name() provider.ProviderName { return provider.ProviderLKEAP }
+func (lkeapReasoningProvider) Matches(model string) bool {
+	return strings.Contains(strings.ToLower(model), "deepseek-r1")
+}
+func (lkeapReasoningProvider) Thinking() ThinkingStrategy { return noThinking{} }
+
+type lkeapProvider struct{ baseProvider }
+
+func (lkeapProvider) Name() provider.ProviderName { return provider.ProviderLKEAP }
+func (lkeapProvider) Thinking() ThinkingStrategy  { return thinkingTypeField{} }
+
+// --- Volcengine Ark: `{ "thinking": { "type": ... } }` ---
+
+type volcengineProvider struct{ baseProvider }
+
+func (volcengineProvider) Name() provider.ProviderName { return provider.ProviderVolcengine }
+func (volcengineProvider) Thinking() ThinkingStrategy  { return thinkingTypeField{} }
+
+// --- Moonshot: only temperature=1 is accepted for most models ---
+
+type moonshotProvider struct{ baseProvider }
+
+func (moonshotProvider) Name() provider.ProviderName { return provider.ProviderMoonshot }
+func (moonshotProvider) ShapeRequest(req *openai.ChatCompletionRequest, _ *ChatOptions, _ bool) {
+	req.Temperature = 1
+	req.TopP = 0
+}
+
+// --- Gemini's OpenAI-compatible endpoint: tool calls round-trip extra_content ---
+
+type geminiProvider struct{ baseProvider }
+
+func (geminiProvider) Name() provider.ProviderName { return provider.ProviderGemini }
+
+// The OpenAI-compatible Gemini endpoint hides thought signatures in
+// tool_call.extra_content.google, which the standard SDK would drop.
+func (geminiProvider) ForceRawHTTP() bool { return true }
+
+func (geminiProvider) ExtractToolCallMetadata(raw json.RawMessage) types.ToolCallMetadata {
+	var call struct {
+		ExtraContent map[string]json.RawMessage `json:"extra_content"`
+	}
+	if json.Unmarshal(raw, &call) != nil || len(call.ExtraContent) == 0 {
+		return nil
+	}
+	return types.ToolCallMetadata(call.ExtraContent)
+}
+
+func (geminiProvider) InjectToolCallMetadata(toolCall map[string]any, metadata types.ToolCallMetadata) {
+	if len(toolCall) == 0 || len(metadata) == 0 {
+		return
+	}
+	extra := make(map[string]any, len(metadata))
+	for key, raw := range metadata {
+		if len(raw) == 0 {
+			continue
+		}
+		var value any
+		if json.Unmarshal(raw, &value) == nil {
+			extra[key] = value
+		}
+	}
+	if len(extra) > 0 {
+		toolCall["extra_content"] = extra
+	}
+}
+
 // providerRegistry is ordered: more specific adapters (those with a real
 // Matches predicate) must precede the generic catch-all for the same provider.
 var providerRegistry = []providerAdapter{
 	qwenThinkingProvider{},
 	deepseekProvider{},
+	lkeapReasoningProvider{},
+	lkeapProvider{},
+	volcengineProvider{},
+	moonshotProvider{},
+	geminiProvider{},
 	genericProvider{},
 }
 

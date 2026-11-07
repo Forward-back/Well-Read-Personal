@@ -107,9 +107,12 @@ func TestIsNamedSandboxBackendType(t *testing.T) {
 		raw  string
 		want bool
 	}{
-		{"cube", true},
-		{"e2b", true},
+		// Docker is the only named backend the personal edition ships; the
+		// remote providers were removed, so their type strings are not
+		// storable as named backends any more.
 		{"docker", true},
+		{"cube", false},
+		{"e2b", false},
 		{"local", false},
 		{"disabled", false},
 		{"", false},

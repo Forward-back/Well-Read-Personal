@@ -1,8 +1,5 @@
 import { get, post, put, del, postUpload, getDown } from "../../utils/request";
 import type { KnowledgeProcessOverrides } from '@/types/knowledgeProcess';
-import type { AuditLog, AuditOutcome, ListAuditLogResponse } from '@/api/tenant/audit-log';
-
-export type KnowledgeBaseActivity = AuditLog;
 
 function buildQuery(params?: Record<string, unknown>): string {
   if (!params) return ''
@@ -15,29 +12,6 @@ function buildQuery(params?: Record<string, unknown>): string {
   return encoded ? `?${encoded}` : ''
 }
 
-
-export interface ListKnowledgeBaseActivityParams {
-  after_id?: number;
-  limit?: number;
-  action?: string;
-  outcome?: AuditOutcome;
-  actor?: string;
-}
-
-export async function listKnowledgeBaseActivity(
-  id: string,
-  params: ListKnowledgeBaseActivityParams = {},
-): Promise<ListAuditLogResponse> {
-  const query = new URLSearchParams();
-  if (params.after_id) query.set('after_id', String(params.after_id));
-  if (params.limit) query.set('limit', String(params.limit));
-  if (params.action) query.set('action', params.action);
-  if (params.outcome) query.set('outcome', params.outcome);
-  if (params.actor) query.set('actor', params.actor);
-  const qs = query.toString();
-  return (await get(`/api/v1/knowledge-bases/${id}/activity${qs ? `?${qs}` : ''}`)) as unknown as ListAuditLogResponse;
-}
-
 // 知识库管理 API（列表、创建、获取、更新、删除、复制）
 export function listKnowledgeBases(params?: {
   agent_id?: string;
@@ -47,33 +21,15 @@ export function listKnowledgeBases(params?: {
    *   - "mine"   → only KBs whose creator_id matches the caller
    *   - "others" → only KBs created by someone else in this tenant
    *   - omitted/"all" → no filter
-   * KBs predating the RBAC backfill (creator_id="") never match
-   * mine/others — they fall out of both views by design.
    */
   creator?: 'all' | 'mine' | 'others';
-  /** Company admins may inspect one department; members are server-scoped. */
-  department_id?: string;
 }) {
   const query = new URLSearchParams();
   if (params?.agent_id) query.set('agent_id', params.agent_id);
   if (params?.agent_source_tenant_id) query.set('agent_source_tenant_id', params.agent_source_tenant_id);
   if (params?.creator && params.creator !== 'all') query.set('creator', params.creator);
-  if (params?.department_id) query.set('department_id', params.department_id);
   const qs = query.toString();
   return get(qs ? `/api/v1/knowledge-bases?${qs}` : '/api/v1/knowledge-bases');
-}
-
-/** KBs shared into the caller's department; read-only projection. */
-export function listSharedSpaceKnowledgeBases() {
-  return get('/api/v1/shared-space/knowledge-bases');
-}
-
-export function getKBDepartmentShares(id: string) {
-  return get(`/api/v1/knowledge-bases/${id}/shares`);
-}
-
-export function setKBDepartmentShares(id: string, departmentIds: string[]) {
-  return put(`/api/v1/knowledge-bases/${id}/shares`, { department_ids: departmentIds });
 }
 
 // Read-only vector-store binding metadata enriched onto every KB
@@ -88,16 +44,11 @@ export function setKBDepartmentShares(id: string, departmentIds: string[]) {
 //                       reports the underlying engine (e.g. "postgres").
 //   - source 'user'   → KB is bound to a tenant-owned VectorStore.
 //                       vector_store_id / name / engine_type are real.
-//   - source 'shared' → KB belongs to a different tenant and is
-//                       readable via cross-organization sharing. The
-//                       server strips vector_store_id and engine_type
-//                       to avoid leaking the owner tenant's store
-//                       inventory; only this source marker arrives.
 //   - status 'unavailable' → the binding cannot be reached right now
 //                       (deleted row, registry miss, transient infra
 //                       failure). Operators recover via the global
 //                       Vector Stores settings page.
-export type VectorStoreSource = 'env' | 'user' | 'shared' | 'unavailable';
+export type VectorStoreSource = 'env' | 'user' | 'unavailable';
 export type VectorStoreStatus = 'available' | 'unavailable';
 
 export interface KnowledgeBaseStoreView {
@@ -599,41 +550,6 @@ export function knowledgeSemanticSearch(data: {
 
 export function batchReparseKnowledge(kbId: string, ids: string[]) {
   return post('/api/v1/knowledge/batch-reparse', { kb_id: kbId, ids })
-}
-
-export type KBAclResourceType = 'folder' | 'file'
-export type KBAclEffect = 'allow' | 'deny'
-export type KBAclSubjectType = 'all' | 'department' | 'user'
-
-export interface KBAclRule {
-  id: string
-  kb_id?: string
-  resource_type: KBAclResourceType
-  resource_id: string
-  effect: KBAclEffect
-  subject_type: KBAclSubjectType
-  subject_id: string
-  created_at?: string
-}
-
-export interface KBAclRuleRequest {
-  resource_type: KBAclResourceType
-  resource_id: string
-  effect: KBAclEffect
-  subject_type: KBAclSubjectType
-  subject_id?: string
-}
-
-export function listKBAcl(kbId: string) {
-  return get(`/api/v1/knowledge-bases/${kbId}/acl`)
-}
-
-export function createKBAclRule(kbId: string, body: KBAclRuleRequest) {
-  return post(`/api/v1/knowledge-bases/${kbId}/acl`, body)
-}
-
-export function deleteKBAclRule(kbId: string, ruleId: string) {
-  return del(`/api/v1/knowledge-bases/${kbId}/acl/${ruleId}`)
 }
 
 export interface CodeSourceRequest {

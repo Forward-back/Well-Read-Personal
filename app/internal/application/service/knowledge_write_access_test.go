@@ -124,6 +124,7 @@ func newFAQWriteFixture(t *testing.T) *faqWriteFixture {
 		types.Caller{TenantID: 7, UserID: "owner", Role: types.TenantRoleOwner},
 	)
 	ctx := context.WithValue(base, types.TenantInfoContextKey, &types.Tenant{ID: 7})
+	ctx = types.WithExecutionTenant(ctx, 7)
 	for _, tag := range []*types.KnowledgeTag{
 		{ID: "tag", SeqID: 11, TenantID: 7, KnowledgeBaseID: "kb", Name: "tag"},
 		{ID: "next", SeqID: 12, TenantID: 7, KnowledgeBaseID: "kb", Name: "next"},
@@ -411,7 +412,16 @@ func mustWriteJSON(t *testing.T, value interface{}) []byte {
 func TestSharedFAQWriteLoadsOwnerTenantInfoWithoutReplacingCaller(t *testing.T) {
 	f := newFAQWriteFixture(t)
 	f.svc.tenantRepo = &processSyncTenantRepo{tenant: &types.Tenant{ID: 7}}
-	ctx := context.WithValue(f.ctx, types.TenantInfoContextKey, &types.Tenant{ID: 1})
+	base := types.WithCaller(
+		context.Background(),
+		types.Caller{TenantID: 1, UserID: "owner", Role: types.TenantRoleOwner},
+	)
+	base = context.WithValue(base, types.TenantInfoContextKey, &types.Tenant{ID: 1})
+	// Personal edition has no cross-tenant sharing; a trusted worker grant is
+	// the only way to mutate another workspace's KB and still exercises the
+	// caller-preservation contract.
+	ctx, err := access.WithKBTaskWrite(base, f.kb, 7)
+	require.NoError(t, err)
 	_, scoped, err := f.svc.writableFAQKnowledgeBase(ctx, "kb")
 	require.NoError(t, err)
 	owner, _ := types.TenantInfoFromContext(scoped)

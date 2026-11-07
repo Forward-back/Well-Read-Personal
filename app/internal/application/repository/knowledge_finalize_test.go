@@ -15,11 +15,11 @@ import (
 	"gorm.io/gorm"
 )
 
-// knowledgesTestDDL mirrors the columns of `knowledges` that
-// SetFinalizing / FinalizeSubtask / UpdateKnowledge actually read or write.
-// We inline the DDL (instead of AutoMigrate) so the schema is explicit,
-// and we include pending_subtasks_count from migration 000056 plus the
-// processing/finalizing/completed columns the helpers care about.
+// knowledgesTestDDL mirrors the columns of `knowledges` that GORM maps from
+// types.Knowledge (migrations/sqlite/000000_init.up.sql plus the columns added
+// by later consolidated migrations). We inline the DDL (instead of
+// AutoMigrate) so the schema is explicit, and we include the columns the
+// processing / finalizing / transfer helpers read and write.
 const knowledgesTestDDL = `
 CREATE TABLE IF NOT EXISTS knowledges (
     id VARCHAR(36) PRIMARY KEY,
@@ -34,17 +34,28 @@ CREATE TABLE IF NOT EXISTS knowledges (
     embedding_model_id VARCHAR(64),
     file_name VARCHAR(255),
     folder_path VARCHAR(1024) NOT NULL DEFAULT '',
+    folder_id VARCHAR(64) NOT NULL DEFAULT '',
     file_type VARCHAR(50),
     file_size BIGINT,
     file_path TEXT,
     file_hash VARCHAR(64),
     storage_size BIGINT NOT NULL DEFAULT 0,
     metadata TEXT,
-    tag_id VARCHAR(36),
+    doc_type VARCHAR(50),
+    org_name VARCHAR(255),
+    doc_number VARCHAR(100),
+    doc_date VARCHAR(50),
+    product_name VARCHAR(100),
+    custom_metadata TEXT NOT NULL DEFAULT '{}',
     summary_status VARCHAR(32) DEFAULT 'none',
     last_faq_import_result TEXT DEFAULT NULL,
     channel VARCHAR(50) NOT NULL DEFAULT 'web',
-    pending_subtasks_count INT NOT NULL DEFAULT 0,
+    created_by VARCHAR(36),
+    engine_sync_status VARCHAR(20) NOT NULL DEFAULT 'synced',
+    engine_sync_requested_at DATETIME,
+    engine_sync_completed_at DATETIME,
+    engine_sync_error TEXT NOT NULL DEFAULT '',
+    pending_subtasks_count INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     processed_at DATETIME,

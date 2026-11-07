@@ -127,7 +127,9 @@ func TestRunRemoveRefusesAnImageThatBelongsToAnotherProviderAccount(t *testing.T
 	fx := newInstallFixture(t)
 	fx.seedInstalledSkill("sk-1", "snap-old", 2)
 	fx.seedInstalledSkill("sk-2", "snap-old", 2)
-	fx.configRepo.entity.Config.E2B.APIKey = "key-2"
+	// Re-pointing the daemon is the docker equivalent of rotating the provider
+	// account: the snapshot was committed on the old one.
+	fx.configRepo.entity.Config.Docker.Host = "tcp://other-daemon:2375"
 
 	err := fx.svc.runRemove(context.Background(), 7, "cfg-1", "sk-1")
 
@@ -188,7 +190,7 @@ func TestRunRemoveAbortsWhenANewerInstallOwnsTheRow(t *testing.T) {
 func TestRunRemoveClearsTheLastSkillWhenCredentialsRotated(t *testing.T) {
 	fx := newInstallFixture(t)
 	fx.seedInstalledSkill("sk-1", "snap-old", 2)
-	fx.configRepo.entity.Config.E2B.APIKey = "key-2"
+	fx.configRepo.entity.Config.Docker.Host = "tcp://other-daemon:2375"
 
 	require.NoError(t, fx.svc.runRemove(context.Background(), 7, "cfg-1", "sk-1"))
 

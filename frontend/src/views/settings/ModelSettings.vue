@@ -301,7 +301,7 @@ import {
 
 const { t, te } = useI18n()
 const authStore = useAuthStore()
-const canManageModels = computed(() => authStore.hasCaps(['settings:models_manage']))
+const canManageModels = computed(() => true)
 const uiStore = useUIStore()
 const chatResources = useChatResourcesStore()
 const router = useRouter()

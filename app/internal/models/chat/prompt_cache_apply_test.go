@@ -31,7 +31,7 @@ func TestApplyPromptCacheToJSONBody_OpenAIKey(t *testing.T) {
 			{Role: "user", Content: "hi"},
 		},
 	}
-	policy := promptCachePolicyFor(provider.ProviderGeneric, "")
+	policy := promptCachePolicyFor(provider.ProviderGeneric, "https://api.openai.com/v1")
 	body, forceRaw, err := applyPromptCacheToJSONBody(req, policy, "sess-abc", CacheRetentionShort)
 	require.NoError(t, err)
 	require.True(t, forceRaw)
@@ -42,7 +42,7 @@ func TestApplyPromptCacheToJSONBody_OpenAIKey(t *testing.T) {
 
 func TestApplyPromptCacheToJSONBody_OpenAILongRetention(t *testing.T) {
 	req := openai.ChatCompletionRequest{Model: "gpt-4o"}
-	policy := promptCachePolicyFor(provider.ProviderGeneric, "")
+	policy := promptCachePolicyFor(provider.ProviderGeneric, "https://api.openai.com/v1")
 	body, forceRaw, err := applyPromptCacheToJSONBody(req, policy, "sess-abc", CacheRetentionLong)
 	require.NoError(t, err)
 	require.True(t, forceRaw)

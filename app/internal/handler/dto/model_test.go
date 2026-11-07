@@ -1,14 +1,12 @@
 package dto
 
 import (
-	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 
 	"gaze/internal/types"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestModelResponse_OmitsSecrets(t *testing.T) {
@@ -45,63 +43,37 @@ func TestModelResponse_OmitsSecrets(t *testing.T) {
 	assert.Contains(t, s, `"display_name":"Support QA"`)
 }
 
-func TestModelResponse_BuiltinStripsTenantConfig(t *testing.T) {
+func TestModelResponse_OwnerKeepsBuiltinConfig(t *testing.T) {
 	m := &types.Model{
 		ID:        "builtin-1",
 		IsBuiltin: true,
 		Parameters: types.ModelParameters{
 			BaseURL:        "https://tenant-private.example.com",
 			APIKey:         "should-not-leak",
+			AppSecret:      "also-should-not-leak",
 			AppID:          "tenant-app-id",
 			SupportsVision: true,
 			ExtraConfig:    map[string]string{"region": "cn-hangzhou"},
 		},
 	}
-	resp := NewModelResponse(adminContext(), m)
-	assert.Empty(t, resp.Parameters.BaseURL,
-		"builtin must not leak per-tenant base URL")
-	assert.Empty(t, resp.Parameters.AppID,
-		"builtin must not leak per-tenant app_id")
-	assert.Nil(t, resp.Parameters.ExtraConfig,
-		"builtin must not leak per-tenant extra_config")
+	resp := NewModelResponse(ownerContext(), m)
+	assert.Equal(t, "https://tenant-private.example.com", resp.Parameters.BaseURL,
+		"the single owner may see the configured endpoint of a builtin model")
+	assert.Equal(t, "tenant-app-id", resp.Parameters.AppID,
+		"app_id is not a secret and the owner configures it")
+	assert.Equal(t, map[string]string{"region": "cn-hangzhou"}, resp.Parameters.ExtraConfig,
+		"owner sees the tenant-level extra config")
 	assert.True(t, resp.Parameters.SupportsVision,
-		"capability metadata must survive (not per-tenant)")
-
-	body, _ := json.Marshal(resp)
-	assert.False(t, strings.Contains(string(body), "should-not-leak"))
-	assert.False(t, strings.Contains(string(body), "tenant-private.example.com"))
-}
-
-func TestModelResponse_SystemAdminCanManageBuiltinConfig(t *testing.T) {
-	ctx := context.WithValue(viewerContext(), types.SystemAdminContextKey, true)
-	m := &types.Model{
-		ID:        "builtin-1",
-		IsBuiltin: true,
-		Parameters: types.ModelParameters{
-			BaseURL:       "https://global-provider.example.com",
-			APIKey:        "should-never-be-returned",
-			AppSecret:     "also-never-returned",
-			AppID:         "global-app-id",
-			ExtraConfig:   map[string]string{"region": "ap-guangzhou"},
-			CustomHeaders: map[string]string{"X-Route": "global"},
-		},
-	}
-
-	resp := NewModelResponse(ctx, m)
-	assert.Equal(t, "https://global-provider.example.com", resp.Parameters.BaseURL)
-	assert.Equal(t, "global-app-id", resp.Parameters.AppID)
-	assert.Equal(t, map[string]string{"region": "ap-guangzhou"}, resp.Parameters.ExtraConfig)
-	assert.Equal(t, map[string]string{"X-Route": "global"}, resp.Parameters.CustomHeaders)
+		"capability metadata must survive")
 	assert.True(t, resp.Credentials["api_key"].Configured)
 	assert.True(t, resp.Credentials["app_secret"].Configured)
 
-	body, err := json.Marshal(resp)
-	require.NoError(t, err)
-	assert.NotContains(t, string(body), "should-never-be-returned")
-	assert.NotContains(t, string(body), "also-never-returned")
+	body, _ := json.Marshal(resp)
+	assert.False(t, strings.Contains(string(body), "should-not-leak"))
+	assert.False(t, strings.Contains(string(body), "also-should-not-leak"))
 }
 
-func TestModelResponse_ViewerStripsIntegrationDetail(t *testing.T) {
+func TestModelResponse_OwnerKeepsIntegrationDetail(t *testing.T) {
 	m := &types.Model{
 		ID: "m-2",
 		Parameters: types.ModelParameters{
@@ -110,10 +82,10 @@ func TestModelResponse_ViewerStripsIntegrationDetail(t *testing.T) {
 			ExtraConfig:   map[string]string{"region": "cn-hangzhou"},
 		},
 	}
-	resp := NewModelResponse(viewerContext(), m)
-	assert.Empty(t, resp.Parameters.BaseURL)
-	assert.Nil(t, resp.Parameters.CustomHeaders)
-	assert.Nil(t, resp.Parameters.ExtraConfig)
+	resp := NewModelResponse(ownerContext(), m)
+	assert.Equal(t, "https://tenant-private.example.com", resp.Parameters.BaseURL)
+	assert.Equal(t, map[string]string{"Authorization": "Bearer secret"}, resp.Parameters.CustomHeaders)
+	assert.Equal(t, map[string]string{"region": "cn-hangzhou"}, resp.Parameters.ExtraConfig)
 }
 
 func TestModelResponse_NilSafe(t *testing.T) {

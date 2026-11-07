@@ -2,7 +2,6 @@ package handler
 
 import (
 	"net/http"
-	"strings"
 
 	"gaze/internal/sandbox"
 	"github.com/gin-gonic/gin"
@@ -11,13 +10,11 @@ import (
 // DeploymentCapabilityKeys is the canonical capability key list shared with
 // frontend/src/config/deploymentCapabilities.ts — keep both in sync.
 var DeploymentCapabilityKeys = []string{
-	"organizations",
 	"agents",
 	"integrations.im",
 	"integrations.api",
 	"settings.mcp",
 	"settings.websearch",
-	"settings.vectorstore",
 	"settings.storage",
 	"settings.sandbox",
 	"settings.sandbox.docker",
@@ -37,13 +34,11 @@ type DeploymentCapabilitiesData struct {
 
 // DeploymentFeatureAvailability mirrors injected backend handlers/services.
 type DeploymentFeatureAvailability struct {
-	Organizations bool
 	Agents        bool
 	IM            bool
 	API           bool
 	MCP           bool
 	WebSearch     bool
-	VectorStore   bool
 	Storage       bool
 	Sandbox       bool
 	SandboxDocker bool
@@ -61,12 +56,6 @@ func BuildDeploymentCapabilities(
 	edition string,
 	available DeploymentFeatureAvailability,
 ) DeploymentCapabilitiesData {
-	isLite := strings.EqualFold(strings.TrimSpace(edition), "lite")
-	organizations := supportedDeploymentCapability(available.Organizations && !isLite)
-	if isLite {
-		organizations.Reason = "not_supported_in_lite"
-	}
-
 	sandboxDocker := DeploymentCapability{
 		Supported: available.Sandbox && available.SandboxDocker,
 	}
@@ -79,13 +68,11 @@ func BuildDeploymentCapabilities(
 	return DeploymentCapabilitiesData{
 		Edition: edition,
 		Capabilities: map[string]DeploymentCapability{
-			"organizations":           organizations,
 			"agents":                  supportedDeploymentCapability(available.Agents),
 			"integrations.im":         supportedDeploymentCapability(available.IM),
 			"integrations.api":        supportedDeploymentCapability(available.API),
 			"settings.mcp":            supportedDeploymentCapability(available.MCP),
 			"settings.websearch":      supportedDeploymentCapability(available.WebSearch),
-			"settings.vectorstore":    supportedDeploymentCapability(available.VectorStore),
 			"settings.storage":        supportedDeploymentCapability(available.Storage),
 			"settings.sandbox":        supportedDeploymentCapability(available.Sandbox),
 			"settings.sandbox.docker": sandboxDocker,

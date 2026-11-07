@@ -1,6 +1,6 @@
 import type { Router } from 'vue-router'
 import type { Composer } from 'vue-i18n'
-import { openNewUserGuide } from '@/config/contextualGuides'
+import { KB_EDITOR_FOCUS_SECTION_EVENT } from '@/config/contextualGuides'
 
 /**
  * A single command that can be searched and invoked from the palette.
@@ -64,16 +64,6 @@ export function buildCommands(ctx: CommandContext): CmdkCommand[] {
       },
     },
     {
-      id: 'open-organizations',
-      label: t('commandPalette.quick.organizations'),
-      icon: 'usergroup',
-      keywords: ['org', 'organization', 'team', 'space', '组织', '共享'],
-      run: () => {
-        close()
-        router.push('/platform/organizations')
-      },
-    },
-    {
       id: 'open-settings',
       label: t('commandPalette.quick.settings'),
       icon: 'setting',
@@ -81,16 +71,6 @@ export function buildCommands(ctx: CommandContext): CmdkCommand[] {
       run: () => {
         close()
         router.push('/platform/settings')
-      },
-    },
-    {
-      id: 'open-product-tour',
-      label: t('commandPalette.quick.productTour'),
-      icon: 'help-circle',
-      keywords: ['guide', 'tour', 'onboarding', 'help', '引导', '新手', '教程'],
-      run: () => {
-        close()
-        openNewUserGuide()
       },
     },
   ]

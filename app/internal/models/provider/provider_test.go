@@ -125,8 +125,8 @@ func TestListByModelType(t *testing.T) {
 	t.Run("chat models", func(t *testing.T) {
 		providers := ListByModelType(types.ModelTypeKnowledgeQA)
 		assert.NotEmpty(t, providers)
-		// Multiple providers support chat
-		assert.GreaterOrEqual(t, len(providers), 9)
+		// Personal edition registers the generic + four built-in vendors.
+		assert.GreaterOrEqual(t, len(providers), 5)
 	})
 
 	t.Run("rerank models", func(t *testing.T) {

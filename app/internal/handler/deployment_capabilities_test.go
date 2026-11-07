@@ -25,15 +25,13 @@ func TestDeploymentCapabilityKeysMatchFrontend(t *testing.T) {
 
 func TestBuildDeploymentCapabilitiesIncludesAllKeys(t *testing.T) {
 	result := BuildDeploymentCapabilities("standard", DeploymentFeatureAvailability{
-		Organizations: true,
-		Agents:        true,
-		IM:            true,
-		API:           true,
-		MCP:           true,
-		WebSearch:     true,
-		VectorStore:   true,
-		Storage:       true,
-		Sandbox:       true,
+		Agents:    true,
+		IM:        true,
+		API:       true,
+		MCP:       true,
+		WebSearch: true,
+		Storage:   true,
+		Sandbox:   true,
 	})
 
 	for _, key := range DeploymentCapabilityKeys {
@@ -88,7 +86,7 @@ func readFrontendDeploymentCapabilityKeys() ([]string, error) {
 
 	var keys []string
 	for _, line := range strings.Split(string(match[1]), "\n") {
-		line = strings.TrimSpace(strings.TrimRight(line, ","))
+		line = strings.TrimRight(strings.TrimSpace(line), ",")
 		if line == "" {
 			continue
 		}

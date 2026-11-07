@@ -71,6 +71,11 @@ func TestSkillPythonPackageRecoveryInstallsWithoutPip(t *testing.T) {
 			}
 			run(skillPythonVenvCreateCommand)
 			python := filepath.Join(skillDir, ".venv", "bin", "python")
+			if variant.name == "ensurepip" {
+				if out, err := exec.CommandContext(ctx, python, "-m", "ensurepip", "--version").CombinedOutput(); err != nil {
+					t.Skipf("ensurepip unavailable in test environment: %s", out)
+				}
+			}
 			cmd := exec.CommandContext(ctx, python, "-m", "pip", "--version")
 			out, err := cmd.CombinedOutput()
 			require.Error(t, err)

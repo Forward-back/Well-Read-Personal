@@ -118,14 +118,9 @@ import {
   updateTenantRetrievalConfig,
   type RetrievalConfig,
 } from '@/api/retrieval'
-import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()
-const authStore = useAuthStore()
-// PUT /tenants/kv/retrieval-config requires Admin+ on the server. Hide the
-// banner + lock all controls for non-Admins so they can read the
-// configuration without tripping a 403 mid-edit.
-const canEdit = computed(() => authStore.hasCaps(['settings:workspace_manage']))
+const canEdit = computed(() => true)
 
 const defaultConfig: RetrievalConfig = {
   embedding_top_k: 50,

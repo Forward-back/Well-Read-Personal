@@ -474,8 +474,6 @@ const mentionLoading = ref(false);
 const mentionOffset = ref(0);
 const MENTION_PAGE_SIZE = 20;
 
-const sharedAgentOrgName = computed(() => '');
-
 const props = defineProps({
   autoFocus: {
     type: Boolean,
@@ -521,22 +519,20 @@ const selectedSkillNames = computed(() => settingsStore.settings.selectedSkills 
 const knowledgeBases = computed(() => chatResources.validKnowledgeBases);
 const fileList = ref<Array<{ id: string; name: string }>>([]);
 
-// 选中的知识库：包含自己的 + 组织共享的 + 共享智能体下的（用于展示已选列表与 org 角标）
+// 选中的知识库：包含自己的 + 智能体配置的（用于展示已选列表）
 const selectedKbs = computed(() => {
   const own = knowledgeBases.value.filter(kb => selectedKbIds.value.includes(kb.id));
-  const sharedMapped: any[] = [];
   const ownIds = new Set(own.map(kb => kb.id));
-  const sharedOnly = sharedMapped.filter((kb: any) => !ownIds.has(kb.id));
+  const sharedAgentKbListValue = sharedAgentKbList.value || [];
+  const sharedOnly = sharedAgentKbListValue.filter(kb => !ownIds.has(kb.id));
   const sharedOnlyIds = new Set(sharedOnly.map((kb: any) => kb.id));
-  // 共享智能体下的知识库：从 sharedAgentKbList 中取在选中列表里的，并打上共享空间标识
-  const agentOrg = sharedAgentOrgName.value;
-  const sharedFromAgent = (sharedAgentKbList.value || []).filter(kb => selectedKbIds.value.includes(kb.id) && !ownIds.has(kb.id) && !sharedOnlyIds.has(kb.id)).map(kb => ({
+  // 智能体配置的知识库：从 sharedAgentKbList 中取在选中列表里的
+  const sharedFromAgent = sharedAgentKbListValue.filter(kb => selectedKbIds.value.includes(kb.id) && !ownIds.has(kb.id) && !sharedOnlyIds.has(kb.id)).map(kb => ({
     id: kb.id,
     name: kb.name,
     type: kb.type || 'document',
     knowledge_count: kb.knowledge_count,
     chunk_count: kb.chunk_count,
-    org_name: agentOrg || ''
   }));
   return [...own, ...sharedOnly, ...sharedFromAgent];
 });
@@ -579,23 +575,12 @@ const allSelectedItems = computed(() => {
     isAgentConfigured: agentKbIds.includes(kb.id)
   }));
 
-  // 用户选择的文件（根据 fileIdToKbId + 共享列表/共享智能体补全 org_name，用于角标）
-  const sharedKbOrgMap: Record<string, string> = {};
-  if (sharedAgentOrgName.value) {
-    (sharedAgentKbList.value || []).forEach((kb) => {
-      sharedKbOrgMap[String(kb.id)] = sharedAgentOrgName.value;
-    });
-  }
-  const files = selectedFiles.value.map((f: { id: string; name: string }) => {
-    const kbId = fileIdToKbId.value[f.id];
-    const org_name = kbId ? sharedKbOrgMap[String(kbId)] || '' : '';
-    return {
-      ...f,
-      type: 'file' as const,
-      isAgentConfigured: false,
-      org_name
-    };
-  });
+  // 用户选择的文件
+  const files = selectedFiles.value.map((f: { id: string; name: string }) => ({
+    ...f,
+    type: 'file' as const,
+    isAgentConfigured: false,
+  }));
 
   // 智能体配置的放在前面
   const agentConfiguredKbs = allKbs.filter(kb => kb.isAgentConfigured);
@@ -1175,7 +1160,6 @@ const loadMentionItems = async (q: string, resetIndex = true, append = false) =>
       // 共享智能体：按 agent_id 拉取该智能体配置的知识库范围（后端从共享关系解析空间）
       try {
         const list = await chatResources.ensureAgentKnowledgeBases(agentId, sourceTenantId);
-        const orgLabel = sharedAgentOrgName.value || '';
         // 保留 capabilities / indexing_strategy，后面过滤时要用
         availableKbs = list.map((kb: any) => ({
           id: kb.id,
@@ -1183,7 +1167,6 @@ const loadMentionItems = async (q: string, resetIndex = true, append = false) =>
           type: kb.type || 'document',
           knowledge_count: kb.knowledge_count,
           chunk_count: kb.chunk_count,
-          org_name: orgLabel,
           capabilities: kb.capabilities,
           indexing_strategy: kb.indexing_strategy,
         }));
@@ -1252,7 +1235,6 @@ const loadMentionItems = async (q: string, resetIndex = true, append = false) =>
         type: 'kb' as const,
         kbType: kbType === 'faq' ? 'faq' as const : 'document' as const,
         count,
-        orgName: kb.org_name || sharedAgentOrgName.value || undefined
       };
     }));
     mentionGroupCounts.value.kb = kbItems.length;
@@ -1347,19 +1329,13 @@ const loadMentionItems = async (q: string, resetIndex = true, append = false) =>
             return kbId != null && allowed.has(String(kbId));
           });
         }
-        const sharedKbOrgMap: Record<string, string> = {};
-        const agentOrgLabel = sourceTenantId && agentId ? sharedAgentOrgName.value : '';
         fileItems = files.map((f: any) => {
-          const kbId = f.knowledge_base_id ?? f.kb_id;
-          const kbIdStr = kbId != null ? String(kbId) : '';
-          const fileOrgName = agentOrgLabel || (kbIdStr ? sharedKbOrgMap[kbIdStr] : undefined);
           return {
             id: f.id,
             name: f.title || f.file_name,
             type: 'file' as const,
             kbName: f.knowledge_base_name || '',
-            kbId: kbId || undefined,
-            orgName: fileOrgName || undefined
+            kbId: f.knowledge_base_id ?? f.kb_id ?? undefined,
           };
         });
         if (!append) {
@@ -2556,14 +2532,10 @@ defineExpose({
           getMentionChipClass(item),
           { 'mention-chip--agent': item.isAgentConfigured }
         ]">
-          <span class="mention-chip__icon-wrap" :class="{ 'has-org': item.org_name }">
+          <span class="mention-chip__icon-wrap">
             <span class="mention-chip__icon">
               <t-icon v-if="item.type === 'kb'" :name="item.kbType === 'faq' ? 'chat-bubble-help' : 'folder'" />
               <t-icon v-else :name="getMentionIcon(item)" />
-            </span>
-            <span v-if="item.org_name" class="mention-chip__org-badge">
-              <img :src="getImgSrc(item.type === 'file' ? 'organization-grey.svg' : 'organization-green.svg')"
-                class="mention-chip__org-img" alt="" aria-hidden="true" />
             </span>
           </span>
           <span class="mention-chip__name" :title="item.name">{{ item.name }}</span>
@@ -2950,27 +2922,6 @@ const getImgSrc = (url: string) => {
   align-items: center;
   justify-content: center;
   color: inherit;
-}
-
-.mention-chip__org-badge {
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--td-bg-color-secondarycontainer, #f0f2f5);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.mention-chip__org-img {
-  width: 5px;
-  height: 5px;
-  object-fit: contain;
 }
 
 .mention-chip__name {

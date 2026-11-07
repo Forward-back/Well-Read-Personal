@@ -340,7 +340,7 @@ func TestPruneSupersededSnapshotsSkipsAConfigBuiltByAnotherAccount(t *testing.T)
 	old := fx.now.Add(-2 * time.Hour)
 	fx.live("snap-live")
 	fx.superseded("sk-1", "snap-old", "", old)
-	fx.configs.entity.Config.E2B.APIKey = "rotated-key"
+	fx.configs.entity.Config.Docker.Host = "tcp://other-daemon:2375"
 
 	n, err := fx.svc.PruneSupersededSnapshots(context.Background())
 
@@ -435,7 +435,7 @@ func TestPruneSupersededSnapshotsTreatsMissingProviderSnapshotAsDeleted(t *testi
 func TestPruneSupersededSnapshotsHonoursALongerConfiguredSandboxTTL(t *testing.T) {
 	fx := newReaperFixture(t)
 	fx.svc.snapshotRetention = time.Hour
-	fx.configs.entity.Config.E2B.E2BSandboxTTLSeconds = int((48 * time.Hour).Seconds())
+	fx.configs.entity.Config.Docker.IdleTTLSeconds = int((48 * time.Hour).Seconds())
 	young := fx.now.Add(-25 * time.Hour)
 	old := fx.now.Add(-50 * time.Hour)
 	fx.live("snap-live")
@@ -659,7 +659,8 @@ type reaperFixture struct {
 func newReaperFixture(t *testing.T) *reaperFixture {
 	t.Helper()
 	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
-	fingerprint := sandbox.SkillImageFingerprint("e2b", "key-1", "https://e2b.example")
+	host := "unix:///var/run/docker.sock"
+	fingerprint := sandbox.SkillImageFingerprint("docker", "", host)
 	skills := &reaperSkillStore{rows: map[string]*types.TenantSkillEntity{}}
 	configs := &reaperConfigStore{
 		entity: &types.TenantSandboxConfigEntity{
@@ -667,8 +668,9 @@ func newReaperFixture(t *testing.T) *reaperFixture {
 			SandboxType: string(sandbox.SandboxTypeDocker),
 			Config: &types.TenantSandboxConfig{
 				SandboxType: string(sandbox.SandboxTypeDocker),
-				E2B: &types.E2BSandboxConfig{
-					APIURL: "https://e2b.example", APIKey: "key-1", TemplateID: "base-template",
+				Docker: &types.DockerSandboxConfig{
+					Image: "base-template",
+					Host:  host,
 				},
 				SkillImage: &types.SkillImageConfig{
 					SnapshotID: "snap-other", OwnerFingerprint: fingerprint,

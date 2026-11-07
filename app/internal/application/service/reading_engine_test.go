@@ -120,7 +120,9 @@ func TestBuildReadingRoundOutcomeGates(t *testing.T) {
 		Understanding: "本轮理解：退款规则存在跨文档差异。",
 		Questions: []readingLLMQuestion{
 			{Text: "退款期限是多久？", SearchQuery: "退款 30天", RecommendedAnswer: "30 天"},
-			{Text: "需要额外证书吗？", SearchQuery: "证书"},
+			// Every question must carry the model's recommended reading; the
+			// engine only keeps questions that offer one.
+			{Text: "需要额外证书吗？", SearchQuery: "证书", RecommendedAnswer: "需要额外证书"},
 		},
 		Answers: []readingLLMAnswer{
 			{

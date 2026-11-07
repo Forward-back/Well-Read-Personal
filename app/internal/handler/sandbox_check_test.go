@@ -11,14 +11,16 @@ import (
 
 func TestSandboxConnectionCheckConfigAllowsTemplateDiscoveryAfterConnection(t *testing.T) {
 	incoming := &types.TenantSandboxConfig{
-		SandboxType: "e2b",
-		E2B:         &types.E2BSandboxConfig{APIKey: "key"},
+		SandboxType: "docker",
+		Docker:      &types.DockerSandboxConfig{Image: "gaze-sandbox:test"},
 	}
 
 	got := sandboxConnectionCheckConfig(incoming)
 
+	require.Equal(t, "__connection_check__", got.Cube.TemplateID)
 	require.Equal(t, "__connection_check__", got.E2B.TemplateID)
-	require.Empty(t, incoming.E2B.TemplateID, "the submitted form must not be mutated")
+	require.Nil(t, incoming.Cube, "the submitted form must not be mutated")
+	require.Nil(t, incoming.E2B, "the submitted form must not be mutated")
 }
 
 func TestSandboxCheckReasonDockerUnavailableIncludesHost(t *testing.T) {
@@ -44,11 +46,8 @@ func TestRunStatelessSandboxCheckRemovedWithLocalBackend(t *testing.T) {
 // default allows egress.
 func TestDeepSandboxCheckUsesConfiguredNetworkPolicy(t *testing.T) {
 	incoming := &types.TenantSandboxConfig{
-		SandboxType: "cube",
-		Cube: &types.CubeSandboxConfig{
-			APIURL: "https://203.0.113.20", ProxyURL: "https://203.0.113.20",
-			SandboxDomain: "cube.app", TemplateID: "tpl-1",
-		},
+		SandboxType: "docker",
+		Docker:      &types.DockerSandboxConfig{Image: "gaze-sandbox:test"},
 		Network: &types.SandboxNetworkPolicy{
 			DenyEgressByDefault: true,
 			AllowOut:            []string{"api.example.com"},

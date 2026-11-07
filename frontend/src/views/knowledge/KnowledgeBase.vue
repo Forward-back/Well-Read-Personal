@@ -2714,7 +2714,7 @@ async function createNewSession(value: string): Promise<void> {
                   <t-icon name="code" size="16px" />
                 </button>
               </t-tooltip>
-              <t-tooltip v-if="canManage && authStore.currentDepartmentRole === 'manager'" :content="$t('knowledgeBase.settings')" placement="top">
+              <t-tooltip v-if="canManage" :content="$t('knowledgeBase.settings')" placement="top">
                 <button type="button" class="kb-settings-button" :disabled="!kbId" @click="handleOpenKBSettings">
                   <t-icon name="setting" size="16px" />
                 </button>

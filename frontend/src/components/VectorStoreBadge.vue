@@ -51,8 +51,6 @@ const iconName = computed(() => {
       // distinction is purely organizational (configured at process
       // start vs. created in the UI), so they share the same icon.
       return 'data-base'
-    case 'shared':
-      return 'share'
     case 'unavailable':
     default:
       return 'help-circle'
@@ -61,7 +59,6 @@ const iconName = computed(() => {
 
 const displayName = computed(() => {
   if (effectiveSource.value === 'env') return t('vectorStoreBadge.systemDefault')
-  if (effectiveSource.value === 'shared') return t('vectorStoreBadge.sharedFromOrg')
   return props.name || t('vectorStoreBadge.unknownStore')
 })
 </script>
@@ -87,11 +84,6 @@ const displayName = computed(() => {
 .vs-badge-user {
   background: var(--td-success-color-1, #e8f8f2);
   color: var(--td-success-color-7, #00754a);
-}
-
-.vs-badge-shared {
-  background: var(--td-warning-color-1, #fff1e9);
-  color: var(--td-warning-color-7, #b85b00);
 }
 
 .vs-badge-warn {

@@ -187,10 +187,7 @@ const isViaShare = computed<boolean>(() => false)
 const effectiveKBPermission = computed<string>(() => props.kbInfo?.my_permission || 'owner')
 
 const accessRoleLabel = computed<string>(() => {
-  if (!isViaShare.value && isOwner.value) return t('knowledgeBase.accessInfo.roleOwner')
-  const perm = effectiveKBPermission.value
-  if (perm) return t(`organization.role.${perm}`)
-  return '--'
+  return t('knowledgeBase.accessInfo.roleOwner')
 })
 
 const accessPermissionSummary = computed<string>(() => {

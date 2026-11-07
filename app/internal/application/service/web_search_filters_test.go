@@ -67,19 +67,24 @@ func TestWebSearchServiceRejectsUnsupportedFilters(t *testing.T) {
 	require.True(t, plain.called)
 }
 
-func TestBraveProviderConfigurationIsAvailable(t *testing.T) {
+func TestSupportedProviderTypesAreAvailable(t *testing.T) {
 	require.True(t, isValidProviderType(types.WebSearchProviderTypeBing))
 	require.Error(t, validateProviderParameters(types.WebSearchProviderTypeBing, types.WebSearchProviderParameters{}))
 	require.NoError(t, validateProviderParameters(
 		types.WebSearchProviderTypeBing, types.WebSearchProviderParameters{APIKey: "test"},
 	))
-	found := false
+	require.True(t, isValidProviderType(types.WebSearchProviderTypeDuckDuckGo))
+	require.NoError(t, validateProviderParameters(
+		types.WebSearchProviderTypeDuckDuckGo, types.WebSearchProviderParameters{},
+	))
+	require.False(t, isValidProviderType(types.WebSearchProviderType("brave")),
+		"the personal edition supports only bing, google and duckduckgo")
+
+	found := map[string]bool{}
 	for _, info := range types.GetWebSearchProviderTypes() {
-		if info.ID == "brave" {
-			found = true
-			require.True(t, info.RequiresAPIKey)
-			require.True(t, info.SupportsProxy)
-		}
+		found[info.ID] = true
 	}
-	require.True(t, found)
+	require.Equal(t, map[string]bool{
+		"bing": true, "google": true, "duckduckgo": true,
+	}, found)
 }

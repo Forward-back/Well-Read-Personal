@@ -5,12 +5,14 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [1.2.0] - 2026-11-03
 
-### 新增
-- 新增 `create_knowledge_from_text` 工具：通过手动 Markdown 文本创建知识条目，调用既有 `/knowledge-bases/{id}/knowledge/manual` 接口，补齐 #323 中"文本"部分。默认 `status="publish"`，创建后即进入解析/索引流程、可被检索；可传 `status="draft"` 仅保存不索引。
-- 新增 `update_knowledge_from_text` 工具：通过既有 `PUT /knowledge/manual/{id}` 接口更新手工 Markdown 知识；默认重新索引，也可保存为草稿，补齐 #2378。
-- README 工具清单补列既有的 `create_knowledge_from_file`。
+### 变更
+- 工具面收缩为 17 个只读工具，与 WellRead 个人版单只读 Key 的能力一致。
+- 删除租户、共享空间、知识库/文档写入、模型管理与分块删除工具。
+- 删除本地上传路径模块 `upload_paths.py` 与 `MCP_ALLOWED_UPLOAD_DIRS`。
+- 拆分为 `client.py`（只读客户端）与 `tools.py`（工具注册），`gaze_mcp_server.py` 只保留 MCP 实例、鉴权与传输。
+- 保留 `delete_session`：后端 `chat` 能力允许会话管理。
 
 ## [1.1.1] - 2026-07-30
 

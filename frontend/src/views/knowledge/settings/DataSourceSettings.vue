@@ -19,12 +19,8 @@ import { useAuthStore } from '@/stores/auth'
 const props = defineProps<{ kbId: string }>()
 const emit = defineEmits<{ (e: 'count', value: number): void }>()
 const { t } = useI18n()
-const authStore = useAuthStore()
-
-// 后端 /datasource 的 list/logs 是 Viewer+，但所有写操作（POST/PUT/DELETE
-// 以及 sync/pause/resume/validate）都是 Admin+。低权限用户保留只读视图，
-// 增删改和触发同步全部隐藏，而不是按下去再撞 403。
-const canManageDataSource = computed(() => authStore.hasRole('admin'))
+// 个人版只有一个 owner，数据源写操作始终可用。
+const canManageDataSource = computed(() => true)
 
 const dataSources = ref<DataSource[]>([])
 const loading = ref(false)

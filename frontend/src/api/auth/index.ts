@@ -35,62 +35,8 @@ export interface LoginResponse {
     created_at: string
     updated_at: string
   } | null
-  // active_tenant mirrors `tenant` for endpoints that distinguish home
-  // tenant from current tenant (e.g. /auth/register-by-invite). Only
-  // one of `tenant` / `active_tenant` is populated by any given endpoint.
-  active_tenant?: {
-    id: number
-    name: string
-    description?: string
-    status?: string
-    business?: string
-    storage_quota?: number
-    storage_used?: number
-    created_at?: string
-    updated_at?: string
-  } | null
-  memberships?: MembershipInfo[]
   token?: string
   refresh_token?: string
-}
-
-export interface OIDCAuthURLResponse {
-  success: boolean
-  authorization_url?: string
-  state?: string
-  message?: string
-}
-
-export interface OIDCConfigResponse {
-  success: boolean
-  enabled: boolean
-  provider_display_name?: string
-  message?: string
-}
-
-// 用户注册接口
-export interface RegisterRequest {
-  username: string
-  email: string
-  password: string
-  // 银联商务员工工号（选填）：校验通过则注册为员工账号
-  emp_no?: string
-}
-
-export interface RegisterResponse {
-  success: boolean
-  message?: string
-  data?: {
-    user: {
-      id: string
-      username: string
-      email: string
-    }
-    tenant: {
-      id: string
-      name: string
-    }
-  }
 }
 
 // 用户偏好（与后端 types.UserPreferences 对齐，字段可选 = 没显式设置过）。
@@ -225,44 +171,7 @@ export async function login(data: LoginRequest): Promise<LoginResponse> {
 }
 
 /**
- * 获取 OIDC 登录跳转地址
- */
-export async function getOIDCAuthorizationURL(redirectURI: string): Promise<OIDCAuthURLResponse> {
-  try {
-    const response = await get(`/api/v1/auth/oidc/url?redirect_uri=${encodeURIComponent(redirectURI)}`)
-    return response as unknown as OIDCAuthURLResponse
-  } catch (error: any) {
-    return {
-      success: false,
-      message: error.message || t('error.auth.loginFailed')
-    }
-  }
-}
-
-/**
- * 获取 OIDC 登录配置
- */
-export async function getOIDCConfig(): Promise<OIDCConfigResponse> {
-  try {
-    const response = await get('/api/v1/auth/oidc/config')
-    return response as unknown as OIDCConfigResponse
-  } catch (error: any) {
-    return {
-      success: false,
-      enabled: false,
-      message: error.message || t('error.auth.loginFailed')
-    }
-  }
-}
-
-/**
- * 获取认证配置（仅返回前端渲染需要的公开字段，例如注册模式）。
- *
- * 后端通过 `auth.registration_mode` 控制是否允许自助注册：
- *   - "self_serve"  保留现有自助注册入口（默认）
- *   - "invite_only" 关闭注册，要求管理员邀请
- *
- * 失败时回落到 self_serve，避免接口异常导致注册入口直接消失。
+ * 获取认证配置（仅返回前端渲染需要的公开字段）。
  */
 export interface AuthConfigResponse {
   success: boolean
@@ -280,62 +189,12 @@ export async function getAuthConfig(): Promise<AuthConfigResponse> {
 }
 
 /**
- * 用户注册
- */
-export async function register(data: RegisterRequest): Promise<RegisterResponse> {
-  try {
-    const response = await post('/api/v1/auth/register', data)
-    return response as unknown as RegisterResponse
-  } catch (error: any) {
-    return {
-      success: false,
-      message: error.message || t('error.auth.registerFailed')
-    }
-  }
-}
-
-/**
- * Lite 版自动初始化（创建默认用户/空间 + 签发令牌）
- */
-export async function autoSetup(): Promise<LoginResponse> {
-  try {
-    const response = await post('/api/v1/auth/auto-setup', {})
-    return response as unknown as LoginResponse
-  } catch (error: any) {
-    return {
-      success: false,
-      message: error.message || 'Auto-setup unavailable'
-    }
-  }
-}
-
-/**
- * Membership row returned alongside /auth/me. Mirrors the LoginResponse
- * shape so the frontend can refresh `currentTenantRole` on every page
- * load — without it, role changes after login (e.g. an Owner demoting
- * us in a peer tenant) stay invisible until the user logs out and back
- * in.
- */
-export interface MembershipInfo {
-  tenant_id: number
-  tenant_name?: string
-  role: string
-  department_id?: string | null
-  department_role?: string
-}
-
-/**
  * 获取当前用户信息
  */
-export interface AuthCapabilities {
-  can_create_tenant: boolean
-  auto_accept_invitation: boolean
-}
-
-export async function getCurrentUser(): Promise<{ success: boolean; data?: { user: UserInfo; tenant?: TenantInfo | null; memberships?: MembershipInfo[]; tenant_required?: boolean; capabilities?: AuthCapabilities }; message?: string }> {
+export async function getCurrentUser(): Promise<{ success: boolean; data?: { user: UserInfo; tenant?: TenantInfo | null }; message?: string }> {
   try {
     const response = await get('/api/v1/auth/me')
-    return response as unknown as { success: boolean; data?: { user: UserInfo; tenant?: TenantInfo | null; memberships?: MembershipInfo[]; tenant_required?: boolean; capabilities?: AuthCapabilities }; message?: string }
+    return response as unknown as { success: boolean; data?: { user: UserInfo; tenant?: TenantInfo | null }; message?: string }
   } catch (error: any) {
     return {
       success: false,
@@ -489,58 +348,4 @@ export async function validateToken(): Promise<{ success: boolean; valid?: boole
 
 
 
-// ---- share-link registration --------------------------------------------
-
-// InviteLookup is the public projection of a share-link row used by
-// /register?token=xxx — enough to render the registration page header
-// ("X invited you to Y") without leaking sensitive inviter fields.
-export interface InviteLookup {
-  tenant_id: number
-  tenant_name?: string
-  role: string
-  expires_at: string
-}
-
-export interface InviteLookupResponse {
-  success: boolean
-  data?: InviteLookup
-  message?: string
-}
-
-export interface RegisterByInviteRequest {
-  token: string
-  email: string
-  username: string
-  password: string
-}
-
-/**
- * Resolve a share-link token (no auth) into the context the
- * registration page needs (tenant name, role, expiry). Returns 410
- * when the link is invalid / revoked / expired.
- *
- * Uses POST + body (rather than GET + path) so the plaintext token
- * never appears in access logs, browser history, or tracing spans.
- */
-export async function getInvitationByToken(token: string): Promise<InviteLookupResponse> {
-  try {
-    const response = await post(`/api/v1/auth/invitations/lookup`, { token })
-    return response as unknown as InviteLookupResponse
-  } catch (error: any) {
-    return { success: false, message: error.message || '' }
-  }
-}
-
-/**
- * Complete registration via a share-link token. The invitee supplies
- * their own email — the token is the authorisation, not an identity
- * lock.
- */
-export async function registerByInvite(data: RegisterByInviteRequest): Promise<LoginResponse> {
-  try {
-    const response = await post('/api/v1/auth/register-by-invite', data)
-    return response as unknown as LoginResponse
-  } catch (error: any) {
-    return { success: false, message: error.message || t('error.auth.registerFailed') }
-  }
-}
+// ---- share-link registration removed: personal edition has no invitations.

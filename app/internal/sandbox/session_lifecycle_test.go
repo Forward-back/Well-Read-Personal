@@ -446,31 +446,33 @@ func TestRemoteSessionLifecycleReplacesOnlyTerminalBinding(t *testing.T) {
 	}
 }
 
-func TestRemoteSessionLifecycleProviderMismatchNeverUsesOldID(t *testing.T) {
+// A binding written before the remote providers were removed still names one
+// of them. It cannot be interpreted any more, so the resolve must fail closed
+// instead of guessing which sandbox to reuse.
+func TestRemoteSessionLifecycleRejectsRemovedProviderBinding(t *testing.T) {
 	store := NewMemorySessionSandboxBindingStore()
 	client := newFakeRemoteClient(SandboxTypeDocker)
 	checker := &fakeSessionExistenceChecker{exists: true}
 	lifecycle := newTestRemoteSessionLifecycle(t, client, store, checker)
 	key := SessionSandboxKey{TenantID: 42, SessionID: "session-a"}
-	old := validSessionSandboxBinding(key, "cube-old")
-	old.Provider = SandboxTypeDocker
-	created, err := store.Create(context.Background(), key, old)
-	require.NoError(t, err)
-	require.True(t, created)
+	legacy := validSessionSandboxBinding(key, "cube-old")
+	legacy.Provider = "cube"
+
+	// Seed the row directly: Create validates the provider, which is exactly
+	// the check a row written by the enterprise edition predates.
+	store.mu.Lock()
+	store.bindings[key] = legacy
+	store.mu.Unlock()
 
 	handle, err := lifecycle.Resolve(context.Background(), key)
-	require.NoError(t, err)
-	require.Equal(t, SandboxTypeDocker, handle.Provider())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsupported sandbox binding provider")
+	require.Nil(t, handle)
 	creates, connects, gets, _, deletes := client.counts()
-	require.Equal(t, 1, creates)
+	require.Zero(t, creates)
 	require.Zero(t, connects)
 	require.Zero(t, gets)
 	require.Zero(t, deletes)
-
-	binding, err := store.Get(context.Background(), key)
-	require.NoError(t, err)
-	require.Equal(t, SandboxTypeDocker, binding.Provider)
-	require.Equal(t, handle.ID(), binding.SandboxID)
 }
 
 func TestRemoteSessionLifecycleRecoversOldestMetadataCandidate(t *testing.T) {
@@ -767,7 +769,7 @@ func TestRemoteSessionLifecycleCleansCreatedSandboxAfterCallerCancellation(t *te
 	handle, err := lifecycle.Resolve(ctx, key)
 	require.ErrorIs(t, err, context.Canceled)
 	require.Nil(t, handle)
-	require.False(t, client.hasSandbox("cube-1"))
+	require.False(t, client.hasSandbox("docker-1"))
 	creates, _, _, _, deletes := client.counts()
 	require.Equal(t, 1, creates)
 	require.Equal(t, 1, deletes)
@@ -813,7 +815,7 @@ func TestRemoteSessionLifecycleDoesNotDeleteCreatedSandboxChosenAsWinner(t *test
 		created, err := base.Create(
 			context.Background(),
 			key,
-			validSessionSandboxBinding(key, "cube-1"),
+			validSessionSandboxBinding(key, "docker-1"),
 		)
 		require.NoError(t, err)
 		require.True(t, created)
@@ -822,8 +824,8 @@ func TestRemoteSessionLifecycleDoesNotDeleteCreatedSandboxChosenAsWinner(t *test
 
 	handle, err := lifecycle.Resolve(context.Background(), key)
 	require.NoError(t, err)
-	require.Equal(t, "cube-1", handle.ID())
-	require.True(t, client.hasSandbox("cube-1"))
+	require.Equal(t, "docker-1", handle.ID())
+	require.True(t, client.hasSandbox("docker-1"))
 	_, _, _, _, deletes := client.counts()
 	require.Zero(t, deletes)
 }
@@ -840,7 +842,7 @@ func TestRemoteSessionLifecycleCleansCreatedSandboxWhenBindingWriteFails(t *test
 	)
 	store := &bindingStoreFaults{base: base, createErr: bindErr}
 	client := newFakeRemoteClient(SandboxTypeDocker)
-	client.deleteErrs["cube-1"] = cleanupErr
+	client.deleteErrs["docker-1"] = cleanupErr
 	lifecycle := newTestRemoteSessionLifecycle(
 		t,
 		client,
@@ -1078,30 +1080,6 @@ func TestRemoteSessionLifecycleDestroySemantics(t *testing.T) {
 		require.True(t, created)
 
 		require.NoError(t, lifecycle.Destroy(context.Background(), key))
-		binding, err := store.Get(context.Background(), key)
-		require.NoError(t, err)
-		require.Nil(t, binding)
-	})
-
-	t.Run("provider mismatch only deletes binding", func(t *testing.T) {
-		store := NewMemorySessionSandboxBindingStore()
-		client := newFakeRemoteClient(SandboxTypeDocker)
-		lifecycle := newTestRemoteSessionLifecycle(
-			t,
-			client,
-			store,
-			&fakeSessionExistenceChecker{exists: true},
-		)
-		key := SessionSandboxKey{TenantID: 42, SessionID: "session-a"}
-		old := validSessionSandboxBinding(key, "cube-old")
-		old.Provider = SandboxTypeDocker
-		created, err := store.Create(context.Background(), key, old)
-		require.NoError(t, err)
-		require.True(t, created)
-
-		require.NoError(t, lifecycle.Destroy(context.Background(), key))
-		_, _, _, _, deletes := client.counts()
-		require.Zero(t, deletes)
 		binding, err := store.Get(context.Background(), key)
 		require.NoError(t, err)
 		require.Nil(t, binding)

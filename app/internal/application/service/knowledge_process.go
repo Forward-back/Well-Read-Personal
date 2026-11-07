@@ -599,6 +599,7 @@ func (s *knowledgeService) processChunks(ctx context.Context,
 				ChunkID:         chunk.ID,
 				KnowledgeID:     knowledge.ID,
 				KnowledgeBaseID: knowledge.KnowledgeBaseID,
+				KnowledgeType:   knowledge.Type,
 				IsEnabled:       true,
 			})
 		}

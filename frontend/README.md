@@ -1,6 +1,6 @@
 # WellRead Frontend
 
-WellRead 的 Vue 3 单页应用：知识库、问答、精读、共享空间、治理台、管理工作台和运维台。前端只负责展示与交互，权限最终由后端能力契约和资源守卫决定。
+WellRead 个人版的 Vue 3 单页应用：问答、知识库、精读、技能与设置。前端只负责展示与交互，认证与数据范围最终由后端判定。
 
 ## 技术栈
 
@@ -17,16 +17,16 @@ WellRead 的 Vue 3 单页应用：知识库、问答、精读、共享空间、�
 | `src/api/` | 按业务域拆分的后端 API 封装 |
 | `src/components/` | 通用组件（菜单、聊天、设置、模型选择等） |
 | `src/composables/` | 可复用组合式逻辑 |
-| `src/config/` | 能力契约、路由访问、设置分区、部署能力、管理卡片 |
+| `src/config/` | 部署能力、上下文引导等前端配置 |
 | `src/directives/` | 全局指令 |
 | `src/hooks/` | 页面级 hooks |
-| `src/i18n/` | 语言包、审计动作文案、语言审计脚本 |
-| `src/router/` | 路由表、路由守卫、403 |
+| `src/i18n/` | 语言包与文案扫描脚本 |
+| `src/router/` | 路由表与登录守卫 |
 | `src/stores/` | Pinia 状态（auth、ui、menu、chat 资源等） |
 | `src/styles/` | 全局样式与主题扩展 |
 | `src/types/` | 前后端共享类型/视图类型 |
 | `src/utils/` | 请求、格式化、Markdown、引用等工具 |
-| `src/views/` | 页面：auth/chat/knowledge/reading/shared-space/governance/management/ops/settings |
+| `src/views/` | 页面：auth/chat/creatChat/knowledge/reading/skills/settings/platform |
 | `public/` | 静态资源；登录页架构图在 `public/diagrams/` |
 | `design/` | 设计源（图标、字体），不进入生产构建 |
 | `scripts/` | 前端专项脚本（构建、图标矢量化、PR 校验） |
@@ -57,7 +57,7 @@ npm run preview          # 本地预览生产构建，4173
 
 ## 路由与菜单
 
-- 个人版不再有角色/能力契约；后端认证只区分登录与未登录。
+- 个人版只有登录/未登录两态，没有角色、能力契约或 403 页面。
 - 侧栏五项目导航在 `src/stores/menu.ts`：问答、知识库、精读、技能、设置。
 - 路由守卫只校验登录态，未登录跳 `/login`。
 - `/platform/*` 是唯一业务命名空间；`/` 默认重定向到 `/platform/creatChat`。
@@ -65,9 +65,9 @@ npm run preview          # 本地预览生产构建，4173
 ## 数据与请求
 
 - `src/api/` 按域封装；统一请求工具在 `src/utils/request`。
-- 登录态在 `src/stores/auth`；个人版单账号，不再有空间切换与角色计算。
-- 聊天/SSE、知识库、协作、治理、设置分别有独立 API 模块，不在页面里直接拼 URL。
-- 公共能力变更直接改页面与 `src/config/*`。
+- 登录态在 `src/stores/auth`；个人版单账号，没有空间切换与角色计算。
+- 聊天/SSE、知识库、精读、技能、设置分别有独立 API 模块，不在页面里直接拼 URL。
+- 写操作权限由后端单 Key / JWT 判定；前端隐藏按钮不是授权。
 
 ## i18n
 
@@ -86,7 +86,7 @@ npm run preview          # 本地预览生产构建，4173
 - 页面：`src/views/auth/Login.vue`。
 - 左侧展示区为 Archify 生成的交互式架构图：`public/diagrams/wellread-architecture.html`。
 - iframe 使用 `?embed=1&theme=light`；`Login.vue` 加载后移除 `data-embed`，注入登录页样式隐藏 Viewer 外壳，并调用 `Archify.motionGovernor.resume()` 开启流动与节点详情。
-- 架构图为暖色 editorial、中文标签，重点展示身份与角色、共享与 ACL、协作与版本。
+- 架构图展示个人版服务链路与一次问答/入库数据流，不再包含部门、共享空间、协作或治理节点。
 - 图源与校验产物在仓库根 `.archify/architecture-wellread-login-20261026/`；重新生成后需验证节点详情、流动动画和徽标隐藏。
 
 ## Docker 与 nginx
@@ -95,22 +95,21 @@ npm run preview          # 本地预览生产构建，4173
 docker build -f Dockerfile -t gaze-ui:latest .
 ```
 
-- 构建阶段不再需要 `contracts` named context；产物不包含 `design/`。
+- 构建阶段不需要 contracts named context；产物不包含 `design/`。
 - 运行阶段是 nginx，`nginx-api-proxy.conf` 关闭代理缓冲，适配 SSE。
 - 容器端口 80；`MAX_FILE_SIZE_MB` 控制上传限制。
 
 ## 约定
 
-- 页面可见性从 caps 派生；不要在前端自行扩大后端返回的数据范围。
-- 新增路由必须声明 `requiredCaps` 或 `requiredAnyCaps`。
+- 页面可见性由后端数据决定；不要在前端自行扩大后端返回的数据范围。
+- 新增路由只需登录守卫，不再声明 `requiredCaps` / `requiredAnyCaps`。
 - API 返回的敏感字段不在前端日志/控制台打印。
 - 大列表/长文档优先复用现有虚拟滚动、分页和 Markdown 渲染管线。
-- 业务角色和页面边界以根目录 `docs/02-需求与设计/角色生态位规定.md` 为准。
 
 ## 相关文档
 
 - 文档总入口：`../README.md`
-- 角色与页面权限：`../docs/02-需求与设计/角色与权限/角色生态位规定.md`
-- 能力与路由：`../docs/02-需求与设计/角色与权限/能力与路由矩阵.md`
-- 界面规范：`../docs/02-需求与设计/界面与原型/界面规范.md`
+- 当前进度：`../docs/03-进度与交接/当前进度.md`
+- 个人版需求：`../docs/个人版改造/需求与范围.md`
+- 页面与提示词：`../docs/个人版改造/页面与提示词.md`
 - 设计源说明：`design/README.md`

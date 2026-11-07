@@ -4,15 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
 	"image/png"
 	"io"
 	"mime/multipart"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -517,45 +514,29 @@ func TestResolveAndStoreUnknownReferenceUnchanged(t *testing.T) {
 	}
 }
 
-func TestResolveAndStoreSharedMHTMLContract(t *testing.T) {
-	type contractImage struct {
-		Filename        string `json:"filename"`
-		OriginalRef     string `json:"original_ref"`
-		MimeType        string `json:"mime_type"`
-		ImageDataBase64 string `json:"image_data_base64"`
-	}
-	var contract struct {
-		MarkdownContent string          `json:"markdown_content"`
-		Images          []contractImage `json:"images"`
-	}
+// TestResolveAndStoreMHTMLContractMarkdownShapes protects the markdown shapes
+// produced by the docreader MHTML parser (table→image→body block boundaries,
+// titles containing a closing paren, hard breaks and fenced code blocks) when
+// the image resolver rewrites references. The enterprise repo carried a shared
+// JSON fixture for this; the personal fork does not ship it, so the contract is
+// inlined here.
+func TestResolveAndStoreMHTMLContractMarkdownShapes(t *testing.T) {
+	const imagePath = "images/第 1 页 (测试).png"
+	imageData := createTestPNG(200, 150)
+	markdown := strings.Join([]string{
+		"| 赛季制建立 | BP、Rank |\n\n![图片](" + imagePath + ` "阶段 1) 图片")` + "\n\n高机动性身法与独特枪械反馈",
+		"alpha  \nbeta",
+		"```\nline1\n\n\nline2\n```",
+	}, "\n\n")
 
-	contractPath := filepath.Join("..", "..", "..", "testdata", "mhtml", "titled-image-contract.json")
-	raw, err := os.ReadFile(contractPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(raw, &contract); err != nil {
-		t.Fatal(err)
-	}
-	if len(contract.Images) != 1 {
-		t.Fatalf("expected one contract image but got %d", len(contract.Images))
-	}
-
-	imageContract := contract.Images[0]
-	imageData, err := base64.StdEncoding.DecodeString(imageContract.ImageDataBase64)
-	if err != nil {
-		t.Fatal(err)
-	}
 	result := &types.ReadResult{
-		MarkdownContent: contract.MarkdownContent,
-		ImageRefs: []types.ImageRef{
-			{
-				Filename:    imageContract.Filename,
-				OriginalRef: imageContract.OriginalRef,
-				MimeType:    imageContract.MimeType,
-				ImageData:   imageData,
-			},
-		},
+		MarkdownContent: markdown,
+		ImageRefs: []types.ImageRef{{
+			Filename:    "第 1 页 (测试).png",
+			OriginalRef: imagePath,
+			MimeType:    "image/png",
+			ImageData:   imageData,
+		}},
 	}
 
 	svc := &captureSaveBytes{}
@@ -568,15 +549,15 @@ func TestResolveAndStoreSharedMHTMLContract(t *testing.T) {
 		t.Fatalf("expected SaveBytes once but got %d", len(svc.saved))
 	}
 	if !bytes.Equal(svc.saved[0], imageData) {
-		t.Fatal("stored image bytes do not match contract fixture")
+		t.Fatal("stored image bytes do not match the contract image")
 	}
 	if len(imgs) != 1 {
 		t.Fatalf("expected one stored image record but got %d", len(imgs))
 	}
-	if imgs[0].OriginalRef != imageContract.OriginalRef || imgs[0].MimeType != imageContract.MimeType {
+	if imgs[0].OriginalRef != imagePath || imgs[0].MimeType != "image/png" {
 		t.Fatalf("unexpected stored image metadata: %#v", imgs[0])
 	}
-	if strings.Contains(out, imageContract.OriginalRef) {
+	if strings.Contains(out, imagePath) {
 		t.Fatalf("original image path remained in output: %s", out)
 	}
 	if !strings.Contains(out, `![图片](local://test/`) {

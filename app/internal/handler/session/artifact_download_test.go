@@ -175,6 +175,7 @@ func TestDownloadMessageArtifact_HappyPath(t *testing.T) {
 				}
 				return &types.Message{
 					ID: mid, SessionID: sid,
+					AgentTenantID: 42,
 					Artifacts: types.MessageArtifacts{{
 						URL:      url,
 						FileName: "报告.pptx", // non-ASCII to exercise RFC 5987 encoding

@@ -103,15 +103,13 @@ export const useChatResourcesStore = defineStore('chatResources', () => {
    * 知识库列表（支持 creator 筛选）。creator=all 时写入缓存供对话页复用。
    */
   async function fetchKnowledgeBasesForList(
-    params?: { creator?: ListCreatorFilter; department_id?: string },
+    params?: { creator?: ListCreatorFilter },
     force = false,
   ): Promise<any[]> {
     const creator = params?.creator ?? 'all'
-    const departmentID = params?.department_id?.trim()
-    // 带 creator / department 过滤的列表是列表页专用、不进全量缓存，
-    // 直接透传请求，避免公司管理员切换部门时读到上一个部门的缓存。
-    if (creator !== 'all' || departmentID) {
-      const res: any = await listKnowledgeBases({ creator, department_id: departmentID })
+    // 带 creator 过滤的列表是列表页专用、不进全量缓存，直接透传请求。
+    if (creator !== 'all') {
+      const res: any = await listKnowledgeBases({ creator })
       return res?.data && Array.isArray(res.data) ? res.data : []
     }
 

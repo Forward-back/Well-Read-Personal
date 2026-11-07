@@ -20,15 +20,17 @@ type effectiveFixture struct {
 // usableSkillImageConfig is a config whose stored snapshot is the image its
 // sessions boot, which is the precondition for offering any installed skill.
 func usableSkillImageConfig(id string, tenantID uint64) *types.TenantSandboxConfigEntity {
-	fingerprint := sandbox.SkillImageFingerprint("e2b", "key-1", "https://e2b.example")
+	host := "unix:///var/run/docker.sock"
+	fingerprint := sandbox.SkillImageFingerprint("docker", "", host)
 	return &types.TenantSandboxConfigEntity{
 		ID:          id,
 		TenantID:    tenantID,
 		SandboxType: string(sandbox.SandboxTypeDocker),
 		Config: &types.TenantSandboxConfig{
 			SandboxType: string(sandbox.SandboxTypeDocker),
-			E2B: &types.E2BSandboxConfig{
-				APIURL: "https://e2b.example", APIKey: "key-1", TemplateID: "base-template",
+			Docker: &types.DockerSandboxConfig{
+				Image: "base-template",
+				Host:  host,
 			},
 			SkillImage: &types.SkillImageConfig{
 				SnapshotID: "snap-3", Generation: 3,
@@ -94,7 +96,7 @@ func TestListUsableSkillsMatchesTheEffectiveSet(t *testing.T) {
 // of them - so announcing any would burn turns on calls that cannot work.
 func TestEffectiveTenantSkillsInjectsNothingWhenTheFingerprintDisagrees(t *testing.T) {
 	fx := newEffectiveFixture(t)
-	fx.configs.entity.Config.E2B.APIKey = "rotated-key"
+	fx.configs.entity.Config.Docker.Host = "tcp://other-daemon:2375"
 
 	require.Empty(t, fx.derive(context.Background()))
 }

@@ -78,7 +78,7 @@ test('missing refresh token clears credentials, redirects, and throws an Error',
   const { store, location } = installBrowser()
   store.gaze_token = 'expired'
   store.gaze_user = '{}'
-  store.gaze_selected_tenant_id = '9'
+  store.gaze_knowledge_bases = '[]'
 
   await assert.rejects(
     () => refreshAccessTokenShared({
@@ -90,7 +90,7 @@ test('missing refresh token clears credentials, redirects, and throws an Error',
     (err: unknown) => err instanceof Error && err.message === 'please-relogin',
   )
   assert.equal(store.gaze_token, undefined)
-  assert.equal(store.gaze_selected_tenant_id, undefined)
+  assert.equal(store.gaze_knowledge_bases, undefined)
   assert.equal(location.href, '/login')
 })
 
@@ -98,7 +98,7 @@ test('a failed refresh clears the newly irrelevant session and redirects', async
   const { store, location } = installBrowser()
   store.gaze_refresh_token = 'rt-dead'
   store.gaze_token = 'expired'
-  store.gaze_selected_tenant_id = '9'
+  store.gaze_knowledge_bases = '[]'
 
   await assert.rejects(
     () => refreshAccessTokenShared({
@@ -107,7 +107,7 @@ test('a failed refresh clears the newly irrelevant session and redirects', async
     /revoked/,
   )
   assert.equal(store.gaze_refresh_token, undefined)
-  assert.equal(store.gaze_selected_tenant_id, undefined)
+  assert.equal(store.gaze_knowledge_bases, undefined)
   assert.equal(location.href, '/login')
 })
 

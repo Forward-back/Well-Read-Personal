@@ -894,6 +894,15 @@ func (h *KnowledgeHandler) ListKnowledge(c *gin.Context) {
 		}
 		filter.FolderIDs = ids
 		filter.FolderScope = types.FolderScopeAny
+	} else if raw, ok := c.GetQuery("folder_path"); ok {
+		// Textual folder filter, kept for older clients. Presence matters: an
+		// explicitly empty folder_path selects the knowledge base root, while
+		// an absent parameter keeps the flat listing.
+		filter.FolderPath = types.NormalizeKnowledgeFolderPath(raw)
+		filter.FolderScope = types.FolderScopeExact
+		if recursive, _ := strconv.ParseBool(c.DefaultQuery("folder_recursive", "false")); recursive {
+			filter.FolderScope = types.FolderScopeSubtree
+		}
 	}
 
 	logger.Infof(

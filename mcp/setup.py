@@ -33,14 +33,14 @@ def read_requirements():
 
 setup(
     name="ylsw-wellread-mcp",
-    version="1.1.1",
+    version="1.2.0",
     author="Gaze Team",
     author_email="support@gaze.com",
     description="Gaze MCP Server - Model Context Protocol server for Gaze API",
     long_description=read_readme(),
     long_description_content_type="text/markdown",
     url="https://wellread/tree/main/mcp",
-    py_modules=["gaze_mcp_server", "upload_paths", "main", "run_server", "run"],
+    py_modules=["gaze_mcp_server", "client", "tools", "main", "run_server", "run"],
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",

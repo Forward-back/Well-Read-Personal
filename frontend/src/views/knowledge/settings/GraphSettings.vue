@@ -328,12 +328,8 @@ import { useEditorResourcesStore } from '@/stores/editorResources'
 import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()
-const authStore = useAuthStore()
-
-// canRunGraphExtract 对应后端 POST /initialization/extract/{fabri-tag,fabri-text,
-// text-relation} 的 g.Admin() 守卫——这三个都是会调用大模型 + 写库的 admin
-// 工具。Contributor 看到按钮点了只会撞 403。
-const canRunGraphExtract = computed(() => authStore.hasRole('admin'))
+// 个人版只有一个 owner，图抽取工具始终可用。
+const canRunGraphExtract = computed(() => true)
 
 interface GraphExtractConfig {
   enabled: boolean

@@ -1,13 +1,12 @@
-// Package main is the main package for the Gaze server
-// It contains the main function and the entry point for the server
+// Package main is the entry point for the WellRead personal backend.
 //
-// @title           Gaze API
+// @title           WellRead API
 // @version         1.0
-// @description     Gaze 知识库管理系统 API 文档
+// @description     WellRead 个人版知识库 API 文档
 // @termsOfService  http://swagger.io/terms/
 //
-// @contact.name   Gaze Github
-// @contact.url    https://gaze
+// @contact.name   WellRead
+// @contact.url    https://github.com/Forward-back/Well-Reard
 //
 // @BasePath  /api/v1
 //
@@ -19,7 +18,7 @@
 // @securityDefinitions.apikey ApiKeyAuth
 // @in header
 // @name X-API-Key
-// @description API Key 认证：空间 Key 固定访问所属空间；平台 Key 调用空间接口时需同时传 X-Tenant-ID
+// @description 单只读 API Key：用于 MCP 与外部只读接入，路由白名单之外的接口默认拒绝
 package main
 
 import (

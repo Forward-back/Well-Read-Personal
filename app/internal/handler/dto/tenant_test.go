@@ -9,20 +9,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTenantResponse_ViewerOmitsSecrets(t *testing.T) {
+func TestTenantResponse_OwnerSeesRedactedConfigs(t *testing.T) {
 	tenant := sampleSecretTenant()
-	body, err := json.Marshal(NewTenantResponse(viewerContext(), tenant))
+	body, err := json.Marshal(NewTenantResponse(ownerContext(), tenant))
 	require.NoError(t, err)
 	s := string(body)
+	// The single owner sees the configured integration objects, but raw
+	// credentials never leave the server.
 	assert.NotContains(t, s, "tenant-api-key-123")
 	assert.NotContains(t, s, "legacy-search-secret-999")
 	assert.NotContains(t, s, "wk-app-secret-def")
 	assert.NotContains(t, s, "parser-secret-123")
 	assert.NotContains(t, s, "minio-secret-789")
-	assert.NotContains(t, s, "web_search_config")
-	assert.NotContains(t, s, "parser_engine_config")
-	assert.NotContains(t, s, "storage_engine_config")
-	assert.NotContains(t, s, "credentials")
+	assert.Contains(t, s, "web_search_config")
+	assert.Contains(t, s, "parser_engine_config")
+	assert.Contains(t, s, "storage_engine_config")
+	assert.Contains(t, s, types.RedactedSecretPlaceholder)
 }
 
 func TestTenantResponse_OwnerOmitsLegacyTenantAPIKey(t *testing.T) {

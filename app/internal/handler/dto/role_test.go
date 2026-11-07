@@ -7,36 +7,26 @@ import (
 	"gaze/internal/types"
 )
 
-func TestCanViewIntegrationSecretsAdminRole(t *testing.T) {
+// The personal edition has exactly one principal: the owner sees integration
+// configuration and secrets. Tenant-role denial paths were removed with the
+// enterprise role hierarchy.
+func TestCanViewIntegrationSecretsOwner(t *testing.T) {
 	ctx := context.WithValue(context.Background(), types.TenantRoleContextKey, types.TenantRoleOwner)
 	if !CanViewIntegrationSecrets(ctx) {
-		t.Fatal("admin should view integration secrets")
+		t.Fatal("owner should view integration secrets")
 	}
 }
 
-func TestCanViewIntegrationSecretsViewerDenied(t *testing.T) {
+// A missing role still resolves to the single owner principal.
+func TestCanViewIntegrationSecretsDefaultsToOwner(t *testing.T) {
+	if !CanViewIntegrationSecrets(context.Background()) {
+		t.Fatal("missing role should resolve to the owner principal")
+	}
+}
+
+func TestCanViewTenantAPIKeyOwner(t *testing.T) {
 	ctx := context.WithValue(context.Background(), types.TenantRoleContextKey, types.TenantRoleOwner)
-	if CanViewIntegrationSecrets(ctx) {
-		t.Fatal("viewer should not view integration secrets")
-	}
-}
-
-func TestCanViewIntegrationSecretsScopedAPIKeyWithManageTenantSettings(t *testing.T) {
-	ctx := types.WithTenantAPIKeyScope(context.Background(), types.TenantAPIKeyScope{
-		Capabilities: types.StringArray{string(types.APIKeyCapabilityManageTenantSettings)},
-	})
-	ctx = context.WithValue(ctx, types.TenantRoleContextKey, types.TenantRoleOwner)
-	if !CanViewIntegrationSecrets(ctx) {
-		t.Fatal("manage_tenant_settings API key should view integration secrets")
-	}
-}
-
-func TestCanViewIntegrationSecretsScopedAPIKeyWithoutCapabilityDenied(t *testing.T) {
-	ctx := types.WithTenantAPIKeyScope(context.Background(), types.TenantAPIKeyScope{
-		Capabilities: types.StringArray{string(types.APIKeyCapabilityChat)},
-	})
-	ctx = context.WithValue(ctx, types.TenantRoleContextKey, types.TenantRoleOwner)
-	if CanViewIntegrationSecrets(ctx) {
-		t.Fatal("chat-only API key should not view integration secrets")
+	if !CanViewTenantAPIKey(ctx) {
+		t.Fatal("owner should view the tenant API key metadata")
 	}
 }

@@ -47,15 +47,21 @@ func testSessionSandboxBindingStore(t *testing.T, store SessionSandboxBindingSto
 	require.NoError(t, err)
 	require.False(t, created)
 
-	deleted, err := store.DeleteIfMatch(ctx, key, SandboxTypeDocker, "sandbox-a")
-	require.NoError(t, err)
-	require.False(t, deleted)
-	deleted, err = store.DeleteIfMatch(ctx, key, SandboxTypeDocker, "sandbox-b")
+	// Bindings may only name a supported provider now that the remote backends
+	// are gone; an old provider name is rejected outright rather than treated
+	// as a non-match.
+	_, err = store.DeleteIfMatch(ctx, key, "cube", "sandbox-a")
+	require.Error(t, err)
+
+	deleted, err := store.DeleteIfMatch(ctx, key, SandboxTypeDocker, "sandbox-b")
 	require.NoError(t, err)
 	require.False(t, deleted)
 	deleted, err = store.DeleteIfMatch(ctx, key, SandboxTypeDocker, "sandbox-a")
 	require.NoError(t, err)
 	require.True(t, deleted)
+	deleted, err = store.DeleteIfMatch(ctx, key, SandboxTypeDocker, "sandbox-a")
+	require.NoError(t, err)
+	require.False(t, deleted, "deleting an absent binding is a no-op")
 }
 
 func TestMemorySessionSandboxBindingStoreReplacesTrafficToken(t *testing.T) {
@@ -369,12 +375,13 @@ func TestSessionSandboxBindingValidation(t *testing.T) {
 
 // Bindings written before this field existed must stay usable: their sandboxes
 // were created while inbound access was still open, so an empty token is the
-// correct value rather than a corrupt one.
+// correct value rather than a corrupt one. Docker bindings never carry a token
+// at all, so the same shape is still what current writers produce.
 func TestSessionSandboxBindingWithoutTrafficTokenStaysValid(t *testing.T) {
 	key := SessionSandboxKey{TenantID: 1, SessionID: "session-1"}
 	raw := []byte(`{
 		"version": ` + strconv.Itoa(SessionSandboxBindingVersion) + `,
-		"provider": "cube",
+		"provider": "docker",
 		"tenant_id": 1,
 		"session_id": "session-1",
 		"sandbox_id": "sandbox-1",

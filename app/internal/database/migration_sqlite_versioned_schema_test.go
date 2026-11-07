@@ -9,16 +9,65 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// versionedSQLiteTables is the set of tables that SQLite migrations must
-// create to stay in sync with the versioned (PostgreSQL) migrations:
-// 000041 task queue, 000053 system settings, 000055 processing spans,
-// 000063 knowledge multi-tags.
-var versionedSQLiteTables = []string{
+// baselineSQLiteTables is the set of tables the personal-edition baseline
+// (migrations/sqlite/000000_init.up.sql) must create on a fresh database. The
+// enterprise versioned chain was collapsed into this single migration; this
+// list guards the consolidated schema against accidental drift.
+var baselineSQLiteTables = []string{
+	"tenants",
+	"models",
+	"knowledge_bases",
+	"knowledges",
+	"sessions",
+	"messages",
+	"message_suggestion_sets",
+	"message_suggestion_events",
+	"chunks",
+	"chunk_revisions",
+	"users",
+	"auth_tokens",
+	"user_kb_pins",
+	"knowledge_tags",
+	"mcp_services",
+	"mcp_tool_approvals",
+	"mcp_oauth_clients",
+	"mcp_oauth_tokens",
+	"custom_agents",
+	"tenant_sandbox_configs",
+	"im_channel_sessions",
+	"im_channels",
+	"embed_channels",
+	"data_sources",
+	"sync_logs",
+	"web_search_providers",
+	"vector_stores",
+	"storage_backends",
+	"resources",
+	"resource_bindings",
+	"tenant_api_keys",
+	"temporary_documents",
+	"gaze_pages",
+	"gaze_folders",
+	"gaze_page_issues",
+	"gaze_page_revisions",
+	"memory_subjects",
+	"memory_items",
+	"memory_tombstones",
+	"memory_topic_stats",
+	"memory_doc_affinity",
+	"memory_item_embeddings",
 	"task_pending_ops",
 	"task_dead_letters",
 	"system_settings",
 	"knowledge_processing_spans",
 	"knowledge_tag_relations",
+	"lite_embeddings",
+	"doc_versions",
+	"doc_version_chunks",
+	"chunk_citation_daily",
+	"knowledge_folders",
+	"retrieval_audit_logs",
+	"tenant_skill_catalog",
 	"reading_runs",
 	"reading_run_steps",
 	"reading_questions",
@@ -26,27 +75,25 @@ var versionedSQLiteTables = []string{
 	"reading_terms",
 	"reading_contradictions",
 	"reading_report_drafts",
-	"tenant_skill_catalog",
 }
 
-// versionedSQLiteColumns maps each existing table to the columns that the
-// versioned migrations add and the SQLite baseline was missing.
-var versionedSQLiteColumns = map[string][]string{
-	"tenants":               {"api_principal_config"},           // 000064
-	"users":                 {"is_system_admin"},                // 000053
-	"knowledges":            {"pending_subtasks_count"},         // 000056
-	"messages":              {"attachments", "usage"},           // 000034, 000085
-	"embed_channels":        {"allow_memory"},                   // 000060
-	"mcp_oauth_tokens":      {"principal_type", "principal_id"}, // 000064
-	"mcp_tool_approvals":    {"enabled"},                        // 000091
-	"sessions":              {"reading_run_id"},                 // 000120 / SQLite 000032
-	"reading_report_drafts": {"version"},                        // 000123 / SQLite 000035
-	"reading_questions":     {"kind", "gap_type"},               // 000124 / SQLite 000036
+// baselineSQLiteColumns maps tables to columns the baseline must define
+// because the application reads or writes them.
+var baselineSQLiteColumns = map[string][]string{
+	"tenants":               {"api_principal_config", "memory_config", "reading_model_id"},
+	"users":                 {"is_system_admin"},
+	"knowledges":            {"pending_subtasks_count", "folder_path", "folder_id", "created_by", "engine_sync_status"},
+	"messages":              {"attachments", "usage", "query_rewritten", "query_rewrite_meta", "skill", "reading_run_id"},
+	"embed_channels":        {"allow_memory"},
+	"mcp_oauth_tokens":      {"principal_type", "principal_id"},
+	"mcp_tool_approvals":    {"enabled"},
+	"sessions":              {"reading_run_id"},
+	"reading_report_drafts": {"version"},
+	"reading_questions":     {"kind", "gap_type"},
+	"knowledge_bases":       {"auto_tag_config"},
 }
 
-const expectedSQLiteMigrationVersion = 36
-
-func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
+func TestSQLiteMigrationsCreateBaselineSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
 	chdirAndRestore(t, repoRoot)
 
@@ -55,18 +102,18 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 
 	db := openSQLiteDB(t, dbPath)
 	version, dirty := sqliteMigrationState(t, db)
-	require.Equal(t, expectedSQLiteMigrationVersion, version)
+	require.Equal(t, 0, version, "the personal-edition baseline is the single migration 000000_init")
 	require.False(t, dirty)
 
-	for _, table := range versionedSQLiteTables {
+	for _, table := range baselineSQLiteTables {
 		require.Truef(t, sqliteTableExists(t, db, table), "SQLite migrations must create table %s", table)
 	}
-	for table, columns := range versionedSQLiteColumns {
+	for table, columns := range baselineSQLiteColumns {
 		for _, column := range columns {
 			require.Truef(
 				t,
 				sqliteColumnExists(t, db, table, column),
-				"SQLite migrations must add column %s.%s",
+				"SQLite migrations must create column %s.%s",
 				table,
 				column,
 			)
@@ -76,68 +123,8 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	assertSQLiteMCPOAuthPrincipalUpsertWorks(t, db)
 	require.False(t, sqliteColumnExists(t, db, "knowledges", "tag_id"),
 		"SQLite migrations must drop legacy knowledges.tag_id after multi-tag migration")
-}
-
-func TestSQLiteMigrationsUpgradeV4PreservesData(t *testing.T) {
-	repoRoot := sqliteRepoRoot(t)
-
-	// Build a legacy v4 migration root (000000_init .. 000004_memory) so we
-	// can prove the new migrations upgrade an existing Lite database without
-	// replaying the baseline.
-	legacyRoot := copySQLiteMigrationsV4(t, repoRoot)
-	chdirAndRestore(t, legacyRoot)
-
-	dbPath := filepath.Join(t.TempDir(), "upgrade.db")
-	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))
-
-	db := openSQLiteDB(t, dbPath)
-	versionBefore, dirtyBefore := sqliteMigrationState(t, db)
-	require.Equal(t, 4, versionBefore)
-	require.False(t, dirtyBefore)
-	_, err := db.Exec("INSERT INTO tenants (name, business) VALUES (?, ?)", "upgrade-sentinel", "migration-test")
-	require.NoError(t, err)
-	_, err = db.Exec(
-		"INSERT INTO knowledges (id, tenant_id, knowledge_base_id, type, title, source, tag_id) "+
-			"VALUES (?, 1, ?, 'document', 'tagged-doc', 'manual', ?)",
-		"legacy-knowledge-1", "legacy-kb-1", "legacy-tag-1",
-	)
-	require.NoError(t, err)
-
-	// Run the full migration set from the repo root.
-	chdirAndRestore(t, repoRoot)
-	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))
-
-	db = openSQLiteDB(t, dbPath)
-	versionAfter, dirtyAfter := sqliteMigrationState(t, db)
-	require.Equal(t, expectedSQLiteMigrationVersion, versionAfter)
-	require.False(t, dirtyAfter)
-
-	for _, table := range versionedSQLiteTables {
-		require.Truef(t, sqliteTableExists(t, db, table), "upgraded SQLite DB must have table %s", table)
-	}
-	for table, columns := range versionedSQLiteColumns {
-		for _, column := range columns {
-			require.Truef(
-				t,
-				sqliteColumnExists(t, db, table, column),
-				"upgraded SQLite DB must have column %s.%s",
-				table,
-				column,
-			)
-		}
-	}
-
-	var sentinelName string
-	require.NoError(t, db.QueryRow("SELECT name FROM tenants WHERE business = ?", "migration-test").Scan(&sentinelName))
-	require.Equal(t, "upgrade-sentinel", sentinelName)
-
-	var relationCount int
-	require.NoError(t, db.QueryRow(
-		"SELECT COUNT(*) FROM knowledge_tag_relations WHERE knowledge_id = ? AND tag_id = ?",
-		"legacy-knowledge-1", "legacy-tag-1",
-	).Scan(&relationCount))
-	require.Equal(t, 1, relationCount)
-	require.False(t, sqliteColumnExists(t, db, "knowledges", "tag_id"))
+	require.False(t, sqliteTableExists(t, db, "gaze_log_entries"),
+		"SQLite migrations must drop the legacy gaze_log_entries table")
 }
 
 func sqliteRepoRoot(t *testing.T) string {
@@ -227,26 +214,4 @@ func assertSQLiteMCPOAuthPrincipalUpsertWorks(t *testing.T, db *sql.DB) {
 		"SELECT COUNT(*) FROM mcp_oauth_tokens WHERE tenant_id = 1 AND service_id = 'svc-migration-1'",
 	).Scan(&rowCount))
 	require.Equal(t, 1, rowCount)
-}
-
-func copySQLiteMigrationsV4(t *testing.T, repoRoot string) string {
-	t.Helper()
-	dest := t.TempDir()
-	srcDir := filepath.Join(repoRoot, "migrations", "sqlite")
-	destDir := filepath.Join(dest, "migrations", "sqlite")
-	require.NoError(t, os.MkdirAll(destDir, 0o755))
-
-	legacy := []string{
-		"000000_init.up.sql",
-		"000001_remove_gaze_log.up.sql",
-		"000002_knowledge_folder_path.up.sql",
-		"000003_knowledge_base_auto_tag_config.up.sql",
-		"000004_memory.up.sql",
-	}
-	for _, name := range legacy {
-		data, err := os.ReadFile(filepath.Join(srcDir, name))
-		require.NoError(t, err)
-		require.NoError(t, os.WriteFile(filepath.Join(destDir, name), data, 0o600))
-	}
-	return dest
 }

@@ -13,9 +13,6 @@ const AUTH_STORAGE_KEYS = [
   'gaze_tenant',
   'gaze_knowledge_bases',
   'gaze_current_kb',
-  'gaze_selected_tenant_id',
-  'gaze_selected_tenant_name',
-  'gaze_memberships',
 ] as const
 
 let isRefreshing = false

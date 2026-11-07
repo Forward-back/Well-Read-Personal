@@ -1,4 +1,4 @@
-from gaze_mcp_server import GazeClient
+from client import GazeClient
 
 
 def test_resolve_agent_id_accepts_non_uuid_agent_id(monkeypatch):

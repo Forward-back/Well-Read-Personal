@@ -1,7 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { getDeploymentCapabilities } from '@/api/system'
-import { useAuthStore } from '@/stores/auth'
 import {
   isDeploymentCapabilitySupported,
   type DeploymentCapabilityKey,
@@ -9,7 +8,6 @@ import {
 } from '@/config/deploymentCapabilities'
 
 export const useDeploymentCapabilitiesStore = defineStore('deploymentCapabilities', () => {
-  const edition = ref('')
   const capabilities = ref<DeploymentCapabilityMap>({})
   const loaded = ref(false)
   const loadError = ref('')
@@ -22,7 +20,6 @@ export const useDeploymentCapabilitiesStore = defineStore('deploymentCapabilitie
     loadingPromise = (async () => {
       try {
         const response = await getDeploymentCapabilities()
-        edition.value = response.data?.edition || ''
         capabilities.value = response.data?.capabilities || {}
         loadError.value = ''
       } catch (error) {
@@ -39,15 +36,10 @@ export const useDeploymentCapabilitiesStore = defineStore('deploymentCapabilitie
   }
 
   const isSupported = (key?: DeploymentCapabilityKey) => {
-    const authStore = useAuthStore()
-    return isDeploymentCapabilitySupported(capabilities.value, key, {
-      liteMode: authStore.isLiteMode,
-      edition: edition.value,
-    })
+    return isDeploymentCapabilitySupported(capabilities.value, key)
   }
 
   return {
-    edition,
     capabilities,
     loaded,
     loadError,

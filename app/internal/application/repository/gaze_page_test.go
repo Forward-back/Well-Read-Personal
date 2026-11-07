@@ -16,9 +16,9 @@ import (
 )
 
 // gazePagesTestDDL is a minimal SQLite-compatible subset of the
-// production gaze_pages DDL (migrations/versioned/000037_gaze_and_indexing.up.sql).
-// JSONB is stored as TEXT in SQLite; the StringArray Scan/Value pair
-// handles the JSON round-trip unchanged.
+// production gaze_pages DDL (migrations/versioned/000037_gaze_and_indexing
+// plus 000100_gaze_outdated). JSONB is stored as TEXT in SQLite; the
+// StringArray Scan/Value pair handles the JSON round-trip unchanged.
 const gazePagesTestDDL = `
 CREATE TABLE IF NOT EXISTS gaze_pages (
     id                VARCHAR(36) PRIMARY KEY,
@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS gaze_pages (
     version           INTEGER NOT NULL DEFAULT 1,
     last_edit_source  VARCHAR(16) NOT NULL DEFAULT '',
     last_editor_id    VARCHAR(64) NOT NULL DEFAULT '',
+    outdated          BOOLEAN NOT NULL DEFAULT 0,
+    superseded_by_slug VARCHAR(255) NOT NULL DEFAULT '',
     created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
     deleted_at        DATETIME

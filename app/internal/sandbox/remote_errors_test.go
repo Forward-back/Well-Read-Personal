@@ -107,7 +107,7 @@ func TestRemoteErrorRetainsCause(t *testing.T) {
 	if !errors.Is(err, cause) {
 		t.Fatal("RemoteError must retain its provider-native cause")
 	}
-	if got, want := err.Error(), "cube Connect: unavailable: control plane unavailable: connection reset"; got != want {
+	if got, want := err.Error(), "docker Connect: unavailable: control plane unavailable: connection reset"; got != want {
 		t.Fatalf("Error() = %q, want %q", got, want)
 	}
 }

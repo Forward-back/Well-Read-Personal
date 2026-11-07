@@ -119,6 +119,22 @@ var toolHandlePolicies = map[string]toolHandlePolicy{
 		sourceIDKeys: map[string]struct{}{"knowledge_base_id": {}},
 		sourceOutput: true,
 	},
+	// Gaze issue tools use their own iN handle space: the durable issue UUID is
+	// private to the maintenance workflow, while KB and suspected-document IDs
+	// still belong to the ordinary source codecs.
+	"gaze_read_issue": {
+		sourceIDKeys:       map[string]struct{}{"knowledge_base_id": {}, "suspected_knowledge_ids": {}},
+		sourceOutput:       true,
+		decodedIssueIDKeys: map[string]struct{}{"issue_id": {}},
+		encodedIssueIDKeys: map[string]struct{}{"id": {}},
+	},
+	"gaze_update_issue": {
+		decodedIssueIDKeys:  map[string]struct{}{"issue_id": {}},
+		encodeKnownIssueIDs: true,
+	},
+	"gaze_flag_issue": {
+		sourceIDKeys: map[string]struct{}{"suspected_knowledge_ids": {}},
+	},
 	// Mutation tools echo the slug they acted on and surface validation errors
 	// that can quote a durable KB or document ID. They own no source arguments,
 	// but their output must still be compacted before the model sees it.

@@ -2,7 +2,7 @@
  * 受保护文件（provider:// / resource:// 等）的访问上下文。
  *
  * 后端按访问主体拆分文件代理，鉴权模型互不相同：
- *   - `/files`                                → 登录态 Bearer + X-Tenant-ID
+ *   - `/files`                                → 登录态 Bearer
  *   - `/api/v1/knowledge-bases/:id/files`     → 知识库访问权限（跨租户共享库）
  *   - `/api/v1/sessions/:id/messages/:mid/files` → 会话消息归属 + 共享智能体权限
  *
@@ -105,17 +105,6 @@ function tenantRequestHeaders(): Record<string, string> {
     const token = (localStorage.getItem('gaze_token') || '').trim();
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const selectedTenantId = (localStorage.getItem('gaze_selected_tenant_id') || '').trim();
-    if (selectedTenantId) {
-      // Always attach when a selected tenant is set. Same rationale as
-      // utils/request.ts / api/chat/streame.ts: the
-      // "selectedTenantId === defaultTenantId → skip" short-circuit
-      // silently drops the header whenever any code path writes the
-      // active tenant into gaze_tenant, leaving authenticated file
-      // fetches landing on the home tenant.
-      headers['X-Tenant-ID'] = selectedTenantId;
     }
   } catch {
     // ignore localStorage read errors

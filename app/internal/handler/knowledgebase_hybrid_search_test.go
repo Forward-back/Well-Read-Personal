@@ -9,36 +9,57 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"gaze/internal/engine"
 	"gaze/internal/middleware"
 	"gaze/internal/types"
 	"gaze/internal/types/interfaces"
 )
 
+// hybridSearchTestService only needs to resolve the knowledge base; retrieval
+// itself now goes through the YLSW engine.
 type hybridSearchTestService struct {
 	interfaces.KnowledgeBaseService
-	searchCalls  int
-	searchParams types.SearchParams
-	results      []*types.SearchResult
 }
 
 func (s *hybridSearchTestService) GetKnowledgeBaseByID(_ context.Context, id string) (*types.KnowledgeBase, error) {
 	return &types.KnowledgeBase{ID: id, TenantID: 1}, nil
 }
 
-func (s *hybridSearchTestService) HybridSearch(
+// stubHybridSearchEngine returns canned retrieval results and records the
+// query the handler passed to the engine.
+type stubHybridSearchEngine struct {
+	engine.RAGEngine
+	results     []*types.SearchResult
+	err         error
+	searchCalls int
+	lastQueries []string
+	lastKBIDs   []string
+	lastTopK    int
+}
+
+func (s *stubHybridSearchEngine) Search(
 	_ context.Context,
-	_ string,
-	params types.SearchParams,
+	queries []string,
+	knowledgeBaseIDs []string,
+	topK int,
 ) ([]*types.SearchResult, error) {
 	s.searchCalls++
-	s.searchParams = params
+	s.lastQueries = queries
+	s.lastKBIDs = knowledgeBaseIDs
+	s.lastTopK = topK
+	if s.err != nil {
+		return nil, s.err
+	}
 	if s.results != nil {
 		return s.results, nil
 	}
 	return []*types.SearchResult{}, nil
 }
 
-func newHybridSearchTestRouter(svc interfaces.KnowledgeBaseService) *gin.Engine {
+func newHybridSearchTestRouter(
+	svc interfaces.KnowledgeBaseService,
+	rag *stubHybridSearchEngine,
+) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(middleware.ErrorHandler())
@@ -47,7 +68,7 @@ func newHybridSearchTestRouter(svc interfaces.KnowledgeBaseService) *gin.Engine 
 		c.Set(types.UserIDContextKey.String(), "u-test")
 		c.Next()
 	})
-	handler := &KnowledgeBaseHandler{service: svc}
+	handler := &KnowledgeBaseHandler{service: svc, ragEngine: rag}
 	router.POST("/knowledge-bases/:id/hybrid-search", handler.HybridSearch)
 	return router
 }
@@ -71,13 +92,14 @@ func TestHybridSearchRejectsMissingQueryText(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := &hybridSearchTestService{}
-			response := performHybridSearchRequest(svc, tt.body)
+			rag := &stubHybridSearchEngine{}
+			response := performHybridSearchRequest(svc, rag, tt.body)
 
 			if response.Code != http.StatusBadRequest {
 				t.Fatalf("expected 400, got %d body=%s", response.Code, response.Body.String())
 			}
-			if svc.searchCalls != 0 {
-				t.Fatalf("invalid request reached HybridSearch %d time(s)", svc.searchCalls)
+			if rag.searchCalls != 0 {
+				t.Fatalf("invalid request reached the engine %d time(s)", rag.searchCalls)
 			}
 			if !strings.Contains(response.Body.String(), `"code":1000`) {
 				t.Fatalf("expected bad-request envelope, got %s", response.Body.String())
@@ -88,44 +110,51 @@ func TestHybridSearchRejectsMissingQueryText(t *testing.T) {
 
 func TestHybridSearchAcceptsQueryText(t *testing.T) {
 	svc := &hybridSearchTestService{}
-	response := performHybridSearchRequest(svc, `{"query_text":"MiniMax","match_count":3}`)
+	rag := &stubHybridSearchEngine{}
+	response := performHybridSearchRequest(svc, rag, `{"query_text":"MiniMax","match_count":3}`)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", response.Code, response.Body.String())
 	}
-	if svc.searchCalls != 1 {
-		t.Fatalf("expected one HybridSearch call, got %d", svc.searchCalls)
+	if rag.searchCalls != 1 {
+		t.Fatalf("expected one engine search call, got %d", rag.searchCalls)
 	}
-	if svc.searchParams.QueryText != "MiniMax" {
-		t.Fatalf("query text = %q, want MiniMax", svc.searchParams.QueryText)
+	if len(rag.lastQueries) != 1 || rag.lastQueries[0] != "MiniMax" {
+		t.Fatalf("query = %v, want [MiniMax]", rag.lastQueries)
 	}
-	if svc.searchParams.MatchCount != 3 {
-		t.Fatalf("match count = %d, want 3", svc.searchParams.MatchCount)
+	if rag.lastTopK != 3 {
+		t.Fatalf("topK = %d, want 3", rag.lastTopK)
+	}
+	if len(rag.lastKBIDs) != 1 || rag.lastKBIDs[0] != "kb-1" {
+		t.Fatalf("knowledge base IDs = %v, want [kb-1]", rag.lastKBIDs)
 	}
 }
 
 func TestHybridSearchAcceptsPrecomputedVectorWithoutQueryText(t *testing.T) {
 	svc := &hybridSearchTestService{}
+	rag := &stubHybridSearchEngine{}
 	response := performHybridSearchRequest(
 		svc,
+		rag,
 		`{"query_embedding":[0.1,0.2],"disable_keywords_match":true}`,
 	)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", response.Code, response.Body.String())
 	}
-	if svc.searchCalls != 1 {
-		t.Fatalf("expected one HybridSearch call, got %d", svc.searchCalls)
+	if rag.searchCalls != 1 {
+		t.Fatalf("expected one engine search call, got %d", rag.searchCalls)
 	}
-	if len(svc.searchParams.QueryEmbedding) != 2 {
-		t.Fatalf("query embedding length = %d, want 2", len(svc.searchParams.QueryEmbedding))
-	}
-	if !svc.searchParams.DisableKeywordsMatch || svc.searchParams.DisableVectorMatch {
-		t.Fatalf("expected vector-only params, got %+v", svc.searchParams)
+	if len(rag.lastQueries) != 1 || rag.lastQueries[0] != "" {
+		t.Fatalf("query = %v, want one empty query", rag.lastQueries)
 	}
 }
 
-func performHybridSearchRequest(svc interfaces.KnowledgeBaseService, body string) *httptest.ResponseRecorder {
+func performHybridSearchRequest(
+	svc interfaces.KnowledgeBaseService,
+	rag *stubHybridSearchEngine,
+	body string,
+) *httptest.ResponseRecorder {
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(
 		http.MethodPost,
@@ -133,6 +162,6 @@ func performHybridSearchRequest(svc interfaces.KnowledgeBaseService, body string
 		strings.NewReader(body),
 	)
 	request.Header.Set("Content-Type", "application/json")
-	newHybridSearchTestRouter(svc).ServeHTTP(response, request)
+	newHybridSearchTestRouter(svc, rag).ServeHTTP(response, request)
 	return response
 }

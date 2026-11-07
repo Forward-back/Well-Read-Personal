@@ -1,18 +1,18 @@
-# Gaze / WellRead App
+# WellRead App（Go 后端）
 
-WellRead 的 Go 后端：HTTP API、领域与应用服务、权限资源守卫、文档解析客户端、CLI、Go SDK、数据库迁移和 Swagger。前端、RAG、MCP、部署和项目文档在仓库根目录。
+WellRead 个人版的 Go 后端：HTTP API、知识库与文档、检索编排、问答/精读/技能、Agent 运行时、MCP 单 Key、设置、数据源同步、CLI、Go SDK、数据库迁移与 Swagger。
 
-本 README 是 `app/` 的导航入口：先看模块边界和目录，再按需要进入子系统文档。具体业务规则以根目录 `docs/` 为准。
+个人版是单 owner、单内部工作区：没有部门、角色能力契约、共享空间、ACL、协作 CR 或治理台。前端只负责展示与交互，认证与授权最终由后端判定。
 
 ## 1. 模块边界
 
 | 归属 | 内容 |
 |---|---|
-| `app/` | API、会话、知识库、文档、部门/RBAC/ACL、治理、设置、CLI、SDK、docreader 客户端 |
-| `frontend/` | Vue 3 SPA；能力契约从 `app/contracts` 读取 |
-| `rag/` | 检索与生成侧车；app 通过 `/chat/stream`、`/search`、`/ingest` 调用 |
-| `mcp/` | 外部 MCP 接入层 |
-| `deployments/` | 全栈 compose、环境变量、systemd |
+| `app/` | API、会话、知识库/文档、检索、精读、技能、设置、CLI、SDK、docreader 客户端 |
+| `frontend/` | Vue 3 SPA；只消费后端 API，不加载能力契约 |
+| `rag/` | 检索与生成侧车；App 通过 `/ingest`、`/search`、`/chat/stream` 调用 |
+| `mcp/` | 外部 MCP 接入层；使用单只读 Key |
+| `deployments/` | 六服务 compose、环境变量、systemd |
 
 `app/` 不负责前端渲染、RAG 索引构建或外部部署编排。
 
@@ -20,26 +20,29 @@ WellRead 的 Go 后端：HTTP API、领域与应用服务、权限资源守卫�
 
 ```text
 app/
-├── cmd/server/              # HTTP 服务入口
+├── cmd/server/              # HTTP 服务入口与 owner 初始化
 ├── internal/
-│   ├── agent/               # Agent 运行时（外部接入保留）
+│   ├── agent/               # Agent 运行时、技能、工具策略
 │   ├── application/         # 应用服务与仓储
-│   ├── capabilities/        # 能力契约加载
 │   ├── datasource/          # 外部数据源同步框架
+│   ├── engine/              # RAG 引擎客户端
 │   ├── event/               # 进程内事件总线
 │   ├── handler/             # HTTP handlers
-│   ├── middleware/          # 认证、RBAC、KB/ACL 资源守卫
-│   ├── modelcontext/        # 模型上下文句柄/引用编解码
-│   ├── router/              # 路由与守卫矩阵
+│   ├── infrastructure/      # 文档解析、分块等基础设施
+│   ├── mcp/                 # MCP 客户端与工具管理
+│   ├── middleware/          # JWT / API Key / 错误处理
+│   ├── modelcontext/        # 模型上下文句柄与引用编解码
+│   ├── models/              # 模型 provider 与请求适配
+│   ├── router/              # 路由与 API Key 白名单
+│   ├── sandbox/             # Docker sandbox 运行时
 │   └── types/               # 领域类型与接口
 ├── cli/                     # WellRead CLI（独立 Go module）
 ├── client/                  # Go SDK
-├── contracts/               # capabilities.json（前后端共享能力契约）
-├── migrations/              # PostgreSQL / SQLite 迁移
+├── migrations/              # PostgreSQL / SQLite 单基线迁移
 ├── docreader/               # 文档解析 gRPC 服务
 ├── config/                  # 业务配置与提示词
 ├── docker/                  # app/docreader 镜像
-├── scripts/                 # Go/构建/迁移/anydoc/e2e 脚本
+├── scripts/                 # Go/构建/迁移/anydoc 脚本
 ├── docs/                    # Swagger 生成物（不是人工文档）
 ├── licenses/                # 分发许可
 └── third_party/             # anydoc Go/Rust 绑定
@@ -55,11 +58,8 @@ app/
 | 数据源同步 | [internal/datasource/数据源同步框架.md](internal/datasource/数据源同步框架.md) | Connector 架构、任务流、数据模型、API |
 | 连接器开发 | [internal/datasource/连接器开发指南.md](internal/datasource/连接器开发指南.md) | 新平台接入步骤、OAuth、分页、增量、删除同步 |
 | 事件总线 | [internal/event/事件系统.md](internal/event/事件系统.md) | 进程内事件、处理器、中间件、集成方式 |
-| 事件示例 | [internal/event/事件系统使用示例.md](internal/event/事件系统使用示例.md) | 在查询/检索/生成链路中埋点 |
 | 模型上下文 | [internal/modelcontext/模型上下文边界.md](internal/modelcontext/模型上下文边界.md) | 模型句柄、引用、MCP 路由、解码边界 |
 | 云镜像脚本 | [scripts/cloud-image/云镜像部署.md](scripts/cloud-image/云镜像部署.md) | 旧云镜像脚本说明；当前主部署见 `deployments/` |
-
-CLI 的 Agent 契约、退出码和 JSON envelope 以 [cli/AGENTS.md](cli/AGENTS.md) 为准；`使用说明.md` 只做人类入口。
 
 ## 4. 常用命令
 
@@ -72,65 +72,58 @@ make anydoc-lib        # 构建 anydoc 静态库
 make build-anydoc      # 带 anydoc 引擎构建
 ```
 
-全栈启动、前端、镜像和 Lite 打包在仓库根：
+Windows 本机可能因 duckdb/gjieba CGO 链接或初始化失败；完整测试在 Linux 容器内执行：
 
 ```bash
-make up
-make dev
-make test-app
-make images
+go test ./internal/... ./docs/... -count=1
 ```
 
 ## 5. 配置
 
 - 全栈环境变量：`../deployments/.env`，示例 `../deployments/.env.example`。
+- 首次启动必须配置 `OWNER_EMAIL` / `OWNER_PASSWORD`；缺失或密码不合规会启动失败。
 - app 业务配置：`config/config.yaml`（compose 绑定挂载到容器）。
-- Lite：`.env.lite.example`。
 - 密钥、模型凭据、DB 密码不入库；由 env 注入。
 
-## 6. 能力契约
+## 6. 认证与权限
 
-`contracts/capabilities.json` 是公司角色/部门角色到能力码的唯一事实源：
-
-- 后端 `internal/capabilities` 加载并校验。
-- 前端 `frontend/src/config/capabilities.ts` 直接导入。
-- 路由 meta 使用 `requiredCaps` / `requiredAnyCaps`；页面只是投影，最终由后端资源守卫判定。
-- 新增能力必须同时更新 JSON、Go 白名单、前端类型/测试和相关路由。
+- 登录只支持邮箱 + 密码；注册、邀请、OIDC 与工作区切换已删除。
+- JWT 会话用于前端；单只读 API Key 用于 MCP/外部接入，在「设置 → 外部接入」管理。
+- API Key 路由使用显式白名单，未声明的路由默认拒绝。
+- 没有部门、角色能力码、共享空间、ACL 或协作权限模型。
 
 ## 7. 数据库与迁移
 
-- PostgreSQL 迁移：`migrations/versioned/`。
-- SQLite/Lite 迁移：`migrations/sqlite/`。
-- 命令：`scripts/migrate.sh up|down|version|create|force|goto`。
-- `AUTO_MIGRATE=true` 时 app 启动自动执行迁移；生产升级前先备份。
+- PostgreSQL 迁移：`migrations/versioned/` 的单个 `000000_init` 基线。
+- SQLite 迁移：`migrations/sqlite/000000_init`，业务表/列与 PostgreSQL 对齐（`embeddings` 为 PostgreSQL 专用）。
+- 个人版要求全新数据库，不提供企业库原地升级。
+- 命令：`scripts/migrate.sh up|down|version|force`；`AUTO_MIGRATE=true` 时启动自动迁移。
 
 ## 8. API 与 Swagger
 
-- API 前缀：`/api/v1`。
-- Swagger UI：启动后 `/swagger/index.html`。
-- `docs/docs.go`、`docs/swagger.json`、`docs/swagger.yaml` 都是 `swag init` 生成物，**不要手改**。
-- `docs/swagger_contract_test.go` 是契约测试，校验生成物包含 `/knowledge-search`、不残留 `/sessions/search` 旧路由、`DELETE /models/{id}` 记录 400。
+- API 前缀：`/api/v1`；Swagger UI：启动后 `/swagger/index.html`。
+- `docs/docs.go`、`docs/swagger.json`、`docs/swagger.yaml` 由 `swag init` 生成，**不要手改**。
+- `docs/swagger_contract_test.go` 校验生成物：包含 `/knowledge-search`、不残留 `/sessions/search`、`DELETE /models/{id}` 记录 400。
 - 改 handler 注释后：`make docs && go test ./docs/`。
 
 ## 9. 测试与调试
 
 ```bash
-cd app
-go build ./internal/... ./contracts/...
-go test ./internal/... ./contracts/...
-go vet ./...
+go build ./internal/... ./cmd/server
+go test ./internal/... ./docs/...
+go vet ./internal/...
 ```
 
-Windows 本机可能因 duckdb/gjieba CGO 链接/初始化失败；以 Linux 容器构建和 CI 为准。RAG 侧 e2e 见 `../rag/docs/测试与评测.md`。
+RAG 侧 e2e 见 `../rag/docs/测试与评测.md`。
 
-## 10. 相关项目文档
+## 10. 相关文档
 
-- 文档索引：`../docs/README.md`
-- 角色权限：`../docs/02-需求与设计/角色生态位规定.md`
-- 能力/路由：`../docs/02-需求与设计/能力_角色_页面路由需求.md`
+- 文档索引：`../docs/03-进度与交接/当前进度.md`
+- 个人版需求：`../docs/个人版改造/需求与范围.md`
 - 部署：`../deployments/README.md`
 - 前端：`../frontend/README.md`
 - RAG：`../rag/README.md`
+- MCP：`../mcp/README.md`
 
 ## License
 

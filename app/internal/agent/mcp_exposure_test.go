@@ -24,14 +24,17 @@ import (
 
 // Exercise the actual Agent -> provider HTTP -> MCP -> provider history loop.
 // Neither the user input nor the engine contains an MCP mention. A registry-only
-// test would miss adapters silently dropping all tool definitions (Anthropic).
+// test would miss adapters silently dropping all tool definitions.
+//
+// This edition only implements the OpenAI-compatible chat transport, so the
+// fixtures cover its direct, deferred and proxy request shapes. Anthropic-native
+// request/SSE fixtures were removed: no Anthropic transport exists here.
 func TestMCPExposureWithoutMentionReachesProviderAndExecutes(t *testing.T) {
 	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
 	t.Cleanup(utils.ResetSSRFWhitelistForTest)
 	for _, variant := range []string{
-		"openai", "anthropic", "openai-deferred", "anthropic-deferred",
-		"openai-proxy-deferred", "anthropic-proxy-deferred",
-		"openai-string-proxy-deferred", "anthropic-string-proxy-deferred",
+		"openai", "openai-deferred",
+		"openai-proxy-deferred", "openai-string-proxy-deferred",
 	} {
 		t.Run(variant, func(t *testing.T) {
 			provider := strings.Split(variant, "-")[0]

@@ -247,7 +247,13 @@ func (h *KnowledgeBaseHandler) lookupKnowledgeBaseForRequest(c *gin.Context, kbI
 		return nil, err
 	}
 	kb, err := h.service.GetKnowledgeBaseByID(ctx, kbID)
-	if err != nil || kb == nil {
+	if err != nil {
+		if stderrors.Is(err, repository.ErrKnowledgeBaseNotFound) {
+			return nil, apperrors.NewNotFoundError("knowledge base not found")
+		}
+		return nil, err
+	}
+	if kb == nil {
 		return nil, apperrors.NewNotFoundError("knowledge base not found")
 	}
 	return kb, nil
@@ -428,7 +434,13 @@ func (h *KnowledgeBaseHandler) validateAndGetKnowledgeBase(
 		return nil, id, 0, err
 	}
 	kb, err := h.service.GetKnowledgeBaseByID(ctx, id)
-	if err != nil || kb == nil {
+	if err != nil {
+		if stderrors.Is(err, repository.ErrKnowledgeBaseNotFound) {
+			return nil, id, 0, apperrors.NewNotFoundError("knowledge base not found")
+		}
+		return nil, id, 0, err
+	}
+	if kb == nil {
 		return nil, id, 0, apperrors.NewNotFoundError("knowledge base not found")
 	}
 	return kb, id, kb.TenantID, nil

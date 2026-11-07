@@ -45,6 +45,12 @@ func newTestSessionService(t *testing.T) (*sessionService, *gorm.DB) {
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
+	// A :memory: database lives on one connection; pinning the pool keeps the
+	// migrated schema visible to every later query.
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
 	require.NoError(t, db.AutoMigrate(&types.Session{}))
 
 	return &sessionService{
@@ -166,17 +172,17 @@ func TestUpdateSessionPreservesMaintenanceDescription(t *testing.T) {
 		"a PUT must not strip the marker off a real maintenance session")
 }
 
-func TestGetSessionIsScopedToAPIExternalUser(t *testing.T) {
+func TestGetSessionAPIExternalUserScopeAndChannelFallback(t *testing.T) {
 	svc, db := newTestSessionService(t)
 	aliceSession := &types.Session{
 		TenantID: 1,
-		UserID:   "api_external_user:7:alice",
+		UserID:   types.SessionOwnerAPIExternalUserPrefix + "7:alice",
 		Title:    "alice api session",
 	}
 	require.NoError(t, db.Create(aliceSession).Error)
 	bobSession := &types.Session{
 		TenantID: 1,
-		UserID:   "api_external_user:7:bob",
+		UserID:   types.SessionOwnerAPIExternalUserPrefix + "7:bob",
 		Title:    "bob api session",
 	}
 	require.NoError(t, db.Create(bobSession).Error)
@@ -187,13 +193,18 @@ func TestGetSessionIsScopedToAPIExternalUser(t *testing.T) {
 	}
 	require.NoError(t, db.Create(tenantSession).Error)
 
-	_, err := svc.GetSession(testAPISessionScopeContext(1, "7:alice"), bobSession.ID)
-	require.ErrorIs(t, err, apperrors.ErrSessionNotFound)
+	// Any API-created session is readable in the single-owner edition, even
+	// when another external user created it.
+	got, err := svc.GetSession(testAPISessionScopeContext(1, "7:alice"), bobSession.ID)
+	require.NoError(t, err)
+	require.Equal(t, bobSession.ID, got.ID)
 
-	got, err := svc.GetSession(testAPISessionScopeContext(1, "7:alice"), aliceSession.ID)
+	got, err = svc.GetSession(testAPISessionScopeContext(1, "7:alice"), aliceSession.ID)
 	require.NoError(t, err)
 	require.Equal(t, aliceSession.ID, got.ID)
 
+	// Legacy tenant sessions are not channel-managed, so the runtime scope
+	// still hides them from an external-user principal.
 	_, err = svc.GetSession(testAPISessionScopeContext(1, "7:alice"), tenantSession.ID)
 	require.ErrorIs(t, err, apperrors.ErrSessionNotFound)
 
@@ -202,7 +213,7 @@ func TestGetSessionIsScopedToAPIExternalUser(t *testing.T) {
 	require.Equal(t, tenantSession.ID, got.ID)
 }
 
-func TestGetSessionAllowsAdminToOpenAPIKeySessions(t *testing.T) {
+func TestGetSessionAllowsOwnerToOpenAPIKeySessions(t *testing.T) {
 	svc, db := newTestSessionService(t)
 	apiSession := &types.Session{
 		TenantID: 1,
@@ -217,20 +228,15 @@ func TestGetSessionAllowsAdminToOpenAPIKeySessions(t *testing.T) {
 	}
 	require.NoError(t, db.Create(otherUserSession).Error)
 
-	// A non-admin web user cannot open the API-key session.
-	viewerCtx := testSessionScopeContext(1, "alice")
-	_, err := svc.GetSession(viewerCtx, apiSession.ID)
-	require.ErrorIs(t, err, apperrors.ErrSessionNotFound)
-
-	// An admin can open the API-key session.
-	adminCtx := context.WithValue(testSessionScopeContext(1, "alice"), types.TenantRoleContextKey, types.TenantRoleOwner)
-	got, err := svc.GetSession(adminCtx, apiSession.ID)
+	// The single owner may open API-key sessions without an admin role.
+	ownerCtx := testSessionScopeContext(1, "alice")
+	got, err := svc.GetSession(ownerCtx, apiSession.ID)
 	require.NoError(t, err)
 	require.Equal(t, apiSession.ID, got.ID)
 
-	// The admin fallback is limited to API-key sessions; another user's
+	// The same fallback is limited to API-created sessions; another user's
 	// personal session stays hidden.
-	_, err = svc.GetSession(adminCtx, otherUserSession.ID)
+	_, err = svc.GetSession(ownerCtx, otherUserSession.ID)
 	require.ErrorIs(t, err, apperrors.ErrSessionNotFound)
 }
 
@@ -258,7 +264,7 @@ func TestGetOwnedSessionDeniesAdminOnAPIKeySessions(t *testing.T) {
 	require.ErrorIs(t, err, apperrors.ErrSessionNotFound)
 }
 
-func TestListSessionsAPISourceRequiresAdminAndReturnsAllKeys(t *testing.T) {
+func TestListSessionsAPISourceReturnsAllChannelKeys(t *testing.T) {
 	svc, db := newTestSessionService(t)
 	require.NoError(t, db.AutoMigrate(&testListSessionsIMChannelSession{}))
 
@@ -275,22 +281,15 @@ func TestListSessionsAPISourceRequiresAdminAndReturnsAllKeys(t *testing.T) {
 	require.NoError(t, db.Create(externalUser).Error)
 	require.NoError(t, db.Create(web).Error)
 
-	// A non-admin (viewer) web user is rejected.
-	viewerCtx := testSessionScopeContext(1, "alice")
-	_, err := svc.ListSessions(viewerCtx, &types.SessionListQuery{Source: types.SessionSourceAPI})
-	require.Error(t, err)
-	var appErr *apperrors.AppError
-	require.ErrorAs(t, err, &appErr)
-	require.Equal(t, apperrors.ErrForbidden, appErr.Code)
-
-	// An admin sees every API-key session in the tenant, not just their own.
-	adminCtx := context.WithValue(testSessionScopeContext(1, "alice"), types.TenantRoleContextKey, types.TenantRoleOwner)
-	result, err := svc.ListSessions(adminCtx, &types.SessionListQuery{Source: types.SessionSourceAPI})
+	// The personal edition has one owner: the API source filter exposes every
+	// API-key session in the tenant without an admin role.
+	ownerCtx := testSessionScopeContext(1, "alice")
+	result, err := svc.ListSessions(ownerCtx, &types.SessionListQuery{Source: types.SessionSourceAPI})
 	require.NoError(t, err)
 	require.EqualValues(t, 3, result.Total)
 }
 
-func TestGetSessionAllowsAdminToReadAPIExternalUserSession(t *testing.T) {
+func TestGetSessionAllowsOwnerToReadAPIExternalUserSession(t *testing.T) {
 	svc, db := newTestSessionService(t)
 	require.NoError(t, db.AutoMigrate(&testListSessionsIMChannelSession{}))
 
@@ -301,17 +300,13 @@ func TestGetSessionAllowsAdminToReadAPIExternalUserSession(t *testing.T) {
 	}
 	require.NoError(t, db.Create(apiSession).Error)
 
-	viewerCtx := testSessionScopeContext(1, "alice")
-	_, err := svc.GetSession(viewerCtx, apiSession.ID)
-	require.ErrorIs(t, err, apperrors.ErrSessionNotFound)
-
-	adminCtx := context.WithValue(viewerCtx, types.TenantRoleContextKey, types.TenantRoleOwner)
-	got, err := svc.GetSession(adminCtx, apiSession.ID)
+	ownerCtx := testSessionScopeContext(1, "alice")
+	got, err := svc.GetSession(ownerCtx, apiSession.ID)
 	require.NoError(t, err)
 	require.Equal(t, apiSession.ID, got.ID)
 }
 
-func TestListSessionsIMSourceRequiresAdmin(t *testing.T) {
+func TestListSessionsIMSourceReturnsAllChannelSessions(t *testing.T) {
 	svc, db := newTestSessionService(t)
 	require.NoError(t, db.AutoMigrate(&testListSessionsIMChannelSession{}))
 
@@ -321,20 +316,14 @@ func TestListSessionsIMSourceRequiresAdmin(t *testing.T) {
 		SessionID: imSession.ID, Platform: "feishu",
 	}).Error)
 
-	viewerCtx := testSessionScopeContext(1, "alice")
-	_, err := svc.ListSessions(viewerCtx, &types.SessionListQuery{Source: "feishu"})
-	require.Error(t, err)
-	var appErr *apperrors.AppError
-	require.ErrorAs(t, err, &appErr)
-	require.Equal(t, apperrors.ErrForbidden, appErr.Code)
-
-	adminCtx := context.WithValue(testSessionScopeContext(1, "alice"), types.TenantRoleContextKey, types.TenantRoleOwner)
-	result, err := svc.ListSessions(adminCtx, &types.SessionListQuery{Source: "feishu"})
+	// IM source listing is tenant-wide for the single owner.
+	ownerCtx := testSessionScopeContext(1, "alice")
+	result, err := svc.ListSessions(ownerCtx, &types.SessionListQuery{Source: "feishu"})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, result.Total)
 }
 
-func TestGetSessionDeniesViewerOnIMSession(t *testing.T) {
+func TestGetSessionAllowsOwnerOnIMSession(t *testing.T) {
 	svc, db := newTestSessionService(t)
 	require.NoError(t, db.AutoMigrate(&testListSessionsIMChannelSession{}))
 
@@ -344,12 +333,8 @@ func TestGetSessionDeniesViewerOnIMSession(t *testing.T) {
 		SessionID: imSession.ID, Platform: "feishu",
 	}).Error)
 
-	viewerCtx := testSessionScopeContext(1, "alice")
-	_, err := svc.GetSession(viewerCtx, imSession.ID)
-	require.ErrorIs(t, err, apperrors.ErrSessionNotFound)
-
-	adminCtx := context.WithValue(testSessionScopeContext(1, "alice"), types.TenantRoleContextKey, types.TenantRoleOwner)
-	got, err := svc.GetSession(adminCtx, imSession.ID)
+	ownerCtx := testSessionScopeContext(1, "alice")
+	got, err := svc.GetSession(ownerCtx, imSession.ID)
 	require.NoError(t, err)
 	require.Equal(t, imSession.ID, got.ID)
 	require.Equal(t, "feishu", got.IMPlatform)
@@ -370,7 +355,7 @@ func TestGetSessionAllowsAPITenantRuntimeToReadOwnAPIKeySession(t *testing.T) {
 	require.Equal(t, apiSession.ID, got.ID)
 }
 
-func TestGetSessionDeniesAPITenantRuntimeFromReadingIMSession(t *testing.T) {
+func TestGetSessionAllowsAPITenantRuntimeToReadIMSession(t *testing.T) {
 	svc, db := newTestSessionService(t)
 	require.NoError(t, db.AutoMigrate(&testListSessionsIMChannelSession{}))
 
@@ -380,11 +365,15 @@ func TestGetSessionDeniesAPITenantRuntimeFromReadingIMSession(t *testing.T) {
 		SessionID: imSession.ID, Platform: "feishu",
 	}).Error)
 
-	_, err := svc.GetSession(testAPITenantKeyScopeContext(1, 10), imSession.ID)
-	require.ErrorIs(t, err, apperrors.ErrSessionNotFound)
+	// The personal edition keeps channel sessions readable tenant-wide; the
+	// API runtime is not denied the IM row.
+	got, err := svc.GetSession(testAPITenantKeyScopeContext(1, 10), imSession.ID)
+	require.NoError(t, err)
+	require.Equal(t, imSession.ID, got.ID)
+	require.Equal(t, "feishu", got.IMPlatform)
 }
 
-func TestGetSessionDeniesAPIExternalUserRuntimeFromReadingIMSession(t *testing.T) {
+func TestGetSessionAllowsAPIExternalUserRuntimeToReadIMSession(t *testing.T) {
 	svc, db := newTestSessionService(t)
 	require.NoError(t, db.AutoMigrate(&testListSessionsIMChannelSession{}))
 
@@ -394,8 +383,10 @@ func TestGetSessionDeniesAPIExternalUserRuntimeFromReadingIMSession(t *testing.T
 		SessionID: imSession.ID, Platform: "feishu",
 	}).Error)
 
-	_, err := svc.GetSession(testAPISessionScopeContext(1, "1:alice"), imSession.ID)
-	require.ErrorIs(t, err, apperrors.ErrSessionNotFound)
+	got, err := svc.GetSession(testAPISessionScopeContext(1, "1:alice"), imSession.ID)
+	require.NoError(t, err)
+	require.Equal(t, imSession.ID, got.ID)
+	require.Equal(t, "feishu", got.IMPlatform)
 }
 
 func TestGetSessionAllowsIMRuntimeToReadIMSession(t *testing.T) {

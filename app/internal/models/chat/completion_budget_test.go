@@ -76,7 +76,7 @@ func TestBuildChatCompletionRequest_OneWireTokenField(t *testing.T) {
 	})
 
 	t.Run("openai gpt-4o sends max_completion_tokens", func(t *testing.T) {
-		c := newOutboundChat(t, string(provider.ProviderGeneric), "gpt-4o", nil)
+		c := newOutboundChat(t, "openai", "gpt-4o", nil)
 		req := c.BuildChatCompletionRequest(messages, &ChatOptions{MaxTokens: 128}, false)
 		assert.Zero(t, req.MaxTokens)
 		assert.Equal(t, 128, req.MaxCompletionTokens)

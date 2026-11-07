@@ -4,19 +4,26 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestRetrieverEngineMappingIncludesTencentVectorDBHybridCapabilities(t *testing.T) {
+func TestRetrieverEngineMappingIncludesSupportedHybridCapabilities(t *testing.T) {
 	mapping := GetRetrieverEngineMapping()
 
-	assert.Contains(t, mapping["tencent_vectordb"], RetrieverEngineParams{
-		RetrieverType:       KeywordsRetrieverType,
-		RetrieverEngineType: PostgresRetrieverEngineType,
-	})
-	assert.Contains(t, mapping["tencent_vectordb"], RetrieverEngineParams{
-		RetrieverType:       VectorRetrieverType,
-		RetrieverEngineType: PostgresRetrieverEngineType,
-	})
+	require.Len(t, mapping, 2)
+	for _, driver := range []string{"postgres", "sqlite"} {
+		params, ok := mapping[driver]
+		require.True(t, ok, "driver %q must be mapped", driver)
+		assert.Contains(t, params, RetrieverEngineParams{
+			RetrieverType:       KeywordsRetrieverType,
+			RetrieverEngineType: RetrieverEngineType(driver),
+		})
+		assert.Contains(t, params, RetrieverEngineParams{
+			RetrieverType:       VectorRetrieverType,
+			RetrieverEngineType: RetrieverEngineType(driver),
+		})
+	}
+	assert.NotContains(t, mapping, "tencent_vectordb")
 }
 
 func TestResolveMinerUParseMethod(t *testing.T) {

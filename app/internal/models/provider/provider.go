@@ -202,12 +202,32 @@ func DetectProvider(baseURL string) ProviderName {
 	switch {
 	case containsAny(baseURL, "dashscope.aliyuncs.com"):
 		return ProviderAliyun
+	case containsAny(baseURL, "api.anthropic.com"):
+		return ProviderAnthropic
+	case containsAny(baseURL, "openrouter.ai"):
+		return ProviderOpenRouter
+	case containsAny(baseURL, "litellm"):
+		return ProviderLiteLLM
+	case containsAny(baseURL, "requesty.ai"):
+		return ProviderRequesty
 	case containsAny(baseURL, "open.bigmodel.cn", "zhipu"):
 		return ProviderZhipu
 	case containsAny(baseURL, "siliconflow.cn"):
 		return ProviderSiliconFlow
 	case containsAny(baseURL, "api.deepseek.com"):
 		return ProviderDeepSeek
+	case containsAny(baseURL, "generativelanguage.googleapis.com"):
+		return ProviderGemini
+	case containsAny(baseURL, "volces.com"):
+		return ProviderVolcengine
+	case containsAny(baseURL, "hunyuan.cloud.tencent.com"):
+		return ProviderHunyuan
+	case containsAny(baseURL, "minimaxi.com", "minimax.io"):
+		return ProviderMiniMax
+	case containsAny(baseURL, "xiaomimimo.com"):
+		return ProviderMimo
+	case containsAny(baseURL, "nvidia.com"):
+		return ProviderNvidia
 	default:
 		return ProviderGeneric
 	}

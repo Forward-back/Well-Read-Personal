@@ -59,6 +59,10 @@ func (editableChunkKnowledgeRepo) GetKnowledgeByID(context.Context, uint64, stri
 	return &types.Knowledge{ID: "knowledge", TenantID: 1, KnowledgeBaseID: "kb"}, nil
 }
 
+func (editableChunkKnowledgeRepo) MarkEngineSyncPending(context.Context, uint64, string) error {
+	return nil
+}
+
 type imageSyncChunkRepo struct {
 	interfaces.ChunkRepository
 	children []*types.Chunk

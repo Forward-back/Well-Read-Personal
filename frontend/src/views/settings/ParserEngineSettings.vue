@@ -357,7 +357,6 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUIStore } from '@/stores/ui'
-import { useAuthStore } from '@/stores/auth'
 import { MessagePlugin } from 'tdesign-vue-next'
 import SettingDrawer from '@/components/settings/SettingDrawer.vue'
 import {
@@ -371,8 +370,7 @@ import {
 
 const { t } = useI18n()
 const uiStore = useUIStore()
-const authStore = useAuthStore()
-const canManageInfra = computed(() => authStore.hasCaps(['settings:infrastructure_manage']))
+const canManageInfra = computed(() => true)
 
 const CONFIGURABLE_ENGINES = new Set(['mineru', 'mineru_cloud', 'paddleocr_vl', 'paddleocr_vl_cloud'])
 

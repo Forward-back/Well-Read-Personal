@@ -17,11 +17,13 @@ REQUIRED_FILES = [
     "main.py",
     "run_server.py",
     "gaze_mcp_server.py",
+    "client.py",
+    "tools.py",
     "requirements.txt",
     "setup.py",
     "pyproject.toml",
     "README.md",
-    "docs/INSTALL.md",
+    "docs/安装与运行.md",
     "LICENSE",
     "MANIFEST.in",
 ]
@@ -32,7 +34,9 @@ class ModuleIntegrationTest(unittest.TestCase):
         import mcp  # noqa: F401
         import requests  # noqa: F401
         import gaze_mcp_server  # noqa: F401
-        from gaze_mcp_server import GazeClient, run  # noqa: F401
+        import tools  # noqa: F401
+        from client import GazeClient  # noqa: F401
+        from gaze_mcp_server import run  # noqa: F401
         import main  # noqa: F401
 
     def test_environment_optional_vars(self):
@@ -40,7 +44,7 @@ class ModuleIntegrationTest(unittest.TestCase):
         os.getenv("GAZE_API_KEY")
 
     def test_client_creation(self):
-        from gaze_mcp_server import GazeClient
+        from client import GazeClient
 
         base_url = os.getenv("GAZE_BASE_URL", "http://localhost:8080/api/v1")
         api_key = os.getenv("GAZE_API_KEY", "test_key")
@@ -73,9 +77,9 @@ class ModuleIntegrationTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_gaze_tools(self):
-        import gaze_mcp_server
+        from client import GazeClient
 
-        client = gaze_mcp_server.GazeClient("http://localhost:8080/api/v1", "test")
+        client = GazeClient("http://localhost:8080/api/v1", "test")
         for method in ["gaze_search", "gaze_read_page", "gaze_index_view"]:
             self.assertTrue(hasattr(client, method), f"GazeClient missing: {method}")
             self.assertTrue(callable(getattr(client, method)), f"{method} not callable")

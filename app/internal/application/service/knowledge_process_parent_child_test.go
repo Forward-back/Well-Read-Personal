@@ -144,6 +144,7 @@ func TestProcessChunksIndexesEveryTextChild(t *testing.T) {
 		ID:              "knowledge-1",
 		TenantID:        1,
 		KnowledgeBaseID: "kb-1",
+		Type:            "passage",
 		ParseStatus:     types.ParseStatusProcessing,
 	}
 	chunkService := &parentChildChunkService{}

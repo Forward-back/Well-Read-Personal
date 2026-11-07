@@ -249,7 +249,6 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import { AddIcon } from 'tdesign-icons-vue-next'
 import { useI18n } from 'vue-i18n'
-import { useAuthStore } from '@/stores/auth'
 import SettingDrawer from '@/components/settings/SettingDrawer.vue'
 import { providerLogo } from './providerLogos'
 import {
@@ -259,8 +258,7 @@ import {
 } from '@/api/storage-backend'
 
 const { t } = useI18n()
-const authStore = useAuthStore()
-const canManageInfra = computed(() => authStore.hasCaps(['settings:infrastructure_manage']))
+const canManageInfra = computed(() => true)
 const loading = ref(false), saving = ref(false), testing = ref(false), visible = ref(false)
 const backends = ref<StorageBackend[]>([]), providers = ref<string[]>([]), defaultID = ref('')
 const editing = ref<StorageBackend | null>(null)

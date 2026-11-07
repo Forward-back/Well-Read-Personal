@@ -10,40 +10,33 @@ import (
 
 func globalTestConfig() *Config {
 	cfg := &Config{
-		Type:             SandboxTypeDocker,
-		DefaultTimeout:   60 * time.Second,
+		Type:           SandboxTypeDocker,
+		DefaultTimeout: 60 * time.Second,
+		DockerImage:    "global-image",
+		DockerHost:     "unix:///var/run/global.sock",
+		// Credentials of providers the personal edition no longer ships. A
+		// named config must never inherit them.
 		E2BAPIKey:        "global-key",
-		E2BAPIURL:        "https://global.e2b.dev",
+		E2BAPIURL:        "https://203.0.113.30",
 		E2BSandboxDomain: "global.domain",
 		E2BTemplate:      "global-template",
 		E2BSandboxTTL:    10 * time.Minute,
 		E2BHTTPTimeout:   30 * time.Second,
+		CubeAPIURL:       "https://203.0.113.40",
+		CubeTemplate:     "global-cube-template",
 	}
 	cfg.Network = resolveNetworkPolicy(nil)
 	return cfg
 }
 
-// completeE2BTenantConfig is the minimum a named E2B config must carry now that
-// nothing is inherited.
-func completeE2BTenantConfig() *types.TenantSandboxConfig {
+// completeDockerTenantConfig is the minimum a named Docker config must carry
+// now that nothing is inherited.
+func completeDockerTenantConfig() *types.TenantSandboxConfig {
 	return &types.TenantSandboxConfig{
-		SandboxType: "e2b",
-		E2B: &types.E2BSandboxConfig{
-			APIKey:     "tenant-key",
-			TemplateID: "tenant-template",
-		},
-	}
-}
-
-// completeCubeTenantConfig is the minimum a named Cube config must carry now that nothing is inherited.
-func completeCubeTenantConfig() *types.TenantSandboxConfig {
-	return &types.TenantSandboxConfig{
-		SandboxType: "cube",
-		Cube: &types.CubeSandboxConfig{
-			APIURL:        "https://203.0.113.20",
-			ProxyURL:      "https://203.0.113.21",
-			SandboxDomain: "cube.app",
-			TemplateID:    "tpl-1",
+		SandboxType: "docker",
+		Docker: &types.DockerSandboxConfig{
+			Image: "tenant-image",
+			Host:  "unix:///var/run/docker.sock",
 		},
 	}
 }
@@ -83,29 +76,33 @@ func TestDefaultConfigMaterializesNetworkDefaults(t *testing.T) {
 func TestResolveEffectiveConfigDoesNotMutateGlobal(t *testing.T) {
 	global := globalTestConfig()
 
-	_, err := ResolveEffectiveConfig(completeE2BTenantConfig(), global)
+	_, err := ResolveEffectiveConfig(completeDockerTenantConfig(), global)
 
 	require.NoError(t, err)
-	require.Equal(t, "global-key", global.E2BAPIKey,
+	require.Equal(t, "global-image", global.DockerImage,
 		"resolution must not leak tenant values into the shared global config")
+	require.Equal(t, "unix:///var/run/global.sock", global.DockerHost)
+	require.Equal(t, "global-key", global.E2BAPIKey)
 }
 
 // The point of the whole design: a named config never picks up the deployment's
-// endpoint, domain or key, so what it does not state it does not get.
+// image, endpoint or any provider credential, so what it does not state it does
+// not get.
 func TestResolveEffectiveConfigDoesNotInheritProviderFields(t *testing.T) {
-	global := globalTestConfig()
-
-	got, err := ResolveEffectiveConfig(completeE2BTenantConfig(), global)
+	got, err := ResolveEffectiveConfig(completeDockerTenantConfig(), globalTestConfig())
 
 	require.NoError(t, err)
-	require.Equal(t, "tenant-key", got.E2BAPIKey)
-	require.Equal(t, "tenant-template", got.E2BTemplate)
-	require.Empty(t, got.E2BAPIURL, "go-e2b resolves its own API base when unset")
-	require.Empty(t, got.E2BSandboxDomain)
+	require.Equal(t, "tenant-image", got.DockerImage)
+	require.Equal(t, "unix:///var/run/docker.sock", got.DockerHost)
+	require.Empty(t, got.DockerTLSCertPath)
+	require.Empty(t, got.E2BAPIURL, "the baseline's e2b endpoint must not ride along")
+	require.Empty(t, got.E2BTemplate)
+	require.Empty(t, got.CubeAPIURL, "the baseline's cube endpoint must not ride along")
+	require.Empty(t, got.CubeTemplate)
 }
 
 func TestResolveEffectiveConfigTranslatesNetworkPolicy(t *testing.T) {
-	tenantCfg := completeE2BTenantConfig()
+	tenantCfg := completeDockerTenantConfig()
 	tenantCfg.Network = &types.SandboxNetworkPolicy{
 		DenyEgressByDefault: true,
 		AllowPublicInbound:  false,
@@ -132,13 +129,12 @@ func TestResolveEffectiveConfigTranslatesNetworkPolicy(t *testing.T) {
 	require.Equal(t, "secret", got.Network.E2BHostRules[0].Headers["X-Key"])
 }
 
-// E2B rejects a create whose allowOut names a domain unless denyOut carries an
-// explicit deny-all; it does not accept allow_internet_access=false as a
-// substitute. Since DenyEgressByDefault means exactly "install a 0.0.0.0/0
-// deny-all", the resolver has to materialise that entry, or ticking the box the
-// validator recommends produces a payload the provider refuses.
+// A domain allow-list must be paired with an explicit deny-all entry for the
+// translated policy to be self-consistent: the stored DenyEgressByDefault means
+// exactly "install a 0.0.0.0/0 deny-all", and leaving it implied would let an
+// adapter validate allow and deny independently and refuse the create.
 func TestResolveEffectiveConfigMaterialisesDenyAllEntry(t *testing.T) {
-	tenantCfg := completeE2BTenantConfig()
+	tenantCfg := completeDockerTenantConfig()
 	tenantCfg.Network = &types.SandboxNetworkPolicy{
 		DenyEgressByDefault: true,
 		AllowOut:            []string{"*.example.com"},
@@ -154,7 +150,7 @@ func TestResolveEffectiveConfigMaterialisesDenyAllEntry(t *testing.T) {
 func TestResolveEffectiveConfigDoesNotDuplicateDenyAllEntry(t *testing.T) {
 	for _, existing := range []string{"0.0.0.0/0", "  0.0.0.0/0  ", "1.2.3.4/0"} {
 		t.Run(existing, func(t *testing.T) {
-			tenantCfg := completeE2BTenantConfig()
+			tenantCfg := completeDockerTenantConfig()
 			tenantCfg.Network = &types.SandboxNetworkPolicy{
 				DenyEgressByDefault: true,
 				AllowOut:            []string{"*.example.com"},
@@ -171,7 +167,7 @@ func TestResolveEffectiveConfigDoesNotDuplicateDenyAllEntry(t *testing.T) {
 }
 
 func TestResolveEffectiveConfigCanonicalizesNonCanonicalDenyAll(t *testing.T) {
-	tenantCfg := completeE2BTenantConfig()
+	tenantCfg := completeDockerTenantConfig()
 	tenantCfg.Network = &types.SandboxNetworkPolicy{
 		AllowOut: []string{"api.example.com"},
 		DenyOut:  []string{"10.0.0.0/8", "1.2.3.4/0"},
@@ -187,7 +183,7 @@ func TestResolveEffectiveConfigCanonicalizesNonCanonicalDenyAll(t *testing.T) {
 // The entry is the resolved form of DenyEgressByDefault, so an egress-open
 // policy must not acquire it.
 func TestResolveEffectiveConfigLeavesDenyOutAloneWhenEgressOpen(t *testing.T) {
-	tenantCfg := completeE2BTenantConfig()
+	tenantCfg := completeDockerTenantConfig()
 	tenantCfg.Network = &types.SandboxNetworkPolicy{
 		DenyOut: []string{"169.254.169.254/32"},
 	}
@@ -200,7 +196,7 @@ func TestResolveEffectiveConfigLeavesDenyOutAloneWhenEgressOpen(t *testing.T) {
 }
 
 func TestResolveEffectiveConfigIgnoresStoredPublicInbound(t *testing.T) {
-	tenantCfg := completeE2BTenantConfig()
+	tenantCfg := completeDockerTenantConfig()
 	tenantCfg.Network = &types.SandboxNetworkPolicy{AllowPublicInbound: true}
 
 	got, err := ResolveEffectiveConfig(tenantCfg, globalTestConfig())
@@ -214,7 +210,7 @@ func TestResolveEffectiveConfigIgnoresStoredPublicInbound(t *testing.T) {
 func TestResolveEffectiveConfigDefaultsNetworkToEgressOpenInboundClosed(t *testing.T) {
 	// No stored policy at all: the shipped default must still be explicit, so
 	// the adapters do not have to re-derive it.
-	got, err := ResolveEffectiveConfig(completeE2BTenantConfig(), globalTestConfig())
+	got, err := ResolveEffectiveConfig(completeDockerTenantConfig(), globalTestConfig())
 	require.NoError(t, err)
 
 	require.NotNil(t, got.Network.AllowInternetAccess)
@@ -224,7 +220,7 @@ func TestResolveEffectiveConfigDefaultsNetworkToEgressOpenInboundClosed(t *testi
 }
 
 func TestResolveEffectiveConfigInvertsCubeRuleDeny(t *testing.T) {
-	tenantCfg := completeCubeTenantConfig()
+	tenantCfg := completeDockerTenantConfig()
 	tenantCfg.Network = &types.SandboxNetworkPolicy{
 		CubeRules: []types.CubeEgressRule{
 			{
@@ -279,7 +275,7 @@ func TestResolveEffectiveConfigCopiesNetworkPolicyCollections(t *testing.T) {
 			Headers: map[string]string{"Authorization": "stored-token"},
 		}},
 	}
-	tenantCfg := completeE2BTenantConfig()
+	tenantCfg := completeDockerTenantConfig()
 	tenantCfg.Network = stored
 
 	got, err := ResolveEffectiveConfig(tenantCfg, globalTestConfig())
@@ -301,7 +297,7 @@ func TestResolveEffectiveConfigDoesNotInheritNetworkFromBaseline(t *testing.T) {
 	inherited := true
 	baseline.Network = RemoteNetworkPolicy{AllowPublicTraffic: &inherited}
 
-	got, err := ResolveEffectiveConfig(completeE2BTenantConfig(), baseline)
+	got, err := ResolveEffectiveConfig(completeDockerTenantConfig(), baseline)
 	require.NoError(t, err)
 
 	require.NotNil(t, got.Network.AllowPublicTraffic)
@@ -310,94 +306,60 @@ func TestResolveEffectiveConfigDoesNotInheritNetworkFromBaseline(t *testing.T) {
 }
 
 // A leftover sub-struct from the deployment's other provider must not survive
-// either, or a cube config would silently answer with e2b coordinates.
+// either: a docker config must not answer with a removed provider's coordinates.
 func TestResolveEffectiveConfigClearsInactiveProviderBaseline(t *testing.T) {
-	global := globalTestConfig() // global is e2b, with e2b credentials set
+	global := globalTestConfig()
 
-	got, err := ResolveEffectiveConfig(&types.TenantSandboxConfig{
-		SandboxType: "cube",
-		Cube: &types.CubeSandboxConfig{
-			APIKey: "cube-key", APIURL: "https://203.0.113.20",
-			ProxyURL: "https://203.0.113.21", SandboxDomain: "cube.example",
-			TemplateID: "cube-template",
-		},
-	}, global)
+	got, err := ResolveEffectiveConfig(completeDockerTenantConfig(), global)
 
 	require.NoError(t, err)
 	require.Equal(t, SandboxTypeDocker, got.Type)
-	require.Equal(t, "https://203.0.113.20", got.CubeAPIURL)
+	require.Equal(t, "tenant-image", got.DockerImage)
 	require.Empty(t, got.E2BAPIKey, "the baseline's e2b credentials must not ride along")
 	require.Empty(t, got.E2BTemplate)
+	require.Empty(t, got.CubeAPIURL)
+	require.Empty(t, got.CubeTemplate)
 }
 
-func TestResolveEffectiveConfigRejectsIncompleteCube(t *testing.T) {
+func TestResolveEffectiveConfigRejectsIncompleteDocker(t *testing.T) {
 	_, err := ResolveEffectiveConfig(&types.TenantSandboxConfig{
-		SandboxType: "cube",
-		Cube:        &types.CubeSandboxConfig{APIURL: "https://203.0.113.20"},
+		SandboxType: "docker",
+		Docker:      &types.DockerSandboxConfig{Host: "unix:///var/run/docker.sock"},
 	}, globalTestConfig())
 
 	require.ErrorIs(t, err, ErrSandboxConfigIncomplete)
-	require.Contains(t, err.Error(), "proxy_url")
-	require.Contains(t, err.Error(), "sandbox_domain")
-	require.Contains(t, err.Error(), "template_id")
+	require.Contains(t, err.Error(), "image")
 }
 
-func TestResolveEffectiveConfigCopiesCubeDNSServers(t *testing.T) {
-	got, err := ResolveEffectiveConfig(&types.TenantSandboxConfig{
-		SandboxType:           "cube",
-		AllowPrivateEndpoints: true,
-		Cube: &types.CubeSandboxConfig{
-			APIKey: "cube-key", APIURL: "https://203.0.113.20",
-			ProxyURL: "https://203.0.113.21", SandboxDomain: "cube.example",
-			TemplateID: "cube-template",
-			DNSServers: []string{" 8.8.8.8 ", "8.8.8.8", "1.1.1.1"},
-		},
-	}, globalTestConfig())
+// The remote providers were removed from this edition; a stored row that still
+// names one must be rejected rather than silently switching the workspace to a
+// different execution environment.
+func TestResolveEffectiveConfigRejectsRemovedProviders(t *testing.T) {
+	for _, raw := range []string{"e2b", "cube"} {
+		t.Run(raw, func(t *testing.T) {
+			_, err := ResolveEffectiveConfig(
+				&types.TenantSandboxConfig{SandboxType: raw}, globalTestConfig(),
+			)
 
-	require.NoError(t, err)
-	require.Equal(t, []string{"8.8.8.8", "1.1.1.1"}, got.CubeDNSServers)
-}
-
-func TestResolveEffectiveConfigRejectsInvalidCubeDNS(t *testing.T) {
-	_, err := ResolveEffectiveConfig(&types.TenantSandboxConfig{
-		SandboxType:           "cube",
-		AllowPrivateEndpoints: true,
-		Cube: &types.CubeSandboxConfig{
-			APIKey: "cube-key", APIURL: "https://203.0.113.20",
-			ProxyURL: "https://203.0.113.21", SandboxDomain: "cube.example",
-			TemplateID: "cube-template",
-			DNSServers: []string{"dns.google"},
-		},
-	}, globalTestConfig())
-
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "dns.google")
-}
-
-func TestResolveEffectiveConfigRejectsIncompleteE2B(t *testing.T) {
-	_, err := ResolveEffectiveConfig(&types.TenantSandboxConfig{
-		SandboxType: "e2b",
-		E2B:         &types.E2BSandboxConfig{TemplateID: "t1"},
-	}, globalTestConfig())
-
-	require.ErrorIs(t, err, ErrSandboxConfigIncomplete)
-	require.Contains(t, err.Error(), "api_key")
+			require.ErrorIs(t, err, ErrUnsupportedSandboxType)
+		})
+	}
 }
 
 func TestResolveEffectiveConfigAppliesTimeoutsAndTTL(t *testing.T) {
 	global := globalTestConfig()
-	tenantCfg := completeE2BTenantConfig()
+	tenantCfg := completeDockerTenantConfig()
 	tenantCfg.DefaultTimeoutSec = 90
-	tenantCfg.E2B.HTTPTimeoutSec = 15
-	tenantCfg.E2B.E2BSandboxTTLSeconds = 600
+	tenantCfg.Docker.HTTPTimeoutSec = 15
+	tenantCfg.Docker.IdleTTLSeconds = 600
 	tenantCfg.TerminalIdleDisconnectSec = 1200
 
 	got, err := ResolveEffectiveConfig(tenantCfg, global)
 
 	require.NoError(t, err)
 	require.Equal(t, 90*time.Second, got.DefaultTimeout)
-	require.Equal(t, 15*time.Second, got.E2BHTTPTimeout)
-	require.Equal(t, 600*time.Second, got.E2BSandboxTTL)
+	require.Equal(t, 15*time.Second, got.DockerHTTPTimeout)
+	require.Equal(t, 600*time.Second, got.DockerIdleTTL)
 	require.Equal(t, 20*time.Minute, got.TerminalIdleDisconnect)
 }
 
@@ -405,7 +367,7 @@ func TestResolveEffectiveConfigTerminalIdleFallsBackToBuiltIn(t *testing.T) {
 	global := globalTestConfig()
 	global.TerminalIdleDisconnect = 3 * time.Hour
 
-	got, err := ResolveEffectiveConfig(completeE2BTenantConfig(), global)
+	got, err := ResolveEffectiveConfig(completeDockerTenantConfig(), global)
 
 	require.NoError(t, err)
 	require.Equal(t, DefaultTerminalIdleDisconnect, got.TerminalIdleDisconnect)
@@ -415,14 +377,14 @@ func TestResolveEffectiveConfigTerminalIdleFallsBackToBuiltIn(t *testing.T) {
 // "inherits nothing" would be a much weaker rule with an exception here.
 func TestResolveEffectiveConfigTuningFallsBackToBuiltIns(t *testing.T) {
 	global := globalTestConfig()
-	global.E2BSandboxTTL = 10 * time.Minute
-	global.E2BHTTPTimeout = 90 * time.Second
+	global.DockerIdleTTL = 10 * time.Minute
+	global.DockerHTTPTimeout = 90 * time.Second
 
-	got, err := ResolveEffectiveConfig(completeE2BTenantConfig(), global)
+	got, err := ResolveEffectiveConfig(completeDockerTenantConfig(), global)
 
 	require.NoError(t, err)
-	require.Equal(t, DefaultE2BSandboxTTL, got.E2BSandboxTTL)
-	require.Equal(t, DefaultE2BHTTPTimeout, got.E2BHTTPTimeout)
+	require.Equal(t, DefaultDockerIdleTTL, got.DockerIdleTTL)
+	require.Equal(t, DefaultDockerHTTPTimeout, got.DockerHTTPTimeout)
 	require.Equal(t, global.DefaultTimeout, got.DefaultTimeout,
 		"the execution timeout is deployment policy and does carry over")
 }
@@ -446,27 +408,19 @@ func TestResolveEffectiveConfigRejectsUnknownType(t *testing.T) {
 
 func TestResolveEffectiveConfigRejectsUnsafeURL(t *testing.T) {
 	tenantCfg := &types.TenantSandboxConfig{
-		SandboxType: "e2b",
-		E2B:         &types.E2BSandboxConfig{APIURL: "http://169.254.169.254"},
-	}
-
-	_, err := ResolveEffectiveConfig(tenantCfg, globalTestConfig())
-
-	require.ErrorIs(t, err, ErrUnsafeOutboundURL)
-}
-
-func TestResolveEffectiveConfigRejectsUnsafeCubeProxyURL(t *testing.T) {
-	tenantCfg := &types.TenantSandboxConfig{
-		SandboxType: "cube",
-		Cube: &types.CubeSandboxConfig{
-			APIURL:   "https://203.0.113.10",
-			ProxyURL: "http://127.0.0.1:80",
+		SandboxType:           "docker",
+		AllowPrivateEndpoints: true,
+		Docker: &types.DockerSandboxConfig{
+			Image:       "gaze-sandbox:test",
+			Host:        "tcp://169.254.169.254:2376",
+			TLSCertPath: "/certs",
 		},
 	}
 
 	_, err := ResolveEffectiveConfig(tenantCfg, globalTestConfig())
 
-	require.ErrorIs(t, err, ErrUnsafeOutboundURL)
+	require.ErrorIs(t, err, ErrUnsafeOutboundURL,
+		"link-local stays blocked even under the private-endpoint opt-in")
 }
 
 func TestResolveEffectiveConfigRejectsDockerHostNetwork(t *testing.T) {
@@ -576,107 +530,14 @@ func TestResolveEffectiveConfigReportsMissingImageBeforeHostProblems(t *testing.
 }
 
 func TestEffectiveTemplateIDPerProvider(t *testing.T) {
-	require.Equal(t, "e2b-tpl", EffectiveTemplateID(&Config{
-		Type: SandboxTypeDocker, E2BTemplate: "e2b-tpl", CubeTemplate: "cube-tpl",
-	}))
-	require.Equal(t, "cube-tpl", EffectiveTemplateID(&Config{
-		Type: SandboxTypeDocker, E2BTemplate: "e2b-tpl", CubeTemplate: "cube-tpl",
-	}))
-	require.Empty(t, EffectiveTemplateID(&Config{Type: SandboxTypeDisabled}))
+	require.Equal(t, "img-1", EffectiveTemplateID(&Config{
+		Type: SandboxTypeDocker, DockerImage: "img-1",
+		E2BTemplate: "e2b-tpl", CubeTemplate: "cube-tpl",
+	}), "docker's template ID is its image")
+	require.Empty(t, EffectiveTemplateID(&Config{Type: SandboxTypeDisabled, DockerImage: "img-1"}))
+	require.Empty(t, EffectiveTemplateID(&Config{Type: "e2b", E2BTemplate: "e2b-tpl"}),
+		"removed providers expose no template")
 	require.Empty(t, EffectiveTemplateID(nil))
-}
-
-func TestResolveEffectiveConfigUsesSkillSnapshotAsTemplate(t *testing.T) {
-	global := DefaultConfig()
-
-	base := &types.TenantSandboxConfig{
-		SandboxType: "cube",
-		Cube: &types.CubeSandboxConfig{
-			APIURL: "https://203.0.113.10", ProxyURL: "https://203.0.113.11",
-			SandboxDomain: "cube.example.com", APIKey: "key-1", TemplateID: "tpl-base",
-		},
-	}
-	fp := SkillImageFingerprint("cube", "key-1", "https://203.0.113.10")
-
-	t.Run("usable snapshot overrides the base template", func(t *testing.T) {
-		cfg := *base
-		cfg.SkillImage = &types.SkillImageConfig{SnapshotID: "snap-1", OwnerFingerprint: fp}
-
-		eff, err := ResolveEffectiveConfig(&cfg, global)
-
-		require.NoError(t, err)
-		require.Equal(t, "snap-1", eff.CubeTemplate)
-	})
-
-	t.Run("fingerprint mismatch falls back to the base template", func(t *testing.T) {
-		cfg := *base
-		cfg.SkillImage = &types.SkillImageConfig{
-			SnapshotID: "snap-1", OwnerFingerprint: "fingerprint-of-another-account",
-		}
-
-		eff, err := ResolveEffectiveConfig(&cfg, global)
-
-		require.NoError(t, err)
-		require.Equal(t, "tpl-base", eff.CubeTemplate,
-			"a snapshot from another account is invisible; the session must still boot")
-	})
-
-	t.Run("empty snapshot keeps the base template", func(t *testing.T) {
-		cfg := *base
-		cfg.SkillImage = &types.SkillImageConfig{OwnerFingerprint: fp}
-
-		eff, err := ResolveEffectiveConfig(&cfg, global)
-
-		require.NoError(t, err)
-		require.Equal(t, "tpl-base", eff.CubeTemplate)
-	})
-}
-
-func TestResolveEffectiveConfigUsesSkillSnapshotAsE2BTemplate(t *testing.T) {
-	global := DefaultConfig()
-
-	base := &types.TenantSandboxConfig{
-		SandboxType: "e2b",
-		E2B: &types.E2BSandboxConfig{
-			APIURL: "https://203.0.113.20", SandboxDomain: "e2b.example.com",
-			APIKey: "key-1", TemplateID: "tpl-base",
-		},
-	}
-	fp := SkillImageFingerprint("e2b", "key-1", "https://203.0.113.20")
-	cubeFp := SkillImageFingerprint("cube", "key-1", "https://203.0.113.20")
-
-	t.Run("usable snapshot overrides the base template", func(t *testing.T) {
-		cfg := *base
-		cfg.SkillImage = &types.SkillImageConfig{SnapshotID: "snap-1", OwnerFingerprint: fp}
-
-		eff, err := ResolveEffectiveConfig(&cfg, global)
-
-		require.NoError(t, err)
-		require.Equal(t, "snap-1", eff.E2BTemplate)
-	})
-
-	t.Run("fingerprint mismatch falls back to the base template", func(t *testing.T) {
-		cfg := *base
-		cfg.SkillImage = &types.SkillImageConfig{
-			SnapshotID: "snap-1", OwnerFingerprint: cubeFp,
-		}
-
-		eff, err := ResolveEffectiveConfig(&cfg, global)
-
-		require.NoError(t, err)
-		require.Equal(t, "tpl-base", eff.E2BTemplate,
-			"a snapshot whose fingerprint was computed for cube must not override e2b; the session must still boot")
-	})
-
-	t.Run("empty snapshot keeps the base template", func(t *testing.T) {
-		cfg := *base
-		cfg.SkillImage = &types.SkillImageConfig{OwnerFingerprint: fp}
-
-		eff, err := ResolveEffectiveConfig(&cfg, global)
-
-		require.NoError(t, err)
-		require.Equal(t, "tpl-base", eff.E2BTemplate)
-	})
 }
 
 func TestResolveEffectiveConfigUsesSkillSnapshotAsDockerImage(t *testing.T) {
@@ -796,34 +657,36 @@ func TestSkillOwnerFingerprintForDocker(t *testing.T) {
 // cannot run, or skills that are in the image and hidden.
 func TestSkillImageActiveAgreesWithTheResolvedTemplate(t *testing.T) {
 	global := DefaultConfig()
-	cube := func() *types.TenantSandboxConfig {
+	docker := func() *types.TenantSandboxConfig {
 		return &types.TenantSandboxConfig{
-			SandboxType: "cube",
-			Cube: &types.CubeSandboxConfig{
-				APIURL: "https://203.0.113.10", ProxyURL: "https://203.0.113.11",
-				SandboxDomain: "cube.example.com", APIKey: "key-1", TemplateID: "tpl-base",
+			SandboxType: "docker",
+			Docker: &types.DockerSandboxConfig{
+				Image: "gaze/sandbox:base",
+				Host:  "unix:///var/run/docker.sock",
 			},
 		}
 	}
-	fp := SkillImageFingerprint("cube", "key-1", "https://203.0.113.10")
+	fp := SkillImageFingerprint("docker", "", "unix:///var/run/docker.sock")
 
 	cases := map[string]struct {
 		config *types.TenantSandboxConfig
 		want   bool
 	}{
-		"snapshot owned by the live credentials": {
+		"snapshot owned by the live daemon": {
 			config: func() *types.TenantSandboxConfig {
-				cfg := cube()
-				cfg.SkillImage = &types.SkillImageConfig{SnapshotID: "snap-1", OwnerFingerprint: fp}
+				cfg := docker()
+				cfg.SkillImage = &types.SkillImageConfig{
+					SnapshotID: "gaze-skill/gaze-sk-cfg1-g1", OwnerFingerprint: fp,
+				}
 				return cfg
 			}(),
 			want: true,
 		},
-		"snapshot from another account": {
+		"snapshot from another daemon": {
 			config: func() *types.TenantSandboxConfig {
-				cfg := cube()
+				cfg := docker()
 				cfg.SkillImage = &types.SkillImageConfig{
-					SnapshotID: "snap-1", OwnerFingerprint: "another-account",
+					SnapshotID: "gaze-skill/gaze-sk-cfg1-g1", OwnerFingerprint: "another-daemon",
 				}
 				return cfg
 			}(),
@@ -831,40 +694,24 @@ func TestSkillImageActiveAgreesWithTheResolvedTemplate(t *testing.T) {
 		},
 		"snapshot with no recorded owner": {
 			config: func() *types.TenantSandboxConfig {
-				cfg := cube()
-				cfg.SkillImage = &types.SkillImageConfig{SnapshotID: "snap-1"}
+				cfg := docker()
+				cfg.SkillImage = &types.SkillImageConfig{SnapshotID: "gaze-skill/gaze-sk-cfg1-g1"}
 				return cfg
 			}(),
 			want: false,
 		},
 		"no snapshot yet": {
-			config: cube(),
+			config: docker(),
 			want:   false,
 		},
 		"backend that cannot snapshot": {
 			config: &types.TenantSandboxConfig{
 				SandboxType: "disabled",
 				SkillImage: &types.SkillImageConfig{
-					SnapshotID: "snap-1", OwnerFingerprint: fp,
+					SnapshotID: "gaze-skill/gaze-sk-cfg1-g1", OwnerFingerprint: fp,
 				},
 			},
 			want: false,
-		},
-		"docker snapshot owned by the live daemon": {
-			config: &types.TenantSandboxConfig{
-				SandboxType: "docker",
-				Docker: &types.DockerSandboxConfig{
-					Image: "gaze/sandbox:base",
-					Host:  "unix:///var/run/docker.sock",
-				},
-				SkillImage: &types.SkillImageConfig{
-					SnapshotID: "gaze-skill/gaze-sk-cfg1-g1",
-					OwnerFingerprint: SkillImageFingerprint(
-						"docker", "", "unix:///var/run/docker.sock",
-					),
-				},
-			},
-			want: true,
 		},
 	}
 
@@ -891,8 +738,8 @@ func TestSkillImageActiveAgreesWithTheResolvedTemplate(t *testing.T) {
 }
 
 func TestSkillImageFingerprintIsStableAndDiscriminating(t *testing.T) {
-	a := SkillImageFingerprint("cube", "key-1", "https://a.example.com")
-	require.Equal(t, a, SkillImageFingerprint("cube", "key-1", "https://a.example.com"))
-	require.NotEqual(t, a, SkillImageFingerprint("cube", "key-2", "https://a.example.com"))
-	require.NotEqual(t, a, SkillImageFingerprint("e2b", "key-1", "https://a.example.com"))
+	a := SkillImageFingerprint("docker", "daemon-a", "unix:///var/run/docker.sock")
+	require.Equal(t, a, SkillImageFingerprint("docker", "daemon-a", "unix:///var/run/docker.sock"))
+	require.NotEqual(t, a, SkillImageFingerprint("docker", "daemon-b", "unix:///var/run/docker.sock"))
+	require.NotEqual(t, a, SkillImageFingerprint("disabled", "daemon-a", "unix:///var/run/docker.sock"))
 }

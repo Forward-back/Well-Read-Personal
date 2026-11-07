@@ -238,6 +238,7 @@ func TestCreateStore_ValidationError(t *testing.T) {
 }
 
 func TestCreateStore_ConnectionConfigValidation(t *testing.T) {
+	t.Setenv("RETRIEVE_DRIVER", "") // no env store may shadow the accepted cases
 	repo := &mockVectorStoreRepo{}
 	svc := NewVectorStoreService(repo, nil, nil, nil, nil)
 
@@ -247,67 +248,70 @@ func TestCreateStore_ConnectionConfigValidation(t *testing.T) {
 		wantError bool
 	}{
 		{
-			name: "elasticsearch without addr",
+			// The personal edition supports only postgres and sqlite; the
+			// external vector databases of the enterprise edition are no longer
+			// registerable, whatever their connection config says.
+			name: "elasticsearch rejected as unsupported engine",
 			store: &types.VectorStore{
 				TenantID: 1, Name: "test",
-				EngineType:       types.SQLiteRetrieverEngineType,
+				EngineType:       types.RetrieverEngineType("elasticsearch"),
+				ConnectionConfig: types.ConnectionConfig{Addr: "http://es:9200"},
+			},
+			wantError: true,
+		},
+		{
+			name: "qdrant rejected as unsupported engine",
+			store: &types.VectorStore{
+				TenantID: 1, Name: "test",
+				EngineType:       types.RetrieverEngineType("qdrant"),
+				ConnectionConfig: types.ConnectionConfig{Host: "qdrant-host"},
+			},
+			wantError: true,
+		},
+		{
+			name: "milvus rejected as unsupported engine",
+			store: &types.VectorStore{
+				TenantID: 1, Name: "test",
+				EngineType:       types.RetrieverEngineType("milvus"),
+				ConnectionConfig: types.ConnectionConfig{Addr: "milvus:19530"},
+			},
+			wantError: true,
+		},
+		{
+			name: "weaviate rejected as unsupported engine",
+			store: &types.VectorStore{
+				TenantID: 1, Name: "test",
+				EngineType:       types.RetrieverEngineType("weaviate"),
+				ConnectionConfig: types.ConnectionConfig{Host: "weaviate:8080"},
+			},
+			wantError: true,
+		},
+		{
+			name: "postgres without addr or default connection",
+			store: &types.VectorStore{
+				TenantID: 1, Name: "test",
+				EngineType:       types.PostgresRetrieverEngineType,
 				ConnectionConfig: types.ConnectionConfig{},
 			},
 			wantError: true,
 		},
 		{
-			// Postgres is no longer registerable as a DB-managed store (see
-			// validEngineTypes); the Validate() call inside CreateStore short-
-			// circuits before validateConnectionConfig ever runs. Either
-			// missing-config or full-config rejects with "unsupported engine
-			// type". The env-store path (RETRIEVE_DRIVER=postgres) reaches the
-			// engine registry through BuildEnvVectorStores and does not
-			// traverse this code path.
-			name: "postgres rejected as DB store (any config)",
+			name: "postgres with default connection is accepted",
 			store: &types.VectorStore{
 				TenantID: 1, Name: "test",
 				EngineType:       types.PostgresRetrieverEngineType,
 				ConnectionConfig: types.ConnectionConfig{UseDefaultConnection: true},
 			},
-			wantError: true,
+			wantError: false,
 		},
 		{
-			name: "qdrant without host",
+			name: "sqlite is accepted without connection config",
 			store: &types.VectorStore{
 				TenantID: 1, Name: "test",
 				EngineType:       types.SQLiteRetrieverEngineType,
 				ConnectionConfig: types.ConnectionConfig{},
 			},
-			wantError: true,
-		},
-		{
-			name: "milvus without addr",
-			store: &types.VectorStore{
-				TenantID: 1, Name: "test",
-				EngineType:       types.SQLiteRetrieverEngineType,
-				ConnectionConfig: types.ConnectionConfig{},
-			},
-			wantError: true,
-		},
-		{
-			name: "weaviate without host",
-			store: &types.VectorStore{
-				TenantID: 1, Name: "test",
-				EngineType:       types.SQLiteRetrieverEngineType,
-				ConnectionConfig: types.ConnectionConfig{},
-			},
-			wantError: true,
-		},
-		{
-			// SQLite, like Postgres, is no longer registerable as a DB store
-			// (see validEngineTypes). Reachable only as an env store.
-			name: "sqlite rejected as DB store",
-			store: &types.VectorStore{
-				TenantID: 1, Name: "test",
-				EngineType:       types.SQLiteRetrieverEngineType,
-				ConnectionConfig: types.ConnectionConfig{},
-			},
-			wantError: true,
+			wantError: false,
 		},
 	}
 
@@ -371,15 +375,10 @@ func TestCreateStore_DuplicateCheck_DBError(t *testing.T) {
 }
 
 func TestCreateStore_DuplicateCheck_EnvStore(t *testing.T) {
-	// Whitelist "es" so the flow reaches the env-store duplicate check rather
-	// than failing the SSRF guard (step 2.1) on the unresolvable es:9200 host.
-	withSSRFWhitelist(t, "es")
-	// Set up env to simulate an existing elasticsearch env store
-	t.Setenv("RETRIEVE_DRIVER", "elasticsearch_v8")
-	t.Setenv("ELASTICSEARCH_ADDR", "http://es:9200")
-	t.Setenv("ELASTICSEARCH_USERNAME", "elastic")
-	t.Setenv("ELASTICSEARCH_PASSWORD", "secret")
-	t.Setenv("ELASTICSEARCH_INDEX", "xwrag_default")
+	// Set up env to simulate an existing postgres env store. The personal
+	// edition's only env drivers are postgres and sqlite; both default to the
+	// application database and share the gaze_embeddings index.
+	t.Setenv("RETRIEVE_DRIVER", "postgres")
 
 	repo := &mockVectorStoreRepo{existsByEndpoint: false} // no DB duplicate
 	svc := NewVectorStoreService(repo, nil, nil, nil, nil)
@@ -387,12 +386,9 @@ func TestCreateStore_DuplicateCheck_EnvStore(t *testing.T) {
 	store := &types.VectorStore{
 		TenantID:   1,
 		Name:       "dup-env-store",
-		EngineType: types.SQLiteRetrieverEngineType,
+		EngineType: types.PostgresRetrieverEngineType,
 		ConnectionConfig: types.ConnectionConfig{
-			Addr: "http://es:9200",
-		},
-		IndexConfig: types.IndexConfig{
-			IndexName: "xwrag_default",
+			UseDefaultConnection: true,
 		},
 	}
 
@@ -407,12 +403,7 @@ func TestCreateStore_DuplicateCheck_EnvStore(t *testing.T) {
 
 func TestCreateStore_DuplicateCheck_EnvStore_DifferentIndex_Allowed(t *testing.T) {
 	// Same endpoint as env store but different index — should be allowed.
-	// Use an httptest server so CreateStore's connection probe sees a real
-	// (fake) ES root instead of dialing an unreachable host.
-	es := newFakeESServer(t)
-	t.Setenv("RETRIEVE_DRIVER", "elasticsearch_v8")
-	t.Setenv("ELASTICSEARCH_ADDR", es.URL)
-	t.Setenv("ELASTICSEARCH_INDEX", "xwrag_default")
+	t.Setenv("RETRIEVE_DRIVER", "postgres")
 
 	repo := &mockVectorStoreRepo{existsByEndpoint: false}
 	svc := NewVectorStoreService(repo, nil, nil, nil, nil)
@@ -420,12 +411,12 @@ func TestCreateStore_DuplicateCheck_EnvStore_DifferentIndex_Allowed(t *testing.T
 	store := &types.VectorStore{
 		TenantID:   1,
 		Name:       "different-index",
-		EngineType: types.SQLiteRetrieverEngineType,
+		EngineType: types.PostgresRetrieverEngineType,
 		ConnectionConfig: types.ConnectionConfig{
-			Addr: es.URL,
+			UseDefaultConnection: true,
 		},
 		IndexConfig: types.IndexConfig{
-			IndexName: "different_index",
+			CollectionPrefix: "different_index",
 		},
 	}
 
@@ -669,29 +660,22 @@ func TestTestConnection_PostgresDefaultConnection(t *testing.T) {
 	assert.Empty(t, version) // default connection cannot detect version without DB handle
 }
 
-func TestTestConnection_DorisInvalidAddr(t *testing.T) {
-	// 给一个不可达的地址 + 5s timeout，期望返回 BadRequestError 而非 panic。
+func TestTestConnection_PostgresInvalidAddr(t *testing.T) {
+	// 给一个不可达的地址 + 8s 外層 timeout，期望返回 BadRequestError 而非 panic。
 	repo := &mockVectorStoreRepo{}
 	svc := NewVectorStoreService(repo, nil, nil, nil, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	_, err := svc.TestConnection(ctx, types.SQLiteRetrieverEngineType, types.ConnectionConfig{
-		Addr:     "127.0.0.1:1", // 一定不可连通
-		Database: "gaze",
-		Username: "root",
+	_, err := svc.TestConnection(ctx, types.PostgresRetrieverEngineType, types.ConnectionConfig{
+		Addr: "postgres://127.0.0.1:1/gaze?connect_timeout=1", // 一定不可连通
 	})
 	require.Error(t, err)
-}
 
-func TestTestConnection_DorisMissingAddr(t *testing.T) {
-	repo := &mockVectorStoreRepo{}
-	svc := NewVectorStoreService(repo, nil, nil, nil, nil)
-
-	_, err := svc.TestConnection(context.Background(), types.SQLiteRetrieverEngineType,
-		types.ConnectionConfig{})
-	require.Error(t, err)
+	var appErr *errors.AppError
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, errors.ErrBadRequest, appErr.Code)
 }
 
 // ---------------------------------------------------------------------------
@@ -705,18 +689,6 @@ func TestValidateConnectionConfig(t *testing.T) {
 		config     types.ConnectionConfig
 		wantError  bool
 	}{
-		{
-			name:       "elasticsearch valid",
-			engineType: types.SQLiteRetrieverEngineType,
-			config:     types.ConnectionConfig{Addr: "http://es:9200"},
-			wantError:  false,
-		},
-		{
-			name:       "elasticsearch missing addr",
-			engineType: types.SQLiteRetrieverEngineType,
-			config:     types.ConnectionConfig{},
-			wantError:  true,
-		},
 		{
 			name:       "postgres with default connection",
 			engineType: types.PostgresRetrieverEngineType,
@@ -736,64 +708,10 @@ func TestValidateConnectionConfig(t *testing.T) {
 			wantError:  true,
 		},
 		{
-			name:       "qdrant valid",
-			engineType: types.SQLiteRetrieverEngineType,
-			config:     types.ConnectionConfig{Host: "qdrant-host"},
-			wantError:  false,
-		},
-		{
-			name:       "qdrant missing host",
-			engineType: types.SQLiteRetrieverEngineType,
-			config:     types.ConnectionConfig{},
-			wantError:  true,
-		},
-		{
-			name:       "milvus valid",
-			engineType: types.SQLiteRetrieverEngineType,
-			config:     types.ConnectionConfig{Addr: "milvus:19530"},
-			wantError:  false,
-		},
-		{
-			name:       "milvus missing addr",
-			engineType: types.SQLiteRetrieverEngineType,
-			config:     types.ConnectionConfig{},
-			wantError:  true,
-		},
-		{
-			name:       "weaviate valid",
-			engineType: types.SQLiteRetrieverEngineType,
-			config:     types.ConnectionConfig{Host: "weaviate:8080"},
-			wantError:  false,
-		},
-		{
-			name:       "weaviate missing host",
-			engineType: types.SQLiteRetrieverEngineType,
-			config:     types.ConnectionConfig{},
-			wantError:  true,
-		},
-		{
 			name:       "sqlite always valid",
 			engineType: types.SQLiteRetrieverEngineType,
 			config:     types.ConnectionConfig{},
 			wantError:  false,
-		},
-		{
-			name:       "doris valid",
-			engineType: types.SQLiteRetrieverEngineType,
-			config:     types.ConnectionConfig{Addr: "doris-fe:9030", Database: "gaze"},
-			wantError:  false,
-		},
-		{
-			name:       "doris missing addr",
-			engineType: types.SQLiteRetrieverEngineType,
-			config:     types.ConnectionConfig{Database: "gaze"},
-			wantError:  true,
-		},
-		{
-			name:       "doris missing database",
-			engineType: types.SQLiteRetrieverEngineType,
-			config:     types.ConnectionConfig{Addr: "doris-fe:9030"},
-			wantError:  true,
 		},
 	}
 

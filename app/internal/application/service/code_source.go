@@ -180,6 +180,13 @@ func (s *knowledgeService) SyncCodeSource(
 
 		prev, prevErr := s.repo.GetKnowledgeByID(ctx, tenantID, knowledgeID)
 		if prevErr == nil && prev != nil {
+			// Unchanged files keep their existing chunks. A prior sync may
+			// have created the knowledge row and then failed while writing
+			// chunks, so an empty chunk set still forces a rebuild.
+			existingChunks, _ := s.chunkRepo.ListChunksByKnowledgeID(ctx, tenantID, knowledgeID)
+			if prev.FileHash == file.Hash && len(existingChunks) > 0 {
+				continue
+			}
 			knowledge.CreatedAt = prev.CreatedAt
 			if err := s.repo.UpdateKnowledge(ctx, knowledge); err != nil {
 				return nil, fmt.Errorf("update code knowledge %s: %w", file.RelPath, err)
@@ -192,7 +199,9 @@ func (s *knowledgeService) SyncCodeSource(
 		appChunks := make([]*types.Chunk, 0, len(chunks))
 		for index, chunk := range chunks {
 			appChunks = append(appChunks, &types.Chunk{
-				ID:              uuid.NewSHA1(uuid.NameSpaceURL, []byte("wellread-code-chunk:"+knowledgeID+":"+fmt.Sprint(index))).String(),
+				// Random IDs avoid primary-key collisions with soft-deleted
+				// chunks from the previous revision of the same file.
+				ID:              uuid.NewString(),
 				TenantID:        tenantID,
 				KnowledgeID:     knowledgeID,
 				KnowledgeBaseID: kbID,

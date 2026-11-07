@@ -88,19 +88,6 @@
                   <span v-else>
                     {{ $t('mentionDetail.kbCount', { count: detailCache[item.id].data.knowledge_count ?? detailCache[item.id].data.count ?? 0 }) }}
                   </span>
-                  <span v-if="detailCache[item.id].data.org_name || item.orgName" class="detail-org">
-                    <img src="@/assets/img/organization-green.svg" class="detail-icon-img" alt="" aria-hidden="true" />
-                    <span class="detail-label">{{ $t('mentionDetail.belongsToOrg') }}</span>
-                    <span
-                      class="detail-value clickable"
-                      @click.stop="handleOrgClick(detailCache[item.id].data.org_name || item.orgName)"
-                    >
-                      {{ detailCache[item.id].data.org_name || item.orgName }}
-                    </span>
-                  </span>
-                  <span v-if="agentIdForDetail && (detailCache[item.id].data.org_name || item.orgName)" class="detail-readonly-hint">
-                    {{ $t('mentionDetail.readOnlyFromAgent') }}
-                  </span>
                 </div>
               </template>
             </div>
@@ -243,16 +230,6 @@
                       @click.stop="handleKbClick(detailCache[item.id].data.knowledge_base_id || (item as any).kbId)"
                     >
                       {{ detailCache[item.id].data.knowledge_base_name || item.kbName }}
-                    </span>
-                  </span>
-                  <span v-if="item.orgName" class="detail-org">
-                    <img src="@/assets/img/organization-green.svg" class="detail-icon-img" alt="" aria-hidden="true" />
-                    <span class="detail-label">{{ $t('mentionDetail.belongsToOrg') }}</span>
-                    <span
-                      class="detail-value clickable"
-                      @click.stop="handleOrgClick(item.orgName)"
-                    >
-                      {{ item.orgName }}
                     </span>
                   </span>
                 </div>
@@ -491,8 +468,6 @@ function handleKbClick(kbId: string | undefined) {
   if (!kbId) return;
   router.push(`/platform/knowledge-bases/${kbId}`);
 }
-
-function handleOrgClick(_orgName: string) {}
 
 const onScroll = (e: Event) => {
   isScrolling.value = true;
@@ -919,7 +894,6 @@ const scrollToItem = (index: number) => {
   font-style: italic;
 }
 
-.mention-detail-content .detail-org,
 .mention-detail-content .detail-kb {
   display: inline-flex;
   align-items: center;
@@ -940,17 +914,7 @@ const scrollToItem = (index: number) => {
   color: var(--td-brand-color);
   font-weight: 600;
 }
-.mention-detail-content .detail-icon-img {
-  flex-shrink: 0;
-  width: 14px;
-  height: 14px;
-  margin-right: 2px;
-  color: var(--td-text-color-placeholder, #000000);
-  opacity: 0.7;
-  display: inline-block;
-  vertical-align: middle;
-  object-fit: contain;
-}
+
 .mention-detail-content .detail-label {
   color: var(--td-text-color-placeholder, #999);
   flex-shrink: 0;

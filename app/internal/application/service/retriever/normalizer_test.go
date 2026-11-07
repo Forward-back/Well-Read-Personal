@@ -29,22 +29,16 @@ func TestEngineAwareNormalizer_KeywordPassthrough(t *testing.T) {
 func TestEngineAwareNormalizer_CosineRange(t *testing.T) {
 	t.Parallel()
 	n := EngineAwareNormalizer{}
-	// Only Milvus surfaces the raw cosine signed range [-1, 1] to the
-	// normalizer in this codebase. Elasticsearch v8 used to be in this
-	// group, but the driver issues a script_score cosineSimilarity script
-	// and Lucene rejects negative final scores ("Final relevance scores
-	// from the script_score query cannot be negative" — ES docs), so the
-	// score observed by the normalizer is already in [0, 1]; ES is now
-	// part of the passthrough group below. ElasticFaiss is a dead enum
-	// (no driver) and follows ES.
+	// SQLite sqlite-vec scores arrive in [0, 1]; the normalizer clamps
+	// defensively, so signed cosine values collapse to the interval ends.
 	cases := []struct {
 		score float64
 		want  float64
 	}{
 		{-1.0, 0},
-		{-0.5, 0.25},
-		{0, 0.5},
-		{0.5, 0.75},
+		{-0.5, 0},
+		{0, 0},
+		{0.5, 0.5},
 		{1.0, 1.0},
 		// Drift beyond [-1, 1] is clamped.
 		{-1.5, 0},

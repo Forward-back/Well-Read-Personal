@@ -1650,3 +1650,94 @@ ALTER TABLE reading_report_drafts
 
 ALTER TABLE reading_questions ADD COLUMN kind TEXT NOT NULL DEFAULT '';
 ALTER TABLE reading_questions ADD COLUMN gap_type TEXT NOT NULL DEFAULT '';
+
+-- ---- column parity with the PostgreSQL baseline ----
+-- SQLite is a first-class personal-edition backend; keep these in sync with
+-- migrations/versioned/000000_init.up.sql.
+
+ALTER TABLE knowledges ADD COLUMN doc_type VARCHAR(50);
+ALTER TABLE knowledges ADD COLUMN org_name VARCHAR(255);
+ALTER TABLE knowledges ADD COLUMN doc_number VARCHAR(100);
+ALTER TABLE knowledges ADD COLUMN doc_date VARCHAR(50);
+ALTER TABLE knowledges ADD COLUMN product_name VARCHAR(100);
+ALTER TABLE chunks ADD COLUMN doc_type VARCHAR(50);
+ALTER TABLE chunks ADD COLUMN product_name VARCHAR(100);
+ALTER TABLE chunks ADD COLUMN org_name VARCHAR(255);
+ALTER TABLE messages ADD COLUMN rag_stage_timeline TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE mcp_services ADD COLUMN usage_instructions TEXT NOT NULL DEFAULT '';
+ALTER TABLE gaze_pages ADD COLUMN outdated BOOLEAN NOT NULL DEFAULT 0;
+ALTER TABLE gaze_pages ADD COLUMN superseded_by_slug VARCHAR(255) NOT NULL DEFAULT '';
+
+-- ---- table parity with the PostgreSQL baseline ----
+-- PostgreSQL-only tables such as `embeddings` (BM25/halfvec) are excluded;
+-- these four are used by the app on every backend.
+
+CREATE TABLE IF NOT EXISTS tenant_skills (
+    id                    VARCHAR(36)  PRIMARY KEY,
+    tenant_id             INTEGER      NOT NULL,
+    sandbox_config_id     VARCHAR(36)  NOT NULL,
+    name                  VARCHAR(255) NOT NULL,
+    version               VARCHAR(64),
+    description           TEXT,
+    instructions          TEXT,
+    bundle_ref            VARCHAR(1024),
+    bundle_sha256         VARCHAR(64),
+    enabled               BOOLEAN      NOT NULL DEFAULT 1,
+    installed_snapshot_id VARCHAR(255),
+    status                VARCHAR(32)  NOT NULL,
+    error                 TEXT,
+    installing_since      DATETIME,
+    created_at            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at            DATETIME
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_skills_config_name
+    ON tenant_skills (tenant_id, sandbox_config_id, name) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_tenant_skills_catalog
+    ON tenant_skills (tenant_id, status) WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS tenant_skill_snapshots (
+    id                  VARCHAR(36)  PRIMARY KEY,
+    tenant_id           INTEGER      NOT NULL,
+    sandbox_config_id   VARCHAR(36)  NOT NULL,
+    skill_id            VARCHAR(36),
+    snapshot_id         VARCHAR(255),
+    parent_snapshot_id  VARCHAR(255),
+    generation          INTEGER      NOT NULL DEFAULT 0,
+    trigger             VARCHAR(16)  NOT NULL,
+    state               VARCHAR(16)  NOT NULL,
+    superseded_at       DATETIME,
+    created_at          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_tenant_skill_snapshots_config
+    ON tenant_skill_snapshots (tenant_id, sandbox_config_id);
+CREATE INDEX IF NOT EXISTS idx_tenant_skill_snapshots_state
+    ON tenant_skill_snapshots (tenant_id, state);
+
+CREATE TABLE IF NOT EXISTS tenant_user_env_vars (
+    id                VARCHAR(36)  PRIMARY KEY,
+    tenant_id         INTEGER      NOT NULL,
+    principal_type    VARCHAR(32)  NOT NULL,
+    principal_id      VARCHAR(512) NOT NULL,
+    sandbox_config_id VARCHAR(36)  NOT NULL,
+    skill_id          VARCHAR(36)  NOT NULL DEFAULT '',
+    name              VARCHAR(255) NOT NULL,
+    value             TEXT,
+    created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS mcp_metadata (
+    tenant_id BIGINT NOT NULL,
+    service_id VARCHAR(36) NOT NULL REFERENCES mcp_services(id) ON DELETE CASCADE,
+    principal VARCHAR(255) NOT NULL DEFAULT '',
+    config_fingerprint VARCHAR(64) NOT NULL,
+    tools TEXT NOT NULL,
+    instructions TEXT NOT NULL DEFAULT '',
+    server_name TEXT NOT NULL DEFAULT '',
+    server_version TEXT NOT NULL DEFAULT '',
+    server_description TEXT NOT NULL DEFAULT '',
+    synced_at DATETIME NOT NULL,
+    PRIMARY KEY (tenant_id, service_id, principal)
+);

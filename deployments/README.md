@@ -49,7 +49,7 @@ flowchart LR
 ```bash
 cd WellRead
 cp deployments/.env.example deployments/.env
-# 编辑 deployments/.env，至少填写 DB/YLSW/模型密钥
+# 编辑 deployments/.env，至少填写 DB/YLSW/模型密钥与 OWNER_EMAIL/OWNER_PASSWORD
 mkdir -p data/rag/{Data,models}
 # 放入 RAG 语料与 BGE 模型
 
@@ -93,9 +93,8 @@ app 使用 compose 内 PostgreSQL；ylsw 使用外部 MySQL。两者不是同一
 |---|---|
 | `DB_DRIVER` | 默认 `postgres` |
 | `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` | app PostgreSQL |
-| `YLSW_MYSQL_HOST` / `PORT` / `USER` / `PASSWORD` | 外部业务 MySQL |
+| `YLSW_MYSQL_HOST` / `PORT` / `USER` / `PASSWORD` | 外部业务 MySQL（RAG 分块/Text2SQL） |
 | `YLSW_MYSQL_DATABASE` | RAG 库，默认 `YLSW_Service_Table` |
-| `YLSW_EMPLOYEE_DB` | app 员工表库，默认 `ums_employee`；compose 注入为 app 的 `YLSW_MYSQL_DATABASE` |
 
 `YLSW_MYSQL_HOST` 默认 `host.docker.internal`，compose 已配置 `extra_hosts` 映射到宿主。
 
@@ -109,10 +108,10 @@ app 使用 compose 内 PostgreSQL；ylsw 使用外部 MySQL。两者不是同一
 |---|---|
 | `JWT_SECRET` | 登录 token 签名，生产必须强随机 |
 | `SYSTEM_AES_KEY` | 系统级 AES key |
-| `DISABLE_REGISTRATION` | 是否关闭注册 |
-| `GAZE_AUTH_COMPLEX_PASSWORD_ENABLED` | 复杂密码 |
-| `GAZE_TENANT_*` | 单租户模式、邀请、配额、审计保留 |
+| `OWNER_EMAIL` / `OWNER_PASSWORD` | 首次启动创建唯一 owner；缺失或密码不合规会启动失败 |
 | `SSRF_WHITELIST` / `SSRF_WHITELIST_EXTRA` | 解析/抓取的 SSRF 白名单 |
+
+个人版没有注册、邀请、角色或部门配置；`OWNER_EMAIL` / `OWNER_PASSWORD` 必须配置。
 
 不要把 `.env` 或任何密钥提交到仓库；泄露后轮换 `JWT_SECRET`、`SYSTEM_AES_KEY`、模型 key 和 DB 密码。
 
@@ -135,7 +134,7 @@ LOCAL_MODELS_DIR=/app/external/models
 RUN_OFFLINE_INGEST=0
 ```
 
-app 上传文档后通过 `/ingest` 推送，不在容器启动时跑全量离线摄取。
+app 解析并分块文档后通过 `/ingest` 推送 chunks，不在容器启动时跑离线摄取。
 
 ### 前端
 
@@ -229,7 +228,7 @@ docker compose -f deployments/docker-compose.yml down -v
 - `app_postgres-data`：业务库。
 - `app_data-files`：上传文件。
 - 外部 RAG 目录：`Data`、`models`、`faiss_index.bin`。
-- 外部 MySQL：RAG 库 `YLSW_Service_Table` 与员工库 `ums_employee`。
+- 外部 MySQL：RAG 库 `YLSW_Service_Table`。
 
 升级顺序：
 
@@ -267,5 +266,5 @@ app 启动会按 `AUTO_MIGRATE` 执行迁移；迁移前先备份 PostgreSQL。
 
 - 根项目说明：`../README.md`
 - RAG 部署与运维：`../rag/docs/配置与运维.md`、`../rag/docs/服务器部署.md`
-- 前端构建与能力契约：`../frontend/README.md`
+- 前端构建与使用：`../frontend/README.md`
 - 后端开发：`../app/README.md`

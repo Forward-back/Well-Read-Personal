@@ -44,7 +44,7 @@ class TransportRegressionTest(unittest.TestCase):
         )
 
     def test_gaze_client_session_is_thread_local(self):
-        from gaze_mcp_server import GazeClient
+        from client import GazeClient
 
         client = GazeClient("http://localhost:8080/api/v1", "test-key")
         barrier = threading.Barrier(2)
@@ -68,7 +68,7 @@ class TransportRegressionTest(unittest.TestCase):
 
 
 class StdioToolsListTest(unittest.TestCase):
-    def test_tools_list_returns_31_tools(self):
+    def test_tools_list_returns_17_read_only_tools(self):
         async def _run() -> int:
             from mcp import ClientSession, StdioServerParameters
             from mcp.client.stdio import stdio_client
@@ -88,7 +88,7 @@ class StdioToolsListTest(unittest.TestCase):
                     return len(tools.tools)
 
         count = asyncio.run(_run())
-        self.assertEqual(count, 31)
+        self.assertEqual(count, 17)
 
 
 class HttpStatelessSmokeTest(unittest.TestCase):

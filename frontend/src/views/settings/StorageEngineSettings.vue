@@ -532,13 +532,11 @@ import {
   updateStorageEngineConfig,
   type StorageEngineConfig,
 } from '@/api/system'
-import { useAuthStore } from '@/stores/auth'
 import { providerLogo } from './providerLogos'
 import SettingDrawer from '@/components/settings/SettingDrawer.vue'
 
 const { t } = useI18n()
-const authStore = useAuthStore()
-const canManageInfra = computed(() => authStore.hasCaps(['settings:infrastructure_manage']))
+const canManageInfra = computed(() => true)
 
 const defaultConfig = (): StorageEngineConfig => ({
   default_provider: 'local',

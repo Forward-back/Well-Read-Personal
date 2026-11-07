@@ -21,7 +21,6 @@ import { normalizeSpuriousTablePrefixes } from '@/utils/markdownTableNormalize';
 import { openMermaidFullscreen } from '@/utils/mermaidViewer';
 import { diffGazeLines, type GazeDiffLine } from '@/utils/gazeLineDiff';
 import { useI18n } from 'vue-i18n';
-import { useAuthStore } from '@/stores/auth';
 import DocumentPreview from '@/components/document-preview.vue';
 import KnowledgeProcessingTimeline from '@/components/knowledge-processing-timeline.vue';
 import { useRouter } from 'vue-router';
@@ -29,18 +28,10 @@ import { resolveKnowledgeDownloadFileName } from '@/views/knowledge/knowledgeDow
 import { isKnownPreviewableExt, resolveFilePreviewExt } from '@/utils/filePreview';
 
 const { t } = useI18n();
-const authStore = useAuthStore();
 const router = useRouter();
 
-// canDeleteGeneratedQuestion 对应后端 DELETE /chunks/by-id/:id/questions
-// 的 OwnedChunkKBOrAdminFromChunkID 守卫——KB 创建者或空间 Admin+
-// 才允许删除。父组件 KnowledgeBase.vue 通过 :canEditKB 把 KB 级权限
-// 传下来（包含 KB creator / Admin / 组织分享 editor 三种来源），未
-// 传时按更严格的 Admin 兜底，避免 Viewer 看到一个会 403 的入口。
-const canDeleteGeneratedQuestion = computed(() => {
-  if (props.canEditKB === true) return true;
-  return authStore.hasRole('admin');
-});
+// 个人版只有一个 owner，KB 内容始终可编辑。
+const canDeleteGeneratedQuestion = computed(() => true);
 const canEditContent = canDeleteGeneratedQuestion;
 
 type MetadataValueType = 'text' | 'number' | 'boolean' | 'null';
@@ -551,7 +542,7 @@ const viewMode = ref<'chunks' | 'merged' | 'preview'>('merged');
 // 个人版文档抽屉只保留内容视图。
 const drawerTab = ref<'content'>('content');
 
-const canManageContent = computed(() => props.canManageKB === true || authStore.hasRole('admin'));
+const canManageContent = computed(() => true);
 
 const collabChunks = computed(() => (props.details?.md || []).map((chunk: any, index: number) => ({
   id: chunk.id,
