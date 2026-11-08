@@ -64,6 +64,7 @@ type RAGEngine interface {
 		question string,
 		knowledgeBaseIDs []string,
 		skill *types.SkillInjection,
+		answerMode string,
 		onDelta func(string),
 		onReferences func([]*types.SearchResult),
 		onStage func(stage string, counts map[string]int, tMs int64, detail map[string]interface{}),

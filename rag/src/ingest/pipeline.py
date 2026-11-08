@@ -26,7 +26,6 @@ from config import (
     QWEN_TIMEOUT, QWEN_CONCURRENCY, QWEN_VL_IMAGE_MIME_TYPES,
     ENABLE_IMAGE_DESCRIPTION, BGE_EMBED_BACKEND,
 )
-from retrieval.text_to_sql import COLUMN_ALIASES
 
 setup_windows_console()
 
@@ -227,12 +226,7 @@ class DB:
                 alias = VALUES(alias),
                 updated_at = NOW()
         """
-        # 别名单一事实源：retrieval.text_to_sql.COLUMN_ALIASES（表键 → 列名 → 别名列表）
-        key = next(
-            (k for k in COLUMN_ALIASES if k in table_name or table_name in k),
-            None,
-        )
-        col_aliases = COLUMN_ALIASES.get(key, {}) if key else {}
+        col_aliases = {}
         with self.conn.cursor() as cur:
             for col in columns:
                 col_type = _infer_column_type(col, sample_rows)

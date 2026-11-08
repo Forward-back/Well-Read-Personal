@@ -59,6 +59,7 @@ type QARequest struct {
 	ImageDescription    string             // VLM-generated image description (fallback for non-vision models)
 	UserMessageID       string             // Created user message ID
 	WebSearchEnabled    bool               // Whether web search is enabled for this request
+	AnswerMode          string             // study | review; empty = study
 	QueryRewriteEnabled bool               // Whether to run app-side coreference rewriting before retrieval (web quick answer)
 	QuotedContext       string             // Quoted message content from IM quote-reply (appended at LLM prompt stage, not used for retrieval)
 	Attachments         MessageAttachments // File attachments (processed and ready for prompt injection)

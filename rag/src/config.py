@@ -101,9 +101,6 @@ BM25_K1 = 1.5               # BM25Okapi 词频饱和参数（默认值）
 BM25_B = 0.75               # BM25Okapi 文档长度归一化参数（默认值）
 RRF_K = 60                   # RRF 融合常数
 FINAL_TOP_K = 10         # Reranker 后最终送入 LLM 的 chunk 数（meta≤3 + faiss≥1）
-# 数据查询类问题 SQL 命中时的上下文上限（1 条 SQL 结果 + 3 条语料）：
-# 答案主体在结构化查询结果里，语料块多为噪声，收紧可减 prompt 体积和无关信息
-SQL_CONTEXT_CAP = int(os.getenv("SQL_CONTEXT_CAP", "4"))
 # 送入 Reranker 的每路候选上限：RRF 后每源截断前 N 条，减少 rerank API 输入量
 # 与 FAISS_TOP_K 同值（50）：长文档（55+ 切分单元）也要覆盖全部章节，
 # 否则概述类问题会整章缺料（如"南沙金融30条"的"四"章曾完全进不了候选池）
@@ -136,6 +133,27 @@ LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
 
 # ── LLM 输入上下文预算（字符数）─────────────────────────
 MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "8000"))
+
+# ── 学习/复习回答预算 ───────────────────────────────────
+# 学习卡需要更长上下文与输出；复习卡保持更快更短。
+ANSWER_MODE_BUDGETS = {
+    "study": {
+        "context_chars": int(os.getenv("STUDY_MAX_CONTEXT_CHARS", "16000")),
+        "max_tokens": int(os.getenv("STUDY_MAX_TOKENS", "4096")),
+        "timeout": int(os.getenv("STUDY_GENERATE_TIMEOUT", "90")),
+    },
+    "review": {
+        "context_chars": int(os.getenv("REVIEW_MAX_CONTEXT_CHARS", "8000")),
+        "max_tokens": int(os.getenv("REVIEW_MAX_TOKENS", "2048")),
+        "timeout": int(os.getenv("REVIEW_GENERATE_TIMEOUT", "45")),
+    },
+}
+DEFAULT_ANSWER_MODE = os.getenv("DEFAULT_ANSWER_MODE", "study")
+if DEFAULT_ANSWER_MODE not in ANSWER_MODE_BUDGETS:
+    DEFAULT_ANSWER_MODE = "study"
+
+# 精排最高分低于该阈值视为没有可用证据，走零命中提示而不是硬答
+ANSWER_MIN_RERANK_SCORE = float(os.getenv("ANSWER_MIN_RERANK_SCORE", "0.05"))
 
 # ── 日志 ──────────────────────────────────────────────
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")  # DEBUG 会输出各板块候选预览等细粒度日志

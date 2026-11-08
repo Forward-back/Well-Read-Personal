@@ -15,9 +15,10 @@ setup_windows_console()
 
 from config import (
     MYSQL_CONFIG, FINAL_TOP_K, FAISS_TOP_K, BM25_TOP_K, LOG_LEVEL,
-    SQL_CONTEXT_CAP, RERANK_SKIP_SINGLE, EMBEDDING_DIM,
+    RERANK_SKIP_SINGLE, EMBEDDING_DIM,
     BGE_EMBED_BACKEND, BGE_RERANK_BACKEND, ENGINE_TOKEN,
-    RRF_K, RERANK_META_MIN_SCORE, MAX_CONTEXT_CHARS, DEEPSEEK_MODEL,
+    RRF_K, RERANK_META_MIN_SCORE, DEEPSEEK_MODEL,
+    ANSWER_MODE_BUDGETS, DEFAULT_ANSWER_MODE, ANSWER_MIN_RERANK_SCORE,
     validate as config_validate,
 )
 import pymysql
@@ -36,15 +37,11 @@ from flask import Flask, request, jsonify, Response, stream_with_context
 from retrieval.faiss_search import FAISSSearcher, get_bge_embeddings
 from retrieval.bm25_search import BM25Searcher
 from retrieval.chunk_store import ChunkStore
-from retrieval.text_to_sql import TextToSQLEngine
 from retrieval.fusion import FusionEngine
 from retrieval.planner import plan_query, execute_plan, generate_query_variants
-from retrieval.query_filter import (
-    MetadataSearcher, analyze_query, QueryEntities,
-    build_product_mentions, sync_entities_from_db,
+from llm.generator import (
+    generate_answer, generate_synthesis_answer, generate_chitchat_answer,
 )
-from prompts import get_tag_content, load_prompt_store
-from llm.generator import generate_answer, generate_synthesis_answer
 from prompt_guard import REFUSAL_ANSWER
 
 app = Flask(__name__)
@@ -75,17 +72,14 @@ def _check_engine_token():
 # ── 延迟初始化 ──
 faiss_searcher: FAISSSearcher | None = None
 bm25_searcher: BM25Searcher | None = None
-sql_engine: TextToSQLEngine | None = None
 fusion: FusionEngine | None = None
-meta_searcher: MetadataSearcher | None = None
 # 连接池（DBUtils）：替代原版单连接 + 全局锁的串行访问
 db_pool = None
 chunk_store: ChunkStore | None = None
 
 
 def init_services():
-    global faiss_searcher, bm25_searcher, sql_engine, fusion, meta_searcher, \
-        db_pool, chunk_store
+    global faiss_searcher, bm25_searcher, fusion, db_pool, chunk_store
     config_validate()
     logger.info("正在初始化检索服务...")
     from dbutils.pooled_db import PooledDB
@@ -94,12 +88,8 @@ def init_services():
         blocking=True, autocommit=True, **MYSQL_CONFIG,
     )
     faiss_searcher = FAISSSearcher()
-    sql_engine = TextToSQLEngine()
     fusion = FusionEngine()
     chunk_store = ChunkStore(db_pool)
-    # metadata 检索与 chunk 数据访问共用连接池（线程安全，无锁竞争）
-    meta_searcher = MetadataSearcher(db_pool)
-    load_prompt_store()
     atexit.register(_cleanup)
 
     # BM25 词法路：启动时从池借连接构建内存索引，失败仅降级关闭该路（不阻断启动）
@@ -108,9 +98,6 @@ def init_services():
     except Exception as e:
         logger.error(f"BM25 索引初始化异常，词法路降级关闭: {e}")
         bm25_searcher = None
-
-    # 存量数据：product_mentions 空表时自动构建
-    _ensure_product_mentions()
 
     # 本地模型预热（必须在 app 进程内加载：entrypoint 的预热是独立进程，退出即失效；
     # 不预热则首问触发懒加载 ~4.5s，实测首问检索三段 4493ms）
@@ -130,32 +117,8 @@ def init_services():
 
 
 def _cleanup():
-    if sql_engine:
-        sql_engine.close()
     if db_pool:
         db_pool.close()
-
-
-def _ensure_product_mentions():
-    """实体枚举动态同步 + product_mentions 空表自愈。"""
-    try:
-        sync_entities_from_db(db_pool)
-        conn = db_pool.connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute("SELECT COUNT(*) FROM product_mentions")
-                count = cur.fetchone()[0]
-        finally:
-            conn.close()
-        if count == 0:
-            logger.info("product_mentions 表为空，自动构建倒排索引...")
-            bconn = db_pool.connection()
-            try:
-                build_product_mentions(bconn)
-            finally:
-                bconn.close()
-    except Exception as e:
-        logger.warning(f"product_mentions 检测/构建跳过: {e}")
 
 
 def _run_query(question: str, collect_timing: bool = False, collect_trace: bool = False,
@@ -164,8 +127,9 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
                kb_ids: list | None = None,
                skill: dict | None = None,
                skill_skipped: bool = False,
-               include_expired: bool = False):
-    """主查询管线：实体检测 → 规划器（tag + 计划）→ 并行检索 → RRF → 精排 → Parent → LLM，返回答案文本。
+               include_expired: bool = False,
+               answer_mode: str = DEFAULT_ANSWER_MODE):
+    """主查询管线：规划器 → 并行检索 → RRF → 精排 → Parent → LLM，返回答案文本。
 
     collect_timing=True 时返回 (answer, timings, trace, refs)，timings 为各阶段耗时字典（毫秒）。
     collect_trace=True 时 trace 为检索链中间数据（评测用）。
@@ -217,55 +181,45 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
     try:
         logger.info(f">>> 查询开始: {question[:80]}")
 
-        # ── 0. 实体检测（非 LLM：产品/机构/类型提示）──
-        entities = analyze_query(question)
+        mode = answer_mode if answer_mode in ANSWER_MODE_BUDGETS else DEFAULT_ANSWER_MODE
+        budget = ANSWER_MODE_BUDGETS[mode]
         expanded_query = question
-        logger.info(
-            f"[实体] products={entities.products} org={entities.org} "
-            f"type_hint={entities.type_hint}"
-        )
-
-        # query_type：多产品强制跨文档 > 自动判断
-        if len(entities.products) >= 2:
-            # 问题涉及多个产品（如 "A和B的关系"），必须跨文档检索
-            query_type = "cross_doc"
-        else:
-            query_type = _detect_query_type(question, entities)
-        logger.info(f"  query_type: {query_type}")
+        query_type = _detect_query_type(question)
+        logger.info(f"  answer_mode: {mode} query_type: {query_type}")
 
         # ── 0.6 问题规划器 + 变体（并行；变体只基于原问题，不依赖改写）──
-        # 标签供生成阶段动态提示词；reject 按 reason 分流：injection/unknown 拒答，
-        # chitchat 放行走正常管线（拒答唯一触发源 = LLM 注入判定）
         with ThreadPoolExecutor(max_workers=2) as _pex:
-            fut_plan = submit_with_trace(
-                _pex, plan_query, question,
-                products=[p for p in entities.products] if entities.products else None,
-                orgs=entities.orgs if entities.orgs else None,
-            )
+            fut_plan = submit_with_trace(_pex, plan_query, question)
             fut_variants = submit_with_trace(
                 _pex, generate_query_variants, question, question
             )
-            plan, tag, reject, reject_reason = fut_plan.result()
+            plan, reject, reject_reason = fut_plan.result()
             _rec("规划改写", t0, time.perf_counter())
             pre_variants = fut_variants.result() or []
             _rec("变体生成", t0, time.perf_counter())
+
         if reject and reject_reason == "chitchat":
-            # 闲聊判定放行走正常管线；检索空时由生成层空上下文文案兜底
-            logger.info(f"[PLANNER] chitchat 判定放行: {question[:60]}")
-            reject = False
-        elif reject and reject_reason != "injection" and (entities.products or entities.orgs):
-            # 问题命中已知产品/机构枚举 = 确定性业务问题，覆盖 LLM 的误判拒答
-            logger.info(
-                f"[PLANNER] 实体命中覆盖拒答 "
-                f"(产品={list(entities.products)[:3]} 机构={entities.orgs[:3]})"
+            logger.info(f"[PLANNER] chitchat 简短回复: {question[:60]}")
+            _rec("规划改写", t0, time.perf_counter())
+            if on_refs is not None:
+                on_refs([])
+            answer = generate_chitchat_answer(
+                question, timing=timing if collect_timing else None, on_delta=on_delta,
             )
-            reject = False
+            _rec("总计", t0, time.perf_counter())
+            _stage("generate_done", {"chars": len(answer)},
+                   {"model": DEEPSEEK_MODEL, "ttft_ms": 0})
+            if collect_trace:
+                trace["query_type"] = "chitchat"
+                trace["planner_multi"] = False
+            return (answer, timing, trace, refs) if _any else answer
+
         if reject:
             logger.info(
-                f"[PLANNER] 异常问题拒答 (tag={tag or '兜底'}) | "
+                f"[PLANNER] 异常问题拒答 (reason={reject_reason}) | "
                 f"规划耗时 {_ms(t0, time.perf_counter())}"
             )
-            logger.info(f">>> 查询完成（拒答）")
+            logger.info(">>> 查询完成（拒答）")
             _rec("规划改写", t0, time.perf_counter())
             _rec("总计", t0, time.perf_counter())
             if on_refs is not None:
@@ -273,24 +227,19 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
             if collect_trace:
                 trace["query_type"] = query_type
                 trace["planner_multi"] = False
-                trace["faiss_hits"] = []
-                trace["bm25_hits"] = []
-                trace["meta_results"] = []
-                trace["rrf_merged"] = []
-                trace["reranked"] = []
                 trace["n_context"] = 0
                 trace["context_chars"] = 0
             return (REFUSAL_ANSWER, timing, trace, refs) if _any else REFUSAL_ANSWER
-        tag_content = get_tag_content(tag)
+
         skill_fragment = _skill_prompt_fragment(skill)
         if skill_fragment:
-            tag_content = (tag_content or "") + skill_fragment
             logger.info(f"[skill] 注入 {skill.get('name') or skill.get('id')} version={skill.get('version')}")
             _stage("skill_injected", {"skill": 1}, {"status": "applied"})
         elif skill_skipped:
             logger.warning("[skill] skill payload was present but skipped")
             _stage("skill_injected", {"skill": 0}, {"status": "skipped"})
-        logger.info(f"  [PLANNER] tag={tag or '兜底'} 动态提示词={'有' if tag_content else '无'}")
+        t_rewrite = time.perf_counter()
+        _rec("规划改写", t0, t_rewrite)
         planner_multi = bool(plan and plan["type"] in ("parallel_subq", "multi_hop"))
         if planner_multi:
             query_type = "cross_doc"
@@ -299,37 +248,21 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
             if planner_q and planner_q != question:
                 logger.info(f"[PLANNER] 单步改写: {planner_q[:80]}")
                 expanded_query = planner_q
-        t_rewrite = time.perf_counter()
-        _rec("规划改写", t0, t_rewrite)
-
-        # ── 1-3. 检索 ──
-        _stage("retrieval_start")
         if planner_multi:
-            # 规划路径：step 轻检索（faiss+bm25+meta 的 RRF top-8）由 planner 执行；
-            # SQL 路不参与（表格类单问走模板/类1）
-            meta_results = meta_searcher.search(entities, 20, query_type)
-            t_faiss = t_bm25 = t_meta = time.perf_counter()
-            if collect_timing:
-                timing["检索_faiss"] = 0.0
-                timing["检索_bm25"] = 0.0
-                timing["检索_meta"] = 0.0
-                timing["检索_sql"] = 0.0
+            t_faiss = t_bm25 = t_meta = t_sql = time.perf_counter()
             planner_exec = execute_plan(plan, {
                 "faiss": faiss_searcher,
                 "bm25": bm25_searcher,
                 "resolve": _resolve_faiss_results,
                 "fusion": fusion,
-                "meta_results": meta_results,
-                "sql": sql_engine,
                 "kb_ids": kb_ids,
             })
             merged = planner_exec.candidates
             merged = _filter_by_kb(merged, kb_ids)
             merged = _expand_siblings(merged)
             merged = _attach_doc_meta(merged)
-            _stage("retrieval_done", {"meta": len(meta_results)})
-            sql_result = None
-            t_sql = t_rrf = time.perf_counter()
+            _stage("retrieval_done", {})
+            t_rrf = time.perf_counter()
             _rec("RRF融合", t_rewrite, t_rrf)
             _stage("rrf_done", {"merged": len(merged)}, {"strategy": f"RRF (k={RRF_K})"})
             if collect_trace:
@@ -337,9 +270,7 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
                 trace["planner_multi"] = True
                 _tr_list("faiss_hits", [])
                 _tr_list("bm25_hits", [])
-                _tr_list("meta_results", meta_results)
         else:
-            # 类1完整并行检索（faiss+bm25+meta+sql）；单步题 multi-query 扩展
             variants = pre_variants
             if variants:
                 logger.info(f"[MULTI-QUERY] 变体 {len(variants)} 条: {variants}")
@@ -352,7 +283,6 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
                         for emb in embs
                     ]
                 else:
-                    # 批量 embedding 失败回退逐条（search 内部自带嵌入与缓存）
                     faiss_futures = [
                         submit_with_trace(executor, faiss_searcher.search, q, FAISS_TOP_K)
                         for q in queries
@@ -361,12 +291,6 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
                     submit_with_trace(executor, bm25_searcher.search, q, BM25_TOP_K)
                     for q in queries
                 ] if (bm25_searcher and bm25_searcher.ready) else []
-                future_meta = submit_with_trace(
-                    executor, meta_searcher.search, entities, 20, query_type
-                )
-                future_sql = submit_with_trace(
-                    executor, sql_engine.query, expanded_query, kb_ids
-                )
 
                 faiss_hits = _merge_faiss_multi([f.result() for f in faiss_futures])
                 t_faiss = time.perf_counter()
@@ -375,41 +299,28 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
                     if bm25_futures else []
                 )
                 t_bm25 = time.perf_counter()
-                meta_results = future_meta.result()
-                t_meta = time.perf_counter()
-                sql_result = future_sql.result()
-                t_sql = time.perf_counter()
+                t_meta = t_sql = t_bm25
             _rec("检索_faiss", t_rewrite, t_faiss)
             _rec("检索_bm25", t_rewrite, t_bm25)
-            _rec("检索_meta", t_rewrite, t_meta)
-            _rec("检索_sql", t_rewrite, t_sql)
 
             logger.info(
-                f"[并行检索] faiss={len(faiss_hits)}条 meta={len(meta_results)}条 "
-                f"sql={'命中' if sql_result else '未命中'} | 并行总耗时 {_ms(t_rewrite, t_sql)}"
+                f"[并行检索] faiss={len(faiss_hits)}条 bm25={len(bm25_results)}条 "
+                f"| 并行总耗时 {_ms(t_rewrite, t_bm25)}"
             )
 
             faiss_results = _resolve_faiss_results(faiss_hits)
-            # Apply ACL per branch before fusion so denied documents cannot
-            # contribute RRF scores or rerank candidates.
-            _stage("retrieval_done", {
-                "faiss": len(faiss_results),
-                "bm25": len(bm25_results),
-                "meta": len(meta_results),
-                "sql": 1 if sql_result else 0,
-            })
+            _stage("retrieval_done", {"faiss": len(faiss_results), "bm25": len(bm25_results)})
             if collect_trace:
                 trace["query_type"] = query_type
                 trace["planner_multi"] = False
                 _tr_list("faiss_hits", faiss_results)
                 _tr_list("bm25_hits", bm25_results)
-                _tr_list("meta_results", meta_results)
-            merged = fusion.rrf_fusion(faiss_results, sql_result, meta_results, bm25_results)
+            merged = fusion.rrf_fusion(faiss_results, None, [], bm25_results)
             merged = _filter_by_kb(merged, kb_ids)
             merged = _expand_siblings(merged)
             merged = _attach_doc_meta(merged)
             t_rrf = time.perf_counter()
-            _rec("RRF融合", t_sql, t_rrf)
+            _rec("RRF融合", t_bm25, t_rrf)
             _stage("rrf_done", {"merged": len(merged)}, {"strategy": f"RRF (k={RRF_K})"})
 
         # ── 5. Reranker 精排 + 源配额 ──
@@ -433,6 +344,12 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
         reranked = _append_neighbors(reranked, merged)
         if not include_expired:
             reranked = _drop_expired(reranked)
+        scored = [c.get("rerank_score") for c in reranked if c.get("rerank_score") is not None]
+        if scored and max(scored) < ANSWER_MIN_RERANK_SCORE:
+            logger.info(
+                f"[证据门槛] 最高精排分 {max(scored):.4f} < {ANSWER_MIN_RERANK_SCORE}，按零命中处理"
+            )
+            reranked = []
         # Final pre-context / pre-reference recheck: neighbor expansion must not
         # reintroduce a document the caller cannot read.
         t_rerank = time.perf_counter()
@@ -454,16 +371,8 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
             )
 
         # ── 6. 取 Parent Chunk 上下文 ──
-        # 数据查询类问题 SQL 命中时收紧上下文；foreach 展开除外——逐项证据
-        # （如"各公司的邮箱"）只存在于 contexts，收紧会丢失答案素材
-        has_foreach = bool(plan and any(s.get("foreach") for s in plan["steps"]))
         contexts = _expand_to_parent_contexts(
-            reranked,
-            sql_cap=(
-                SQL_CONTEXT_CAP
-                if (tag == "数据查询" and not has_foreach) else None
-            ),
-            planner_multi=planner_multi,
+            reranked, planner_multi=planner_multi,
         )
         if collect_trace:
             trace["n_context"] = len(contexts)
@@ -471,16 +380,16 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
         t_ctx = time.perf_counter()
         _rec("parent上下文", t_rerank, t_ctx)
         _stage("context_done", {"contexts": len(contexts), "chars": sum(len(c) for c in contexts)},
-               {"max_chars": MAX_CONTEXT_CHARS})
+               {"max_chars": budget["context_chars"]})
         for i, ctx in enumerate(contexts, 1):
             preview = ctx[:200].replace("\n", " / ")
             logger.info(f"  召回上下文[{i}] ({len(ctx)}字符): {preview}...")
 
-        # ── 7. LLM 生成（基础提示词 + 标签动态内容 + 语言规则）──
-        _stage("generate_start", None, {"model": DEEPSEEK_MODEL})
+        # ── 7. LLM 生成（基础提示词 + 学习/复习模板 + 技能 + 语言规则）──
+        _stage("generate_start", None, {"model": DEEPSEEK_MODEL, "answer_mode": mode})
         style = compute_answer_style(reranked, question)
         logger.info(
-            f"[PROMPT] 标签={tag or '兜底'} 文档语言={style['doc_lang']} "
+            f"[PROMPT] 模式={mode} 文档语言={style['doc_lang']} "
             f"提问语言={style['answer_lang']} 跨语言={'是' if style['cross_lang'] else '否'}"
         )
         t_gen = time.perf_counter()
@@ -495,14 +404,16 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
 
         if planner_multi:
             answer = generate_synthesis_answer(
-                question, planner_exec.intermediates, contexts, style, tag_content,
-                timing=timing if collect_timing else None,
-                on_delta=_delta_ttft,
+                question, planner_exec.intermediates, contexts, style,
+                answer_mode=mode, timing=timing if collect_timing else None,
+                on_delta=_delta_ttft, extra_rules=skill_fragment,
             )
         else:
-            answer = generate_answer(question, contexts, style, tag_content,
-                                     timing=timing if collect_timing else None,
-                                     on_delta=_delta_ttft)
+            answer = generate_answer(
+                question, contexts, style, answer_mode=mode,
+                timing=timing if collect_timing else None,
+                on_delta=_delta_ttft, extra_rules=skill_fragment,
+            )
         t_llm = time.perf_counter()
         _rec("LLM生成", t_ctx, t_llm)
         _rec("总计", t0, t_llm)
@@ -510,10 +421,8 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
         # ── 各阶段耗时汇总 ──
         logger.info(
             f"  耗时: 重写/规划 {_ms(t0, t_rewrite)} | "
-            f"并行检索 faiss {_ms(t0, t_faiss)} / bm25 {_ms(t0, t_bm25)} "
-            f"/ meta {_ms(t0, t_meta)} / sql {_ms(t0, t_sql)} "
-            f"(总 {_ms(t_rewrite, t_sql)}) | "
-            f"RRF {_ms(t_sql, t_rrf)} | 精排 {_ms(t_rrf, t_rerank)} | "
+            f"并行检索 faiss {_ms(t0, t_faiss)} / bm25 {_ms(t0, t_bm25)} | "
+            f"RRF {_ms(t_bm25, t_rrf)} | 精排 {_ms(t_rrf, t_rerank)} | "
             f"Parent {_ms(t_rerank, t_ctx)} | LLM {_ms(t_ctx, t_llm)} | "
             f"总计 {_ms(t0, t_llm)}"
         )
@@ -555,6 +464,7 @@ def handle_chat():
     skill = None
     skill_skipped = False
     include_expired = False
+    answer_mode = DEFAULT_ANSWER_MODE
     if request.is_json:
         body = request.get_json(silent=True) or {}
         question = body.get("question")
@@ -567,6 +477,7 @@ def handle_chat():
         skill = _parse_skill(body)
         skill_skipped = bool(body.get("skill")) and skill is None
         include_expired = bool(body.get("include_expired"))
+        answer_mode = (body.get("answer_mode") or DEFAULT_ANSWER_MODE).strip().lower()
     else:
         question = request.form.get("question") or request.args.get("question")
     question = (question or "").strip()
@@ -577,6 +488,7 @@ def handle_chat():
             question, collect_timing=timing_requested, collect_trace=trace_requested,
             kb_ids=kb_ids, skill=skill,
             skill_skipped=skill_skipped, include_expired=include_expired,
+            answer_mode=answer_mode,
         )
         resp = {"answer": answer}
         if timing_requested:
@@ -587,6 +499,7 @@ def handle_chat():
     return jsonify({"answer": _run_query(
         question, kb_ids=kb_ids, skill=skill,
         skill_skipped=skill_skipped, include_expired=include_expired,
+        answer_mode=answer_mode,
     )})
 
 
@@ -594,14 +507,13 @@ def _build_refs(reranked: list[dict]) -> list[dict]:
     """精排结果 → app fusion 客户端期望的引用结构（YLSWReference）。
 
     id 一律转字符串（Go 端结构体字段为 string，数字会反序列化失败）。
-    sql 候选无文档元数据，跳过。
     lifecycle_status 透出（§2.14 portal 引用「已废止」标签）。
     content 为 chunk 原文摘要（前端悬浮引用卡直接展示，不回查 chunk 接口）。
     """
     refs = []
     for c in reranked:
         cid = c.get("chunk_id")
-        if c.get("source") == "sql" or cid in (None, -1, "", "-1"):
+        if cid in (None, -1, "", "-1"):
             continue
         text = c.get("text") or ""
         # 去掉 chunk 开头的 "# 文档标题 > ## 章节" 标题行，悬浮卡直接展示正文
@@ -709,8 +621,6 @@ def _rerank_detail(reranked: list[dict]) -> dict:
     """重排阶段排障明细：后端/阈值/Top 候选（前端 trace 行展开）。"""
     tops = []
     for c in reranked[:3]:
-        if c.get("source") == "sql":
-            continue
         lines = (c.get("text") or "").splitlines()
         while lines and (lines[0].startswith("#") or lines[0].startswith(">")):
             lines.pop(0)
@@ -749,6 +659,7 @@ def handle_chat_stream():
     skill = _parse_skill(body)
     skill_skipped = bool(body.get("skill")) and skill is None
     include_expired = bool(body.get("include_expired"))
+    answer_mode = (body.get("answer_mode") or DEFAULT_ANSWER_MODE).strip().lower()
     if not question:
         return jsonify({"answer": "请输入您的问题。"})
 
@@ -779,6 +690,7 @@ def handle_chat_stream():
                     on_stage=_stage,
                     kb_ids=kb_ids, skill=skill,
                     skill_skipped=skill_skipped, include_expired=include_expired,
+                    answer_mode=answer_mode,
                 )))
             except Exception as e:
                 logger.error(f"[fusion] 流式查询异常: {e}", exc_info=True)
@@ -850,17 +762,11 @@ _CROSS_DOC_SIGNALS = (
 )
 
 
-def _detect_query_type(question: str, entities: QueryEntities) -> str:
-    """auto 模式：根据问法特征判断单文档还是跨文档检索。"""
-    # 问题提及 ≥2 个产品 → 需要跨文档检索（如 "全民付蓝鲸和银商大脑的关系"）
-    if len(entities.products) >= 2:
-        return "cross_doc"
-    if any(s in question for s in _CROSS_DOC_SIGNALS):
+def _detect_query_type(question: str) -> str:
+    """根据问法特征判断单文档还是跨文档检索。"""
+    if any(signal in question for signal in _CROSS_DOC_SIGNALS):
         return "cross_doc"
     if "2023" in question and "2024" in question:
-        return "cross_doc"
-    # 产品+机构同时出现且无明确类型意图 → 可能涉及多份文档
-    if entities.has_entities and entities.product and entities.org and not entities.type_hint:
         return "cross_doc"
     return "single_doc"
 
@@ -958,7 +864,6 @@ def detect_language(text: str) -> str:
 def compute_answer_style(reranked: list[dict], question: str) -> dict:
     """统计召回候选元数据 → 语言适配参数。
 
-    - 跳过 sql 候选（无 doc_type/file_name）
     - 文档语言按 file_name _ZH/_EN 取多数（并列取先出现者）
     - answer_lang = 提问语言；cross_lang = 文档语言 ≠ 提问语言
     """
@@ -968,10 +873,7 @@ def compute_answer_style(reranked: list[dict], question: str) -> dict:
         "cross_lang": False,
     }
 
-    doc_cands = [
-        c for c in reranked
-        if c.get("source") != "sql" and (c.get("doc_type") or c.get("file_name"))
-    ]
+    doc_cands = [c for c in reranked if c.get("file_name")]
     if not doc_cands:
         return style
 
@@ -1087,7 +989,6 @@ def _prepend_doc_summaries(contexts: list[str], doc_ids: list[int]) -> list[str]
 
 
 def _expand_to_parent_contexts(reranked: list[dict], max_contexts: int = FINAL_TOP_K,
-                               sql_cap: int | None = None,
                                planner_multi: bool = False) -> list[str]:
     """分层上下文组装：每源第 1 条取 parent chunk（完整上下文），其余取 child chunk（节省 token）。
 
@@ -1098,14 +999,9 @@ def _expand_to_parent_contexts(reranked: list[dict], max_contexts: int = FINAL_T
     文本重建（无重叠、无遗漏），沿用首条标签。跨章节（span 不相接）不合并，
     保证列表式问题各章节各自成条。
 
-    sql_cap：数据查询类问题 SQL 命中时收紧上下文上限（见 config.SQL_CONTEXT_CAP）。
     """
     # 元数据去重：同文档多版本召回只留最新版
     reranked = _dedup_by_latest_version(reranked)
-
-    # 数据查询类问题 SQL 命中：答案主体在结构化结果里，语料块多为噪声，收紧上限
-    if sql_cap and any(c.get("source") == "sql" for c in reranked):
-        max_contexts = min(max_contexts, sql_cap)
 
     if not chunk_store:
         return [c["text"] for c in reranked[:max_contexts]]
@@ -1136,20 +1032,11 @@ def _expand_to_parent_contexts(reranked: list[dict], max_contexts: int = FINAL_T
         """取 [start, end) 区间内全部 child 单元文本按序拼接（内存直查）。"""
         return chunk_store.union_text(doc_id, start, end)
 
-    entries: list[dict] = []  # kind: "sql" | "chunk"；chunk 含 doc_id/start/end/label
+    entries: list[dict] = []  # chunk 含 doc_id/start/end/label
     seen = set()
     source_count: dict[str, int] = {}
 
     for item in reranked:
-        src = item.get("source", "")
-
-        if src == "sql":
-            if item.get("text"):
-                entries.append({"kind": "sql", "text": f"[结构化查询结果]\n{item['text']}"})
-                if len(entries) >= max_contexts:
-                    break
-            continue
-
         chunk_id = item.get("chunk_id")
         if not chunk_id or chunk_id == -1 or chunk_id in seen:
             continue
@@ -1175,8 +1062,9 @@ def _expand_to_parent_contexts(reranked: list[dict], max_contexts: int = FINAL_T
             continue
 
         seen.add(chunk_id)
-        source_count[src] = source_count.get(src, 0) + 1
-        is_top1 = (source_count[src] == 1)
+        is_top1 = not any(
+            e["kind"] == "chunk" and e["doc_id"] == doc_id for e in entries
+        )
         label = _build_label(item)
 
         if is_top1 and row.get("parent_text") is not None:
@@ -1243,31 +1131,21 @@ def _run_retrieval(question: str, top_k: int = None,
     kb_ids：KB 白名单（RRF 融合后过滤）；None/空 = 全库检索。
     document_ids：App 文档 UUID 白名单（融合后过滤）；None/空 = 不按文档过滤。
     """
-    entities = analyze_query(question)
-    query_type = (
-        "cross_doc" if len(entities.products) >= 2
-        else _detect_query_type(question, entities)
-    )
+    query_type = _detect_query_type(question)
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=2) as executor:
         future_faiss = submit_with_trace(
             executor, faiss_searcher.search, question, FAISS_TOP_K
         )
         future_bm25 = submit_with_trace(
             executor, bm25_searcher.search, question, BM25_TOP_K,
         ) if (bm25_searcher and bm25_searcher.ready) else None
-        future_meta = submit_with_trace(
-            executor, meta_searcher.search, entities, 20, query_type
-        )
-        future_sql = submit_with_trace(executor, sql_engine.query, question, kb_ids)
 
         faiss_hits = future_faiss.result()
         bm25_results = future_bm25.result() if future_bm25 else []
-        meta_results = future_meta.result()
-        sql_result = future_sql.result()
 
     faiss_results = _resolve_faiss_results(faiss_hits)
-    merged = fusion.rrf_fusion(faiss_results, sql_result, meta_results, bm25_results)
+    merged = fusion.rrf_fusion(faiss_results, None, [], bm25_results)
     merged = _filter_by_kb(merged, kb_ids)
     merged = _expand_siblings(merged)
     merged = _attach_doc_meta(merged)
@@ -1279,6 +1157,7 @@ def _run_retrieval(question: str, top_k: int = None,
     reranked = _append_neighbors(reranked, merged)
     if not include_expired:
         reranked = _drop_expired(reranked)
+    return reranked
 
 
 @app.route("/search", methods=["POST"])
@@ -1334,7 +1213,7 @@ def handle_search():
             continue
         for c in reranked:
             cid = c.get("chunk_id")
-            if c.get("source") == "sql" or cid in (None, -1, "", "-1"):
+            if cid in (None, -1, "", "-1"):
                 continue
             key = str(cid)
             prev = merged_by_id.get(key)
@@ -1372,17 +1251,14 @@ def handle_search():
 def _filter_by_kb(candidates: list[dict], kb_ids) -> list[dict]:
     """按知识库白名单过滤融合后候选。kb_ids 为空（全库）不过滤。
 
-    SQL 候选（source=="sql"）无 knowledge_base_id，但查询本身已按 kb_ids
-    行级作用域执行（tables_structured/schema_registry 的 knowledge_base_id
-    条件），结果天然落在白名单内 → 直接保留。
-    离线管线入库的存量文档 kb 为空，同样被滤掉——需挂到 KB 时手动 UPDATE。
+    离线管线入库的存量文档 kb 为空会被滤掉——需挂到 KB 时手动 UPDATE。
     """
     if not kb_ids:
         return candidates
     kbs = set(kb_ids)
     kept = [
         c for c in candidates
-        if c.get("knowledge_base_id") in kbs or c.get("source") == "sql"
+        if c.get("knowledge_base_id") in kbs
     ]
     dropped = len(candidates) - len(kept)
     if dropped:
@@ -1394,7 +1270,7 @@ def _filter_by_documents(candidates: list[dict], document_ids) -> list[dict]:
     """按 App 文档 UUID 白名单过滤融合后候选（精读选中文档）。
 
     source_doc_id 是 app 侧文档 UUID，由 _attach_doc_meta 从 documents 表补全；
-    无该字段的候选（如 SQL 路）在文档过滤生效时剔除。
+    没有该字段的候选在文档过滤生效时剔除。
     """
     if not document_ids:
         return candidates
@@ -1409,9 +1285,9 @@ def _filter_by_documents(candidates: list[dict], document_ids) -> list[dict]:
 
 
 def _attach_doc_meta(candidates: list[dict]) -> list[dict]:
-    """语料候选补文档级生命周期元数据；SQL 候选按默认值处理。"""
+    """语料候选补文档级生命周期元数据。"""
     for c in candidates:
-        if c.get("source") == "sql" or not chunk_store:
+        if not chunk_store:
             c.setdefault("lifecycle_status", "effective")
             continue
         meta = chunk_store.doc_meta(c.get("document_id")) or {}
@@ -1474,7 +1350,7 @@ def _apply_lifecycle(question: str, candidates: list[dict],
     - status=expired：默认直接剔除；调用方显式 include_expired=true 时保留并
       rerank_score × 0.7，加「已废止」标签（历史口径查询用）
     - 问题含年份：该时点有效（生效 ≤ 年 ≤ 废止）→ × 1.1；时点外 → × 0.8
-    无 rerank_score 的候选（SQL/邻域补位）跳过数值调整，仅打标签。
+    无 rerank_score 的候选（邻域补位）跳过数值调整，仅打标签。
     """
     m = _YEAR_RE.search(question or "")
     year = int(m.group(0)) if m else None

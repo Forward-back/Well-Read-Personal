@@ -122,7 +122,7 @@ func (s *sessionService) KnowledgeQAFusion(
 	}
 
 	answer, refs, err := s.ragEngine.StreamChat(ctx, question, qaReq.KnowledgeBaseIDs,
-		skillInjection, func(delta string) {
+		skillInjection, qaReq.AnswerMode, func(delta string) {
 			emit(event.EventAgentFinalAnswer, answerID, event.AgentFinalAnswerData{
 				Content: delta,
 				Done:    false,

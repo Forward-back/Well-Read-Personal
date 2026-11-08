@@ -3565,6 +3565,10 @@ export default {
       toggleOn: '开启网络搜索',
       toggleOff: '关闭网络搜索',
       notConfigured: '未配置网络搜索引擎'
+    },
+    answerMode: {
+      study: '学习',
+      review: '复习'
     }
   },
   manualEditor: {

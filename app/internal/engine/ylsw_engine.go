@@ -78,6 +78,7 @@ func (e *ylswEngine) StreamChat(
 	question string,
 	knowledgeBaseIDs []string,
 	skill *types.SkillInjection,
+	answerMode string,
 	onDelta func(string),
 	onReferences func([]*types.SearchResult),
 	onStage func(stage string, counts map[string]int, tMs int64, detail map[string]interface{}),
@@ -92,6 +93,7 @@ func (e *ylswEngine) StreamChat(
 		"knowledge_base_ids": knowledgeBaseIDs,
 		"knowledge_base_id":  firstOrEmpty(knowledgeBaseIDs),
 		"skill":              skill,
+		"answer_mode":        answerMode,
 	})
 	if err != nil {
 		return "", nil, fmt.Errorf("marshal request: %w", err)

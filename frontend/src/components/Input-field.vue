@@ -510,6 +510,8 @@ const props = defineProps({
 
 const isAgentEnabled = computed(() => settingsStore.isAgentEnabled);
 const isWebSearchEnabled = computed(() => settingsStore.isWebSearchEnabled);
+const answerMode = computed(() => settingsStore.answerMode);
+const setAnswerMode = (mode: 'study' | 'review') => settingsStore.setAnswerMode(mode);
 const selectedKbIds = computed(() => settingsStore.settings.selectedKnowledgeBases || []);
 const selectedFileIds = computed(() => settingsStore.settings.selectedFiles || []);
 const selectedTags = computed(() => settingsStore.settings.selectedTags || []);
@@ -2553,6 +2555,14 @@ defineExpose({
       <div class="control-bar" :class="{ 'is-embedded': embeddedMode }">
         <!-- 左侧控制按钮 -->
         <div class="control-left" v-if="!embeddedMode">
+          <!-- 学习卡 / 复习卡切换（仅 RAG 快速问答） -->
+          <div v-if="!settingsStore.isAgentStreamMode" class="answer-mode-switch" role="group">
+            <button type="button" class="answer-mode-btn" :class="{ active: answerMode === 'study' }"
+              @click.stop="setAnswerMode('study')">{{ $t('input.answerMode.study') }}</button>
+            <button type="button" class="answer-mode-btn" :class="{ active: answerMode === 'review' }"
+              @click.stop="setAnswerMode('review')">{{ $t('input.answerMode.review') }}</button>
+          </div>
+
           <!-- WebSearch 开关按钮（智能体未启用时不显示） -->
           <t-tooltip v-if="showWebSearchButton" placement="top" theme="light"
             :popupProps="{ overlayClassName: 'input-field-tooltip' }">
@@ -3100,6 +3110,37 @@ const getImgSrc = (url: string) => {
       background: var(--td-bg-color-secondarycontainer, #f5f5f5);
     }
   }
+}
+
+.answer-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--td-component-border);
+  border-radius: 6px;
+  margin-right: 6px;
+}
+
+.answer-mode-btn {
+  border: 0;
+  background: transparent;
+  color: var(--td-text-color-secondary);
+  font-size: 12px;
+  line-height: 20px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.answer-mode-btn:hover {
+  color: var(--td-text-color-primary);
+}
+
+.answer-mode-btn.active {
+  background: var(--td-brand-color-light);
+  color: var(--td-brand-color);
+  font-weight: 500;
 }
 
 .agent-mode-btn {

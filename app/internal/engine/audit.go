@@ -22,12 +22,13 @@ func (e *auditedEngine) StreamChat(
 	question string,
 	knowledgeBaseIDs []string,
 	skill *types.SkillInjection,
+	answerMode string,
 	onDelta func(string),
 	onReferences func([]*types.SearchResult),
 	onStage func(stage string, counts map[string]int, tMs int64, detail map[string]interface{}),
 ) (string, []*types.SearchResult, error) {
 	answer, refs, err := e.inner.StreamChat(
-		ctx, question, knowledgeBaseIDs, skill,
+		ctx, question, knowledgeBaseIDs, skill, answerMode,
 		onDelta, onReferences, onStage,
 	)
 	e.emit(ctx, question, knowledgeBaseIDs, refs, err)

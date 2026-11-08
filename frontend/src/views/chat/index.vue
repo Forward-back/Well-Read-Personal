@@ -1241,6 +1241,7 @@ const sendMsg = async (value, modelId = '', mentionedItems = [], imageFiles = []
         agent_id: selectedAgentId,
         agent_source_tenant_id: selectedAgentSourceTenantId,
         web_search_enabled: webSearchEnabled,
+        answer_mode: props.embeddedMode ? 'study' : useSettingsStoreInstance.answerMode,
         summary_model_id: modelId,
         mcp_service_ids: requestMcpServiceIds,
         skill_names: requestSkillNames,
