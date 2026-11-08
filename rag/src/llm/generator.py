@@ -36,7 +36,7 @@ BASE_PROMPT = """你是 WellRead 学习助手，面向日常基础学习与考�
 - 不要输出「根据参考资料」「资料中提到」等空泛前缀，直接给内容。
 - 引用由系统自动对齐，不需要输出 [1][2] 等标记。
 - 不要输出与本问题无关的寒暄、免责声明或重复总结。
-- 不要凭空生成「图示」小节；不要输出 Markdown 图片语法或相对路径图片，图片由系统统一处理。
+- 不要凭空生成「图示」小节；图片只能使用系统提供的 [[IMG:n]] 占位符，不得输出图片 URL、Markdown 图片语法或相对路径图片。
 """
 
 ANSWER_TEMPLATES = {
@@ -79,7 +79,8 @@ LANG_RULE_CROSS = (
 
 def build_prompt(question: str, context_text: str, style: dict | None = None,
                  answer_mode: str = DEFAULT_ANSWER_MODE,
-                 extra_rules: str | None = None) -> str:
+                 extra_rules: str | None = None,
+                 images: list[dict] | None = None) -> str:
     """基础提示词 + 学习/复习模板 + 语言规则拼装；用户问题转义防注入。"""
     mode = answer_mode if answer_mode in ANSWER_TEMPLATES else DEFAULT_ANSWER_MODE
     fragments = ["<system>\n", BASE_PROMPT, "\n【回答模板】\n",
@@ -90,8 +91,36 @@ def build_prompt(question: str, context_text: str, style: dict | None = None,
     fragments.append("\n请直接回答。\n</system>")
 
     fragments.append(f"\n<documents>\n{context_text}\n</documents>")
+    image_block = _image_catalog(images)
+    if image_block:
+        fragments.append(image_block)
     fragments.append(f"\n<user_question>\n{escape_user_input(question)}\n</user_question>")
     return "".join(fragments)
+
+
+def _image_catalog(images: list[dict] | None) -> str:
+    if not images:
+        return ""
+    lines = ["\n<available_images>"]
+    for i, img in enumerate(images, 1):
+        caption = str(img.get("caption") or "").strip()
+        ocr = str(img.get("ocr") or "").strip()
+        source = str(img.get("file_name") or img.get("doc_title") or "").strip()
+        parts = [f"[IMG:{i}]"]
+        if caption:
+            parts.append(f"说明：{caption}")
+        if ocr:
+            parts.append(f"文字：{ocr[:500]}")
+        if source:
+            parts.append(f"来源：{source}")
+        lines.append(" | ".join(parts))
+    lines.append("</available_images>")
+    lines.append(
+        "【图片使用规则】只在图片能直接帮助理解时使用。在正文对应位置单独一行输出 [[IMG:n]]，"
+        "n 必须是上面清单中的编号；同一张图最多用一次；不要输出图片 URL、Markdown 图片语法，"
+        "不要解释占位符。没有合适的图片就不要使用。"
+    )
+    return "\n".join(lines)
 
 
 def _chat_completion(prompt: str, timing: dict | None = None,
@@ -211,7 +240,8 @@ def generate_answer(question: str, contexts: list[str],
                     style: dict | None = None,
                     answer_mode: str = DEFAULT_ANSWER_MODE,
                     timing: dict | None = None,
-                    on_delta=None, extra_rules: str | None = None) -> str:
+                    on_delta=None, extra_rules: str | None = None,
+                    images: list[dict] | None = None) -> str:
     """生成回答。
 
     当前使用 DeepSeek；本地 Ollama 模型（LocalRAGGenerator）调用代码已注释保留，可随时切换。
@@ -234,7 +264,7 @@ def generate_answer(question: str, contexts: list[str],
     context_text = _assemble_contexts(contexts, budget["context_chars"])
     total_chars = sum(len(c) for c in contexts)
 
-    prompt = build_prompt(question, context_text, style, mode, extra_rules)
+    prompt = build_prompt(question, context_text, style, mode, extra_rules, images)
     t0 = time.perf_counter()
     logger.info(
         f"[LLM] 模式={mode} 上下文 {len(contexts)} 条/{total_chars} 字符 "
@@ -256,7 +286,8 @@ def generate_answer(question: str, contexts: list[str],
 def build_synthesis_prompt(question: str, intermediates: list[tuple[str, str]],
                            context_text: str, style: dict | None = None,
                            answer_mode: str = DEFAULT_ANSWER_MODE,
-                           extra_rules: str | None = None) -> str:
+                           extra_rules: str | None = None,
+                           images: list[dict] | None = None) -> str:
     """规划器多 step 路径的最终合成 prompt：中间结论 + 检索上下文 + 标签规则 + 语言规则。
 
     四段标签：<system> + <intermediate_results> + <documents> + <user_question>。
@@ -273,6 +304,9 @@ def build_synthesis_prompt(question: str, intermediates: list[tuple[str, str]],
     ) or "（无）"
     fragments.append(f"\n<intermediate_results>\n{inter_text}\n</intermediate_results>")
     fragments.append(f"\n<documents>\n{context_text}\n</documents>")
+    image_block = _image_catalog(images)
+    if image_block:
+        fragments.append(image_block)
     fragments.append(f"\n<user_question>\n{escape_user_input(question)}\n</user_question>")
     return "".join(fragments)
 
@@ -281,7 +315,8 @@ def generate_synthesis_answer(question: str, intermediates: list[tuple[str, str]
                               contexts: list[str], style: dict | None = None,
                               answer_mode: str = DEFAULT_ANSWER_MODE,
                               timing: dict | None = None,
-                              on_delta=None, extra_rules: str | None = None) -> str:
+                              on_delta=None, extra_rules: str | None = None,
+                              images: list[dict] | None = None) -> str:
     """规划器多 step 路径的最终合成：中间答案 + 精排上下文，一次 LLM 调用出最终答案。"""
     mode = answer_mode if answer_mode in ANSWER_MODE_BUDGETS else DEFAULT_ANSWER_MODE
     budget = ANSWER_MODE_BUDGETS[mode]
@@ -291,7 +326,7 @@ def generate_synthesis_answer(question: str, intermediates: list[tuple[str, str]
     context_text = _assemble_contexts(contexts, budget["context_chars"])
     total_chars = sum(len(c) for c in contexts)
 
-    prompt = build_synthesis_prompt(question, intermediates, context_text, style, mode, extra_rules)
+    prompt = build_synthesis_prompt(question, intermediates, context_text, style, mode, extra_rules, images)
     t0 = time.perf_counter()
     logger.info(
         f"[LLM合成] 模式={mode} 中间结论 {len(intermediates)} 条 + 上下文 {total_chars} 字符 "

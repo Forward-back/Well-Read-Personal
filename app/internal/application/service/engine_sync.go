@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
@@ -289,7 +290,10 @@ func (s *EngineSyncService) syncOne(ctx context.Context, knowledge *types.Knowle
 	if err != nil || kb == nil || kb.TenantID != knowledge.TenantID {
 		return fail(fmt.Errorf("知识库不存在或已变更"))
 	}
-	chunks, err := s.chunkRepo.ListChunksByKnowledgeID(ctx, knowledge.TenantID, knowledge.ID)
+	chunks, err := s.chunkRepo.ListChunksByKnowledgeIDAndTypes(
+		ctx, knowledge.TenantID, knowledge.ID,
+		[]types.ChunkType{types.ChunkTypeText, types.ChunkTypeImageOCR, types.ChunkTypeImageCaption},
+	)
 	if err != nil {
 		return fail(fmt.Errorf("读取文档分块失败: %w", err))
 	}
@@ -321,7 +325,7 @@ func (s *EngineSyncService) syncOne(ctx context.Context, knowledge *types.Knowle
 func buildEngineMarkdown(chunks []*types.Chunk) string {
 	parts := make([]string, 0, len(chunks))
 	for _, chunk := range chunks {
-		if chunk == nil || !chunk.IsEnabled {
+		if chunk == nil || !chunk.IsEnabled || chunk.ChunkType != types.ChunkTypeText {
 			continue
 		}
 		content := strings.TrimSpace(chunk.Content)
@@ -334,10 +338,60 @@ func buildEngineMarkdown(chunks []*types.Chunk) string {
 }
 
 // toEngineIngestChunks mirrors enabled app chunks for YLSW's app-owner map.
+// Image OCR/caption children are merged per (URL, parent text chunk) into one
+// image record carrying caption/OCR only; the image bytes stay in app storage.
 func toEngineIngestChunks(chunks []*types.Chunk) []engine.IngestChunk {
 	out := make([]engine.IngestChunk, 0, len(chunks))
+	imageIndex := make(map[string]int)
 	for _, chunk := range chunks {
-		if chunk == nil || !chunk.IsEnabled || strings.TrimSpace(chunk.Content) == "" {
+		if chunk == nil || !chunk.IsEnabled {
+			continue
+		}
+		if chunk.ChunkType == types.ChunkTypeImageOCR || chunk.ChunkType == types.ChunkTypeImageCaption {
+			var infos []types.ImageInfo
+			if chunk.ImageInfo == "" || json.Unmarshal([]byte(chunk.ImageInfo), &infos) != nil {
+				continue
+			}
+			for _, info := range infos {
+				url := strings.TrimSpace(info.URL)
+				if url == "" {
+					url = strings.TrimSpace(info.OriginalURL)
+				}
+				if url == "" {
+					continue
+				}
+				key := url + "|" + chunk.ParentChunkID
+				caption := strings.TrimSpace(info.Caption)
+				ocr := strings.TrimSpace(info.OCRText)
+				if idx, ok := imageIndex[key]; ok {
+					if out[idx].ImageCaption == "" && caption != "" {
+						out[idx].ImageCaption = caption
+					}
+					if out[idx].ImageOCR == "" && ocr != "" {
+						out[idx].ImageOCR = ocr
+					}
+					out[idx].Content = imageRecordContent(caption, ocr)
+					continue
+				}
+				content := imageRecordContent(caption, ocr)
+				if content == "" {
+					continue
+				}
+				out = append(out, engine.IngestChunk{
+					ID:            chunk.ID,
+					ChunkIndex:    chunk.ChunkIndex,
+					ChunkType:     "image",
+					ParentChunkID: chunk.ParentChunkID,
+					ImageURL:      url,
+					ImageCaption:  caption,
+					ImageOCR:      ocr,
+					Content:       content,
+				})
+				imageIndex[key] = len(out) - 1
+			}
+			continue
+		}
+		if strings.TrimSpace(chunk.Content) == "" {
 			continue
 		}
 		out = append(out, engine.IngestChunk{
@@ -346,10 +400,24 @@ func toEngineIngestChunks(chunks []*types.Chunk) []engine.IngestChunk {
 			StartAt:    chunk.StartAt,
 			EndAt:      chunk.EndAt,
 			Content:    chunk.Content,
+			ChunkType:  "text",
 		})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ChunkIndex < out[j].ChunkIndex })
+	sort.SliceStable(out, func(i, j int) bool { return out[i].ChunkIndex < out[j].ChunkIndex })
 	return out
+}
+
+func imageRecordContent(caption, ocr string) string {
+	if caption == "" && ocr == "" {
+		return "[图片]"
+	}
+	if caption == "" {
+		return ocr
+	}
+	if ocr == "" {
+		return caption
+	}
+	return caption + "\n" + ocr
 }
 
 // engineSyncCronEnabled mirrors ylswReconcileEnabled(): default on, opt-out

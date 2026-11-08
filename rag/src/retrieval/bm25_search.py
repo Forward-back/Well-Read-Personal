@@ -55,7 +55,8 @@ class BM25Searcher:
                 cur.execute(
                     "SELECT c.id, c.chunk_text, c.document_id, "
                     "c.position_start, c.position_end, c.doc_type, c.product_name, "
-                    "c.knowledge_base_id, "
+                    "c.knowledge_base_id, c.source_chunk_id, c.chunk_type, "
+                    "c.image_url, c.image_caption, c.image_ocr, c.parent_source_chunk_id, "
                     "d.file_name, d.org_name, d.doc_number, d.doc_date, d.doc_title "
                     "FROM chunks c "
                     "JOIN documents d ON c.document_id = d.id "
@@ -79,16 +80,22 @@ class BM25Searcher:
                     "doc_type": row[5],
                     "product_name": row[6],
                     "knowledge_base_id": row[7] or "",
-                    "file_name": row[8] or "",
-                    "org_name": row[9] or "",
-                    "doc_number": row[10] or "",
-                    "doc_date": str(row[11] or "") if row[11] is not None else "",
-                    "doc_title": row[12] or "",
+                    "source_chunk_id": row[8] or "",
+                    "chunk_type": row[9] or "text",
+                    "image_url": row[10] or "",
+                    "image_caption": row[11] or "",
+                    "image_ocr": row[12] or "",
+                    "parent_source_chunk_id": row[13] or "",
+                    "file_name": row[14] or "",
+                    "org_name": row[15] or "",
+                    "doc_number": row[16] or "",
+                    "doc_date": str(row[17] or "") if row[17] is not None else "",
+                    "doc_title": row[18] or "",
                 })
                 # 标题两次加权 + 文件名（含无括号文号/版本号）+ 正文，统一保护归一
                 index_text = _protect_tokens(
-                    (row[12] or "") + " " + (row[12] or "") + " "
-                    + (row[8] or "") + " " + (row[1] or "")
+                    (row[18] or "") + " " + (row[18] or "") + " "
+                    + (row[14] or "") + " " + (row[1] or "")
                 )
                 corpus.append(jieba.lcut(index_text))
 

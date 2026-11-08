@@ -149,14 +149,18 @@ class DB:
                      product_name: str = "", knowledge_base_id: str = "",
                      lifecycle_status: str = "effective",
                      effective_date: str = "", expiry_date: str = "",
-                     source_chunk_id: str = "") -> int:
+                     source_chunk_id: str = "", chunk_type: str = "text",
+                     image_url: str = "", image_caption: str = "",
+                     image_ocr: str = "", parent_source_chunk_id: str = "") -> int:
         sql = """
             INSERT INTO chunks (document_id, chunk_index, chunk_text, chunk_level,
                                 parent_chunk_id, keywords, position_start, position_end,
                                 org_name, doc_type, product_name, knowledge_base_id,
                                 lifecycle_status, effective_date, expiry_date,
-                                source_chunk_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                source_chunk_id, chunk_type, image_url,
+                                image_caption, image_ocr, parent_source_chunk_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s)
         """
         try:
             eff_date = _parse_date(effective_date) if effective_date else None
@@ -172,7 +176,9 @@ class DB:
                 parent_chunk_id, keywords, pos_start, pos_end,
                 org_name, doc_type, product_name, knowledge_base_id or None,
                 lifecycle_status or "effective", eff_date, exp_date,
-                source_chunk_id or None,
+                source_chunk_id or None, chunk_type or "text",
+                image_url or None, image_caption or None, image_ocr or None,
+                parent_source_chunk_id or None,
             ))
             return cur.lastrowid
 

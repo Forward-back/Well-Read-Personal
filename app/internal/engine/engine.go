@@ -25,11 +25,16 @@ type DocumentMetadata struct {
 // IngestChunk mirrors one app-side chunk so the engine can map its own
 // internal chunks back to the app chunk that owns the content.
 type IngestChunk struct {
-	ID         string `json:"id"`
-	ChunkIndex int    `json:"chunk_index"`
-	StartAt    int    `json:"start_at"`
-	EndAt      int    `json:"end_at"`
-	Content    string `json:"content"`
+	ID            string `json:"id"`
+	ChunkIndex    int    `json:"chunk_index"`
+	StartAt       int    `json:"start_at"`
+	EndAt         int    `json:"end_at"`
+	Content       string `json:"content"`
+	ChunkType     string `json:"chunk_type,omitempty"`      // text | image
+	ParentChunkID string `json:"parent_chunk_id,omitempty"` // app text chunk UUID for images
+	ImageURL      string `json:"image_url,omitempty"`       // resource:// handle
+	ImageCaption  string `json:"image_caption,omitempty"`
+	ImageOCR      string `json:"image_ocr,omitempty"`
 }
 
 // RetrievalAuditEvent is a best-effort record emitted after one engine call.

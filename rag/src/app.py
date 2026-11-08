@@ -87,6 +87,7 @@ def init_services():
         creator=pymysql, maxconnections=8, mincached=2, maxcached=4,
         blocking=True, autocommit=True, **MYSQL_CONFIG,
     )
+    _ensure_image_columns(db_pool)
     faiss_searcher = FAISSSearcher()
     fusion = FusionEngine()
     chunk_store = ChunkStore(db_pool)
@@ -116,6 +117,32 @@ def init_services():
     logger.info("所有服务初始化完成 ✓")
 
 
+def _ensure_image_columns(pool):
+    """存量库增量迁移：补齐图片块字段，避免旧库启动即失败。"""
+    columns = {
+        "chunk_type": "VARCHAR(20) DEFAULT 'text'",
+        "image_url": "TEXT",
+        "image_caption": "TEXT",
+        "image_ocr": "TEXT",
+        "parent_source_chunk_id": "VARCHAR(64)",
+    }
+    conn = pool.connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SHOW COLUMNS FROM chunks")
+            existing = {row[0] for row in cur.fetchall()}
+            for name, ddl in columns.items():
+                if name not in existing:
+                    cur.execute(f"ALTER TABLE chunks ADD COLUMN {name} {ddl}")
+                    logger.info(f"[schema] chunks.{name} 已补齐")
+            cur.execute("SHOW INDEX FROM chunks WHERE Key_name='idx_image_parent'")
+            if not cur.fetchall():
+                cur.execute("ALTER TABLE chunks ADD INDEX idx_image_parent (parent_source_chunk_id)")
+                logger.info("[schema] chunks.idx_image_parent 已补齐")
+    finally:
+        conn.close()
+
+
 def _cleanup():
     if db_pool:
         db_pool.close()
@@ -123,7 +150,7 @@ def _cleanup():
 
 def _run_query(question: str, collect_timing: bool = False, collect_trace: bool = False,
                collect_refs: bool = False, on_refs=None, on_delta=None,
-               on_stage=None,
+               on_images=None, on_stage=None,
                kb_ids: list | None = None,
                skill: dict | None = None,
                skill_skipped: bool = False,
@@ -354,15 +381,25 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
         # reintroduce a document the caller cannot read.
         t_rerank = time.perf_counter()
         _rec("精排rerank", t_rrf, t_rerank)
-        _stage("rerank_done", {"reranked": len(reranked)}, _rerank_detail(reranked))
+        image_candidates = _collect_image_candidates(reranked)
+        text_reranked = [
+            c for c in reranked if (c.get("chunk_type") or "text") != "image"
+        ]
+        _stage("rerank_done", {
+            "reranked": len(text_reranked), "images": len(image_candidates),
+        }, _rerank_detail(text_reranked))
+        if on_images is not None and image_candidates:
+            on_images(image_candidates)
         if collect_refs or on_refs is not None:
-            refs = _build_refs(reranked)
+            refs = _build_refs(text_reranked)
             if on_refs is not None:
                 on_refs(refs)
         _tr_list("rrf_merged", merged)
-        _tr_list("reranked", reranked)
-        logger.info(f"  精排: {len(reranked)} 条")
-        for i, c in enumerate(reranked, 1):
+        _tr_list("reranked", text_reranked)
+        logger.info(
+            f"  精排: {len(text_reranked)} 条文本 / {len(image_candidates)} 张图片"
+        )
+        for i, c in enumerate(text_reranked, 1):
             logger.info(
                 f"    [{i}] source={c.get('source')} chunk_id={c.get('chunk_id')} "
                 f"doc_id={c.get('document_id')} 文号={c.get('doc_number', '')} "
@@ -372,8 +409,13 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
 
         # ── 6. 取 Parent Chunk 上下文 ──
         contexts = _expand_to_parent_contexts(
-            reranked, planner_multi=planner_multi,
+            text_reranked, planner_multi=planner_multi,
         )
+        if not contexts and image_candidates:
+            contexts = [
+                f"[图片说明] {img.get('caption') or ''}\n{img.get('ocr') or ''}".strip()
+                for img in image_candidates
+            ]
         if collect_trace:
             trace["n_context"] = len(contexts)
             trace["context_chars"] = sum(len(c) for c in contexts)
@@ -387,7 +429,7 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
 
         # ── 7. LLM 生成（基础提示词 + 学习/复习模板 + 技能 + 语言规则）──
         _stage("generate_start", None, {"model": DEEPSEEK_MODEL, "answer_mode": mode})
-        style = compute_answer_style(reranked, question)
+        style = compute_answer_style(text_reranked or reranked, question)
         logger.info(
             f"[PROMPT] 模式={mode} 文档语言={style['doc_lang']} "
             f"提问语言={style['answer_lang']} 跨语言={'是' if style['cross_lang'] else '否'}"
@@ -407,12 +449,14 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
                 question, planner_exec.intermediates, contexts, style,
                 answer_mode=mode, timing=timing if collect_timing else None,
                 on_delta=_delta_ttft, extra_rules=skill_fragment,
+                images=image_candidates,
             )
         else:
             answer = generate_answer(
                 question, contexts, style, answer_mode=mode,
                 timing=timing if collect_timing else None,
                 on_delta=_delta_ttft, extra_rules=skill_fragment,
+                images=image_candidates,
             )
         t_llm = time.perf_counter()
         _rec("LLM生成", t_ctx, t_llm)
@@ -427,17 +471,21 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
             f"总计 {_ms(t0, t_llm)}"
         )
 
-        logger.info(f">>> 查询完成: 答案 {len(answer)} 字")
+        answer = _replace_image_tokens(answer, image_candidates)
+        logger.info(
+            f">>> 查询完成: 答案 {len(answer)} 字 / 图片 {len(image_candidates)} 张"
+        )
 
         # 答案生成后对齐引用位置（内联引用芯片用），done 事件携带
         if _any and refs and answer:
-            _align_ref_positions(answer, refs, reranked)
+            _align_ref_positions(answer, refs, text_reranked)
             positioned = sum(1 for r in refs if r.get("start_at") is not None)
             if positioned:
                 logger.info(f"  引用对齐: {positioned}/{len(refs)} 条命中位置")
 
-        _stage("generate_done", {"chars": len(answer) if answer else 0},
-               {"model": DEEPSEEK_MODEL, "ttft_ms": ttft_ms["v"]})
+        _stage("generate_done", {
+            "chars": len(answer) if answer else 0, "images": len(image_candidates),
+        }, {"model": DEEPSEEK_MODEL, "ttft_ms": ttft_ms["v"]})
 
         return (answer, timing, trace, refs) if _any else answer
 
@@ -503,6 +551,114 @@ def handle_chat():
     )})
 
 
+def _collect_image_candidates(reranked: list[dict]) -> list[dict]:
+    """收集可直接展示的图片：图片块命中 + 文本块关联图片，按 URL 去重。"""
+    out: list[dict] = []
+    seen: set[str] = set()
+
+    def add(row: dict, fallback_source: str = "") -> None:
+        url = str(row.get("image_url") or row.get("url") or "").strip()
+        if not url or url in seen:
+            return
+        seen.add(url)
+        out.append({
+            "url": url,
+            "caption": str(row.get("image_caption") or row.get("caption") or "").strip(),
+            "ocr": str(row.get("image_ocr") or row.get("ocr_text") or "").strip(),
+            "file_name": str(row.get("file_name") or "").strip(),
+            "doc_title": str(row.get("doc_title") or "").strip(),
+            "source_chunk_id": str(
+                row.get("parent_source_chunk_id") or fallback_source or ""
+            ),
+        })
+
+    for c in reranked:
+        if (c.get("chunk_type") or "text") == "image":
+            add(c)
+
+    if chunk_store:
+        for c in reranked:
+            if (c.get("chunk_type") or "text") == "image":
+                continue
+            source_id = (
+                c.get("source_chunk_id")
+                or chunk_store.source_chunk_id(c.get("chunk_id"))
+            )
+            for row in chunk_store.images_for_source_chunk(source_id):
+                add(row, str(source_id or ""))
+
+    return out
+
+
+_IMAGE_TOKEN_RE = re.compile(r"\[\[IMG:(\d+)\]\]")
+
+
+def _image_markdown(img: dict) -> str:
+    url = str(img.get("url") or "").strip()
+    if not url:
+        return ""
+    caption = str(img.get("caption") or "").strip()
+    alt = caption.replace("[", "\\[").replace("]", "\\]") or "图片"
+    lines = [f"![{alt}]({url})"]
+    meta = []
+    if caption:
+        meta.append(f"图注：{caption}")
+    if img.get("file_name"):
+        meta.append(f"来源：{img['file_name']}")
+    if meta:
+        lines.append("> " + " · ".join(meta))
+    return "\n".join(lines)
+
+
+def _replace_image_tokens(text: str, images: list[dict]) -> str:
+    if not text or not images:
+        return text
+
+    def _sub(match):
+        try:
+            idx = int(match.group(1))
+        except (TypeError, ValueError):
+            return ""
+        if idx < 1 or idx > len(images):
+            return ""
+        return _image_markdown(images[idx - 1])
+
+    return _IMAGE_TOKEN_RE.sub(_sub, text)
+
+
+class StreamingImageReplacer:
+    """SSE 增量替换 [[IMG:n]]；跨 delta 的半截 token 先暂存。"""
+
+    _HOLD_PREFIX = "[[IMG:"
+
+    def __init__(self, images: list[dict]):
+        self.images = images
+        self.buf = ""
+
+    def feed(self, text: str) -> str:
+        self.buf += text or ""
+        hold = 0
+        max_prefix = len(self._HOLD_PREFIX) + 4
+        for i in range(len(self.buf) - 1, max(-1, len(self.buf) - max_prefix - 1), -1):
+            suffix = self.buf[i:]
+            if suffix.startswith("[") and (
+                self._HOLD_PREFIX.startswith(suffix)
+                or re.fullmatch(r"\[\[IMG:\d*", suffix)
+            ):
+                hold = len(suffix)
+                break
+        if hold:
+            out, self.buf = self.buf[:-hold], self.buf[-hold:]
+        else:
+            out, self.buf = self.buf, ""
+        return _replace_image_tokens(out, self.images)
+
+    def flush(self) -> str:
+        out = _replace_image_tokens(self.buf, self.images)
+        self.buf = ""
+        return out
+
+
 def _build_refs(reranked: list[dict]) -> list[dict]:
     """精排结果 → app fusion 客户端期望的引用结构（YLSWReference）。
 
@@ -514,6 +670,8 @@ def _build_refs(reranked: list[dict]) -> list[dict]:
     for c in reranked:
         cid = c.get("chunk_id")
         if cid in (None, -1, "", "-1"):
+            continue
+        if (c.get("chunk_type") or "text") == "image":
             continue
         text = c.get("text") or ""
         # 去掉 chunk 开头的 "# 文档标题 > ## 章节" 标题行，悬浮卡直接展示正文
@@ -683,11 +841,14 @@ def handle_chat_stream():
         def _stage(name, counts, t_ms, detail):
             q.put(("stage", {"stage": name, "t_ms": t_ms, "counts": counts or {}, "detail": detail or {}}))
 
+        def _images(images):
+            q.put(("images", images))
+
         def _worker():
             try:
                 q.put(("result", _run_query(
                     question, collect_refs=True, on_refs=_refs, on_delta=_delta,
-                    on_stage=_stage,
+                    on_images=_images, on_stage=_stage,
                     kb_ids=kb_ids, skill=skill,
                     skill_skipped=skill_skipped, include_expired=include_expired,
                     answer_mode=answer_mode,
@@ -702,6 +863,7 @@ def handle_chat_stream():
         delta_sent = False
         final_refs = []
         result = None
+        image_replacer = None
         while True:
             kind, payload = q.get()
             if kind == "error":
@@ -716,10 +878,15 @@ def handle_chat_stream():
                     {"type": "references", "references": payload},
                     ensure_ascii=False,
                 ) + "\n\n"
+            elif kind == "images":
+                image_replacer = StreamingImageReplacer(payload)
             elif kind == "delta":
+                content = image_replacer.feed(payload) if image_replacer else payload
+                if not content:
+                    continue
                 delta_sent = True
                 yield "data: " + json.dumps(
-                    {"type": "delta", "content": payload}, ensure_ascii=False,
+                    {"type": "delta", "content": content}, ensure_ascii=False,
                 ) + "\n\n"
             elif kind == "stage":
                 yield "data: " + json.dumps(
@@ -730,6 +897,13 @@ def handle_chat_stream():
                 break
 
         answer = result[0] if isinstance(result, tuple) else result
+        if image_replacer:
+            tail = image_replacer.flush()
+            if tail:
+                delta_sent = True
+                yield "data: " + json.dumps(
+                    {"type": "delta", "content": tail}, ensure_ascii=False,
+                ) + "\n\n"
 
         # 兜底：拒答/LLM 失败等路径没有回调，补发整段答案，保证前端有内容
         if not refs_sent:
@@ -1469,6 +1643,7 @@ def _ingest_markdown(kb_id: str, doc_uid: str, file_name: str,
 
         chunk_ids = []
         for i, chunk in enumerate(ordered):
+            chunk_type = str(chunk.get("chunk_type") or "text").strip().lower()
             chunk_ids.append(db.insert_chunk(
                 document_id=doc_id,
                 chunk_index=_as_int(chunk.get("chunk_index"), i),
@@ -1485,6 +1660,11 @@ def _ingest_markdown(kb_id: str, doc_uid: str, file_name: str,
                 effective_date=life["effective_date"],
                 expiry_date=life["expiry_date"],
                 source_chunk_id=str(chunk.get("id") or ""),
+                chunk_type=chunk_type,
+                image_url=str(chunk.get("image_url") or ""),
+                image_caption=str(chunk.get("image_caption") or ""),
+                image_ocr=str(chunk.get("image_ocr") or ""),
+                parent_source_chunk_id=str(chunk.get("parent_chunk_id") or ""),
             ))
         db.commit()
         logger.info(f"[ingest] doc_id={doc_id} 写入 {len(chunk_ids)} chunks")

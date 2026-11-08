@@ -24,6 +24,7 @@ class ChunkStore:
         self._doc_meta: dict = {}          # document_id -> 文档级元数据（生命周期/来源）
         self._summaries: dict = {}         # document_id -> doc_summary（多步题上下文前置）
         self._source_chunk_id: dict = {}   # ylsw chunk_id -> app chunk id（数据归属映射）
+        self._images_by_parent: dict = {}  # app 文本 chunk UUID -> [图片行]
         self._load(pool)
 
     def summary_of(self, doc_id: int) -> str | None:
@@ -43,7 +44,8 @@ class ChunkStore:
                 cur.execute(
                     "SELECT c.id, c.chunk_text, c.vector_id, c.document_id, "
                     "c.position_start, c.position_end, c.doc_type, c.product_name, "
-                    "c.knowledge_base_id, c.source_chunk_id, "
+                    "c.knowledge_base_id, c.source_chunk_id, c.chunk_type, "
+                    "c.image_url, c.image_caption, c.image_ocr, c.parent_source_chunk_id, "
                     "d.file_name, d.org_name, d.doc_number, d.doc_date, d.doc_title "
                     "FROM chunks c "
                     "JOIN documents d ON c.document_id = d.id "
@@ -99,6 +101,10 @@ class ChunkStore:
                 (row["position_start"], row["position_end"], row["chunk_text"])
             )
             self._child_pos[(row["document_id"], row["position_start"])] = row["id"]
+            if (row.get("chunk_type") or "text") == "image":
+                parent_key = row.get("parent_source_chunk_id") or ""
+                if parent_key:
+                    self._images_by_parent.setdefault(parent_key, []).append(row)
 
         for lst in self._children_by_doc.values():
             lst.sort(key=lambda t: t[0])
@@ -130,6 +136,10 @@ class ChunkStore:
         )
 
     # ── 查询 ──────────────────────────────────────────
+    def images_for_source_chunk(self, source_chunk_id: str) -> list[dict]:
+        """app 文本 chunk UUID → 其关联图片行（caption/OCR/URL）。"""
+        return self._images_by_parent.get(str(source_chunk_id or ""), [])
+
     def doc_meta(self, document_id) -> dict:
         """document_id → 文档级元数据（生命周期/来源）；未知返回空 dict。"""
         return self._doc_meta.get(document_id) or {}
@@ -170,6 +180,12 @@ class ChunkStore:
                 "doc_title": r.get("doc_title", ""),
                 "position_start": r.get("position_start"),
                 "position_end": r.get("position_end"),
+                "source_chunk_id": r.get("source_chunk_id") or "",
+                "chunk_type": r.get("chunk_type") or "text",
+                "image_url": r.get("image_url") or "",
+                "image_caption": r.get("image_caption") or "",
+                "image_ocr": r.get("image_ocr") or "",
+                "parent_source_chunk_id": r.get("parent_source_chunk_id") or "",
             })
         if len(results) != len(faiss_hits):
             logger.warning(

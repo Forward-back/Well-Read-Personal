@@ -3790,7 +3790,10 @@ func (s *knowledgeService) pushToEngine(
 	// App chunks define the index boundaries; RAG no longer chunks on its own.
 	var ingestChunks []engine.IngestChunk
 	if s.chunkRepo != nil {
-		if rows, listErr := s.chunkRepo.ListChunksByKnowledgeID(ctx, knowledge.TenantID, knowledge.ID); listErr != nil {
+		if rows, listErr := s.chunkRepo.ListChunksByKnowledgeIDAndTypes(
+			ctx, knowledge.TenantID, knowledge.ID,
+			[]types.ChunkType{types.ChunkTypeText, types.ChunkTypeImageOCR, types.ChunkTypeImageCaption},
+		); listErr != nil {
 			logger.Warnf(ctx, "List app chunks for engine ingest failed (knowledge %s): %v", knowledge.ID, listErr)
 		} else {
 			ingestChunks = toEngineIngestChunks(rows)

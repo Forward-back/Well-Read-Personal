@@ -83,6 +83,13 @@ CREATE TABLE IF NOT EXISTS chunks (
     -- app 数据归属：YLSW 内部 chunk 回指 app chunk id
     source_chunk_id VARCHAR(64) COMMENT 'app 侧 chunk UUID(引用/锚点/统计使用)',
 
+    -- 多模态：图片块（text=普通文本；image=图片 OCR/描述合并记录）
+    chunk_type VARCHAR(20) DEFAULT 'text' COMMENT 'text/image',
+    image_url TEXT COMMENT 'resource:// 图片句柄',
+    image_caption TEXT COMMENT '图片描述',
+    image_ocr TEXT COMMENT '图片 OCR 文本',
+    parent_source_chunk_id VARCHAR(64) COMMENT '图片所属 app 文本 chunk UUID',
+
     -- 文档元数据反范式（检索降权免 JOIN；superseded_by 不进 chunks）
     lifecycle_status VARCHAR(20)  DEFAULT 'effective' COMMENT '生命周期',
     effective_date  DATE          COMMENT '生效日期',
@@ -103,6 +110,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     INDEX idx_doc_type (doc_type),
     INDEX idx_product (product_name),
     INDEX idx_kb (knowledge_base_id),
+    INDEX idx_image_parent (parent_source_chunk_id),
     FULLTEXT idx_keywords (keywords),
 
     CONSTRAINT fk_chunks_doc FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
