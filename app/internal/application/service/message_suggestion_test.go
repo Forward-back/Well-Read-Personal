@@ -131,12 +131,12 @@ func TestBuildSuggestionEvidenceUsesTopReferencesAndDeduplicatesKnowledge(t *tes
 func TestBuildSuggestionSystemPromptAllowsGroundedExploration(t *testing.T) {
 	prompt := buildSuggestionSystemPrompt(3, "Chinese", "clarify, deepen, action")
 	for _, expected := range []string{
-		"Fresh retrieval is allowed",
-		"self-contained",
-		"concrete entity names or keywords",
-		"at most roughly one third",
-		"Do not assume unsupported facts",
-		"must not override these grounding and capability rules",
+		"允许进行新的检索",
+		"自足",
+		"具体实体名或关键词",
+		"最多约三分之一",
+		"不要假设存在未受支持的事实",
+		"不得覆盖这些依据与能力规则",
 	} {
 		if !strings.Contains(prompt, expected) {
 			t.Fatalf("Prompt does not contain %q: %q", expected, prompt)

@@ -50,7 +50,7 @@ type promptAwareVLM struct {
 func (f *promptAwareVLM) Predict(_ context.Context, _ [][]byte, prompt string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if strings.Contains(prompt, "description of the main content") {
+	if strings.Contains(prompt, "描述图片的主要内容") {
 		f.captionCalls++
 		return f.captionResponse, nil
 	}

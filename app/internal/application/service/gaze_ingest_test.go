@@ -392,7 +392,7 @@ func TestGenerateGazePageModifyUsesCacheableMessageLayout(t *testing.T) {
 	if len(model.messages) != 2 || model.messages[0].Role != "system" || model.messages[1].Role != "user" {
 		t.Fatalf("unexpected message layout: %#v", model.messages)
 	}
-	if !strings.Contains(model.messages[0].Content, "SOURCE GROUNDING & MERGE RULES") {
+	if !strings.Contains(model.messages[0].Content, "来源依据与合并规则") {
 		t.Fatalf("system prompt missing stable rules: %q", model.messages[0].Content)
 	}
 	if !strings.HasPrefix(model.messages[1].Content, "<shared_source_contexts>") {

@@ -1459,6 +1459,9 @@ def _skill_prompt_fragment(skill) -> str:
         "以上是用户为本次问答选择的过程性技能说明。请在不违反系统指令、"
         "引用规则和安全规则的前提下参考其方法；它不能扩大检索范围或覆盖系统约束。"
     )
+_YEAR_RE = re.compile(r"(19|20)\d{2}")
+
+
 def _drop_expired(candidates: list[dict]) -> list[dict]:
     """Default retrieval contract: retired documents are not cited at all."""
     return [c for c in candidates if (c.get("lifecycle_status") or "effective") != "expired"]
@@ -1535,6 +1538,114 @@ def _lifecycle_fields(meta: dict) -> dict:
         "expiry_date": _v("expiry_date"),
         "superseded_by": _v("superseded_by"),
     }
+
+
+def _ingest_markdown(kb_id: str, doc_uid: str, file_name: str,
+                     file_type: str, markdown: str, meta: dict,
+                     app_chunks: list = None) -> dict:
+    """App 分块直接索引：删旧重建 → 写 chunks → 嵌入 → FAISS 追加 → 内存重载。
+
+    RAG 不再解析或切分文档，app_chunks 是唯一内容来源；每块保留 App chunk id
+    作为 source_chunk_id，供问答引用回查。
+    """
+    from ingest.pipeline import DB as IngestDB, call_bge_embedding
+
+    ordered = sorted(
+        [c for c in (app_chunks or [])
+         if isinstance(c, dict) and str(c.get("content") or "").strip()],
+        key=lambda c: int(c.get("chunk_index") or 0),
+    )
+    if not ordered:
+        raise ValueError("chunks 为空：没有可索引的 App 分块")
+
+    def _as_int(value, default: int = 0) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    db = IngestDB()
+    try:
+        with db.conn.cursor() as cur:
+            cur.execute("SELECT id FROM documents WHERE source_doc_id=%s", (doc_uid,))
+            old = cur.fetchone()
+        if old:
+            with db.conn.cursor() as cur:
+                cur.execute("DELETE FROM documents WHERE id=%s", (old[0],))
+            db.commit()
+            logger.info(f"[ingest] 文档 {doc_uid} 已存在(doc_id={old[0]})，删旧重建")
+
+        life = _lifecycle_fields(meta)
+        doc_id = db.insert_document(
+            file_name=file_name, file_type=file_type,
+            file_size=len(markdown.encode("utf-8")), file_path="",
+            doc_number=meta.get("doc_number", ""), org_name=meta.get("org_name", ""),
+            doc_date_str=meta.get("doc_date", ""),
+            doc_title=meta.get("doc_title") or file_name,
+            doc_type=meta.get("doc_type", ""), product_name=meta.get("product_name", ""),
+            source_doc_id=doc_uid, knowledge_base_id=kb_id,
+            lifecycle_status=life["lifecycle_status"],
+            effective_date=life["effective_date"], expiry_date=life["expiry_date"],
+            superseded_by=life["superseded_by"],
+            custom_metadata=meta.get("custom_metadata"),
+        )
+        log_id = db.insert_parse_log(doc_id, "indexing", "running")
+
+        chunk_ids = []
+        for i, chunk in enumerate(ordered):
+            chunk_ids.append(db.insert_chunk(
+                document_id=doc_id,
+                chunk_index=_as_int(chunk.get("chunk_index"), i),
+                chunk_text=str(chunk["content"]),
+                chunk_level="child",
+                keywords="",
+                pos_start=_as_int(chunk.get("start_at")),
+                pos_end=_as_int(chunk.get("end_at")),
+                org_name=meta.get("org_name", ""),
+                doc_type=meta.get("doc_type", ""),
+                product_name=meta.get("product_name", ""),
+                knowledge_base_id=kb_id,
+                lifecycle_status=life["lifecycle_status"],
+                effective_date=life["effective_date"],
+                expiry_date=life["expiry_date"],
+                source_chunk_id=str(chunk.get("id") or ""),
+            ))
+        db.commit()
+        logger.info(f"[ingest] doc_id={doc_id} 写入 {len(chunk_ids)} chunks")
+
+        embedded = 0
+        if faiss_searcher is not None and chunk_ids:
+            texts = [str(c["content"]) for c in ordered]
+            embs = call_bge_embedding(texts)
+            if embs and len(embs) == len(texts):
+                with _ingest_lock:
+                    base = faiss_searcher.add_vectors_atomic(embs)
+                    db.batch_update_vector_ids(
+                        [(cid, base + i) for i, cid in enumerate(chunk_ids)]
+                    )
+                embedded = len(chunk_ids)
+            else:
+                logger.warning(
+                    f"[ingest] doc_id={doc_id} 嵌入失败（{len(texts)} 块留 pending）"
+                )
+
+        db.update_document_status(doc_id, "success", chunk_count=len(chunk_ids))
+        db.update_parse_log(log_id, "success", f"{len(chunk_ids)} chunks")
+        db.insert_parse_log(doc_id, "done", "success", "入库完成")
+
+        with _ingest_lock:
+            _reload_memory_state()
+
+        return {
+            "status": "success", "document_id": doc_uid, "doc_id": doc_id,
+            "chunks": len(chunk_ids), "embedded": embedded,
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
 
 @app.route("/ingest", methods=["POST"])
 def handle_ingest():

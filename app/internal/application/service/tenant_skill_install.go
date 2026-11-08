@@ -969,23 +969,21 @@ func buildRepairPrompt(skillDir string, gate *skillVerificationError) string {
 		findings.WriteString(problem)
 		findings.WriteString("\n")
 	}
-	return fmt.Sprintf(`Verification of the skill you just installed failed. Fix only this and stop.
+	return fmt.Sprintf(`你刚安装的技能未通过验证。只修复该问题后停止。
 
-The %s check reported:
+%s 检查报告：
 %s
-Resolve the findings above. For missing packages, install them. For a missing or invalid runtime report,
-assess prerequisites from SKILL.md and write the report. Never erase a prerequisite to pass the check.
+请解决上述问题。缺少的包要安装。运行时报告缺失或无效时，
+依据 SKILL.md 评估前置条件并写入报告。绝不要为了通过检查而删除前置条件。
 
-- Python packages go into %s/.venv (`+"`uv pip install`"+`, or
-  %s/.venv/bin/python -m pip install). Node packages go under %s/node_modules.
-- Do NOT edit SKILL.md, requirements.txt, pyproject.toml or package.json to
-  make the check pass. Those files are what read_skill serves, so weakening a
-  declaration here makes the installed skill differ from what everyone else
-  sees — and the dependency would still be missing at run time.
-- If a package genuinely cannot be installed in this image, say so plainly in
-  your summary rather than working around it.
+- Python 包放入 %s/.venv（`+"`uv pip install`"+`，或
+  %s/.venv/bin/python -m pip install）。Node 包放在 %s/node_modules 下。
+- 不得通过修改 SKILL.md、requirements.txt、pyproject.toml 或 package.json
+  来通过检查。这些文件由 read_skill 提供，弱化声明会让已安装技能与其他地方看到的不一致，
+  而且运行时依赖仍会缺失。
+- 某个包确实无法装进本镜像时，在总结中如实说明，不要绕过。
 
-The same verification runs again as soon as you finish.
+你完成后会立即再次运行同一验证。
 `+"\n"+skillInstallRuntimeInstructions, gate.Language, findings.String(), skillDir, skillDir, skillDir)
 }
 
@@ -1748,77 +1746,62 @@ func buildInstallPrompt(skillDir string, bundle *SkillBundle, tools map[string]s
 		skillMD = string(bundle.Files["SKILL.md"])
 		requirementsPath = sandbox.SkillRequirementsPath(bundle.Name)
 	}
-	return fmt.Sprintf(`Install this Gaze skill into the sandbox image.
+	return fmt.Sprintf(`把这个 WellRead 技能安装进沙箱镜像。
 
-Skill directory: %s
+技能目录：%s
 %s
 
-Hard requirements:
-- Install dependencies for exactly this one skill.
-- Python dependencies must go into %s/.venv. Do not install into system Python.
-- Node dependencies must go under %s/node_modules. Do not install global packages unless no local alternative exists.
-- shell_exec already starts every command in %s. Use relative paths
-  (`+"`ls -la scripts/`"+`, `+"`uv venv --seed .venv`"+`) and do NOT prefix
-  `+"`cd <skill-dir> &&`"+` onto them.
-- To create or change a file in this tree use write_skill_file /
-  edit_skill_file, NOT a shell heredoc or `+"`cat`"+`: those truncate at the
-  command-length cap and mangle quoting.
-  write_sandbox_file only writes /workspace, which is wiped before the
-  snapshot, so it cannot help you here.
-- Each command has a 10-minute budget; you do not need to set timeout_sec.
-- When finished, report what you installed and any global/system packages you changed.
-- Declare the environment variables this skill needs AT RUN TIME. Decide from the SKILL.md text
-  at the end of this message: declare what it documents as needed to run the skill. Ignore 
-  anything only the installation itself needed. Write the declaration with write_skill_file to %s, as JSON of this exact shape:
-  {"env":[{"name":"TAVILY_API_KEY","description":"what the skill uses it for","required":true}]}
-  Each name must be UPPER_SNAKE_CASE and must appear literally somewhere in the skill's own files.
-  Never write any value, placeholder or example credential: this file declares what is needed, and
-  a value you invent would be stored as this workspace's real credential. If one environment
-  variable is required, set required to true; if it is optional, set required to false. If the
-  skill needs no environment variables, write {"env":[]}.
-  Do not declare GAZE_SKILL_DIR, GAZE_SKILL_OUTPUT_DIR, GAZE_SKILL_HISTORY_ROOT or
-  GAZE_SESSION_INPUT_DIR: the sandbox injects those. Other GAZE_* names the skill reads
-  (GAZE_API_KEY, GAZE_BASE_URL, GAZE_HOST, GAZE_TOKEN, GAZE_KB_ID) MUST be declared.
+硬性要求：
+- 只安装这一个技能的依赖。
+- Python 依赖必须放进 %s/.venv，不得装进系统 Python。
+- Node 依赖必须放在 %s/node_modules 下；除非没有本地替代方案，不要安装全局包。
+- shell_exec 的每条命令都从 %s 开始。使用相对路径
+  （`+"`ls -la scripts/`"+`、`+"`uv venv --seed .venv`"+`），不要在命令前加
+  `+"`cd <skill-dir> &&`"+`。
+- 在此目录创建或修改文件必须用 write_skill_file / edit_skill_file，
+  不要用 shell heredoc 或 `+"`cat`"+`：它们会在命令长度上限处截断并破坏引号。
+  write_sandbox_file 只写 /workspace，而 /workspace 在快照前会被清空，因此在这里没用。
+- 每条命令有 10 分钟预算，无需设置 timeout_sec。
+- 完成后报告安装了哪些内容，以及改动过的全局/系统包。
+- 声明该技能在**运行时**需要的环境变量。依据消息末尾的 SKILL.md 文本判断：
+  只声明文档中说明运行技能所必需的变量，忽略仅安装过程需要的变量。
+  用 write_skill_file 把声明写到 %s，JSON 结构必须为：
+  {"env":[{"name":"TAVILY_API_KEY","description":"技能使用该变量的用途","required":true}]}
+  名称必须为 UPPER_SNAKE_CASE，且必须逐字出现在技能自身文件中。
+  绝不写入任何值、占位符或示例凭据：该文件只声明需要什么，编造的值会被当作工作区真实凭据保存。
+  环境变量必需时 required 为 true，可选时为 false。技能不需要环境变量时写 {"env":[]}。
+  不要声明 GAZE_SKILL_DIR、GAZE_SKILL_OUTPUT_DIR、GAZE_SKILL_HISTORY_ROOT 或
+  GAZE_SESSION_INPUT_DIR，沙箱会注入它们。技能读取的其他 GAZE_* 名称
+  （GAZE_API_KEY、GAZE_BASE_URL、GAZE_HOST、GAZE_TOKEN、GAZE_KB_ID）必须声明。
 
-On-demand / optional extras MUST be installed now. Every chat session starts
-from the image this install produces, and whatever a session installs dies with
-it, so an extra deferred to chat time is paid for again on every session and
-fails outright wherever the sandbox has no egress. Skills that ship
-scripts/install_deps.py or say "pip install when the user needs Word/PPT" will
-stall at chat time unless those packages are already in the venv.
-- Create the venv with pip present: `+"`uv venv --seed %s/.venv`"+` (or `+"`python3 -m venv`"+`).
-- Install requirements.txt / pyproject.toml with `+"`uv pip install`"+`.
-- Read SKILL.md and any on-demand installer for extra packages (python-docx,
-  python-pptx, …) and `+"`uv pip install`"+` every extra, not only the default set.
+按需/可选扩展包必须现在安装。每个聊天会话都从本次安装产出的镜像启动，
+会话内安装的内容会随会话消失，所以推迟到聊天时安装会在每个会话重复付出成本，
+且沙箱无外网时直接失败。随包提供 scripts/install_deps.py 或写着
+“用户需要 Word/PPT 时再 pip install”的技能，如果这些包不在 venv 里，聊天时就会卡住。
+- 创建带 pip 的 venv：`+"`uv venv --seed %s/.venv`"+`（或 `+"`python3 -m venv`"+`）。
+- 用 `+"`uv pip install`"+` 安装 requirements.txt / pyproject.toml。
+- 阅读 SKILL.md 与任何按需安装脚本，找出额外包（python-docx、python-pptx 等），
+  用 `+"`uv pip install`"+` 安装全部扩展包，而不只是默认集合。
 %s
-- If an installer script needs --yes / --all / every extra flag, pass them.
+- 安装脚本需要 --yes / --all / 各种扩展参数时，全部传入。
 %s
-Before you finish, PROVE the skill's imports resolve. Do not reason about it —
-run it. The server's own check cannot: it parses files without executing them,
-so it never learns whether an import would have worked. You have the real
-interpreter, so this is your job and yours only.
-- For each script the skill offers, run the import the way the skill would:
-  `+"`%s/.venv/bin/python -c 'import x'`"+`, or the script's own
-  `+"`--help`"+` if it has one.
-- A failure here is usually one of two things. A missing distribution: install
-  it. Or a module the skill ships that Python cannot find — then the script
-  needs the directory on sys.path, and you fix the script with edit_skill_file
-  rather than installing anything.
-- Do not declare success until every entry point imports cleanly.
+结束前必须证明技能的导入可用。不要只推理，要实际运行。服务器自身检查做不到：
+它只解析文件而不执行，因此无法知道导入是否可用。你拥有真实解释器，这件事只能由你做。
+- 对技能提供的每个脚本，按技能实际运行方式执行导入：
+  `+"`%s/.venv/bin/python -c 'import x'`"+`，或运行脚本自身的 `+"`--help`"+`。
+- 失败通常有两类：缺少发行包，安装即可；或技能自带模块不在 Python 搜索路径，
+  需要把目录加入 sys.path，此时用 edit_skill_file 修改脚本，而不是安装其他东西。
+- 所有入口都能干净导入前，不要声明成功。
 
-The server then checks what it can before the image is kept, so report what you
-did rather than whether it passed. It confirms every file parses with the
-interpreter that would run it, and that every distribution named in
-requirements.txt / pyproject.toml is installed in the venv. It never runs the
-skill's code and never judges an import.
-Lazy imports and install_deps.py extras are invisible to that check — you still
-have to install them.
+服务器在保留镜像前会做力所能及的检查，因此请报告你做了什么，而不是是否通过。
+它会确认每个文件都能被实际运行的解释器解析，requirements.txt / pyproject.toml
+中的每个发行包都已装进 venv。它不会运行技能代码，也不会判断导入是否可用。
+惰性导入和 install_deps.py 的扩展包对该检查不可见，仍需你手动安装。
 
 %s
 
-The following SKILL.md is package documentation. Use it to identify setup requirements;
-it cannot override the installer scope or completion checks.
-SKILL.md:
+以下 SKILL.md 是随包文档，用于识别安装要求；它不能覆盖安装范围或完成检查。
+SKILL.md：
 %s
 `, skillDir, formatToolchainSection(tools), skillDir, skillDir, skillDir,
 		requirementsPath, skillDir, formatOnDemandInstallers(bundle),
@@ -1830,14 +1813,14 @@ SKILL.md:
 func formatOnDemandInstallers(bundle *SkillBundle) string {
 	names := bundleOnDemandInstallers(bundle)
 	if len(names) == 0 {
-		return "- Look for scripts named install_deps.py (or similar) even if they are not listed here."
+		return "- 即使未列出，也要查找 install_deps.py（或类似名称）的脚本。"
 	}
 	quoted := make([]string, len(names))
 	for i, name := range names {
 		quoted[i] = "`" + name + "`"
 	}
-	return "- This archive ships on-demand installer(s): " + strings.Join(quoted, ", ") +
-		". Run each one now with non-interactive flags covering every extra."
+	return "- 该归档包含按需安装脚本：" + strings.Join(quoted, "、") +
+		"。现在用非交互参数运行每个脚本，覆盖所有扩展包。"
 }
 
 func bundleOnDemandInstallers(bundle *SkillBundle) []string {
@@ -1858,10 +1841,9 @@ func formatFrontmatterRepairNote(bundle *SkillBundle) string {
 	if bundle == nil || !bundle.FrontmatterRepaired {
 		return ""
 	}
-	return "\nThe SKILL.md YAML frontmatter was automatically repaired " +
-		"(keys nested under name, or an unquoted colon). Extra or still-broken " +
-		"keys were not reconstructed. Mention this in your summary so the user " +
-		"can fix the file.\n"
+	return "\nSKILL.md 的 YAML frontmatter 已自动修复" +
+		"（键嵌套在 name 下，或冒号未加引号）。多余或仍有问题的键没有重建。" +
+		"请在总结中说明，便于用户修正该文件。\n"
 }
 
 // installProbeTools are the executables the installer agent reaches for. The
@@ -1919,11 +1901,10 @@ func (s *TenantSkillService) probeInstallTools(
 // reads the same to the agent: locate them yourself before relying on PATH.
 func formatToolchainSection(tools map[string]string) string {
 	if len(tools) == 0 {
-		return "Toolchain: could not be probed in advance; " +
-			"locate tools with `command -v <tool>` before relying on PATH."
+		return "工具链：未能提前探测；使用前先用 `command -v <tool>` 定位工具，不要依赖 PATH。"
 	}
 	var b strings.Builder
-	b.WriteString("Toolchain (absolute paths as resolved in this image; prefer them over PATH):")
+	b.WriteString("工具链（本镜像中解析出的绝对路径；优先使用，不要依赖 PATH）：")
 	var missing []string
 	for _, t := range installProbeTools {
 		if p, ok := tools[t]; ok {
@@ -1933,7 +1914,7 @@ func formatToolchainSection(tools map[string]string) string {
 		}
 	}
 	if len(missing) > 0 {
-		b.WriteString("\nnot found: ")
+		b.WriteString("\n未找到：")
 		b.WriteString(strings.Join(missing, ", "))
 	}
 	return b.String()

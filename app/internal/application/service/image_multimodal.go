@@ -26,36 +26,32 @@ import (
 
 const (
 	vlmOCRPrompt = "<system_prompt>\n" +
-		"You are an OCR assistant. Your task is to extract all body text content from this document image and output in pure Markdown format.\n" +
+		"你是 OCR 助手。任务是从这张文档图片中提取全部正文内容，并以纯 Markdown 输出。\n" +
 		"</system_prompt>\n\n" +
 		"<instructions>\n" +
-		"1. Ignore headers and footers.\n" +
-		"2. Use Markdown table syntax for tables.\n" +
-		"3. Use LaTeX format for formulas (wrapped with $ or $$).\n" +
-		"4. Organize content in the original reading order.\n" +
-		"5. Output ONLY the extracted text content. Do NOT include any HTML tags, reasoning, or unrelated comments.\n" +
-		"6. If there is absolutely no recognizable text content in the image, reply ONLY with: No text content.\n" +
+		"1. 忽略页眉和页脚。\n" +
+		"2. 表格使用 Markdown 表格语法。\n" +
+		"3. 公式使用 LaTeX（用 $ 或 $$ 包裹）。\n" +
+		"4. 按原始阅读顺序组织内容。\n" +
+		"5. 只输出提取到的文本内容，不要包含 HTML 标签、推理过程或无关评论。\n" +
+		"6. 图片中完全没有可识别文字时，只回复：无文字内容。\n" +
 		"</instructions>"
 	vlmOCRScannedPDFPrompt = "<system_prompt>\n" +
-		"You are an OCR and document layout extraction assistant. The input image is a page from a scanned PDF document.\n" +
-		"Your task is to carefully extract all text and layout structure from the image, and output the result in pure Markdown format.\n" +
+		"你是 OCR 与文档版面提取助手。输入是一页扫描 PDF 文档的图片。\n" +
+		"任务是从图片中仔细提取全部文字与版面结构，并以纯 Markdown 输出。\n" +
 		"</system_prompt>\n\n" +
 		"<instructions>\n" +
-		"1. Ignore headers, footers, and page numbers.\n" +
-		"2. Preserve the original document's paragraph and hierarchical structure as much as possible.\n" +
-		"3. If there are tables, use Markdown table syntax to represent them.\n" +
-		"4. If there are mathematical formulas, use LaTeX format wrapped in $ or $$.\n" +
-		"5. Output ONLY the extracted text content. Do NOT include any HTML tags, reasoning, or unrelated comments.\n" +
-		"6. If there is absolutely no recognizable text content in the image, reply ONLY with: No text content.\n" +
+		"1. 忽略页眉、页脚和页码。\n" +
+		"2. 尽量保留原文的段落与层级结构。\n" +
+		"3. 有表格时使用 Markdown 表格语法。\n" +
+		"4. 有数学公式时使用 LaTeX，用 $ 或 $$ 包裹。\n" +
+		"5. 只输出提取到的文本内容，不要包含 HTML 标签、推理过程或无关评论。\n" +
+		"6. 图片中完全没有可识别文字时，只回复：无文字内容。\n" +
 		"</instructions>"
 )
 
 func buildVLMCaptionPrompt(ctx context.Context, cfg types.VLMConfig) string {
-	language := strings.TrimSpace(cfg.DescriptionLanguage)
-	if language == "" {
-		language = types.LanguageNameFromContext(ctx)
-	}
-	prompt := fmt.Sprintf("Provide a brief and concise description of the main content of the image in %s.", language)
+	prompt := "请用简体中文简要、准确地描述图片的主要内容。"
 	return types.AppendCustomPromptInstructions(prompt, cfg.CustomInstructions, "image_description")
 }
 

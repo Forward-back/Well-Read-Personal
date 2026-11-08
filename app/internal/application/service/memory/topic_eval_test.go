@@ -119,9 +119,9 @@ func TestTopicPromptsCarryTheRulesTheEvalSetDependsOn(t *testing.T) {
 	segment := transcriptSegment{lines: []transcriptLine{{content: "问题"}}}
 	prompt := buildExtractionPrompt(segment, nil, nil,
 		[]*types.MemoryTopicStat{{Topic: "门店排班管理"}}, "")
-	require.Contains(t, prompt, "SAME subject",
+	require.Contains(t, prompt, "同一主题",
 		"reuse has to be an identity test; 'is about' is a relatedness test and merges everything adjacent")
-	require.Contains(t, prompt, "Do not force a fit")
+	require.Contains(t, prompt, "不要强行套用")
 }
 
 // Long lists invite picking something off them, so the extraction call sees a
@@ -277,10 +277,10 @@ func TestGoodSubjectsRecurAndQueryShapedOnesDoNot(t *testing.T) {
 // The granularity rule has to survive in the prompt, since nothing downstream
 // can recover a subject from a label that already baked one question into it.
 func TestExtractionPromptTeachesSubjectLevelNaming(t *testing.T) {
-	require.Contains(t, extractionSystemPrompt, "RECURS",
+	require.Contains(t, extractionSystemPrompt, "重复出现",
 		"the reason a subject must be nameable at a recurring level has to be stated")
-	require.Contains(t, extractionSystemPrompt, "belong to the question, not to the subject name")
-	require.Contains(t, extractionSystemPrompt, "are categories, not",
+	require.Contains(t, extractionSystemPrompt, "属于问题，不属于主题名")
+	require.Contains(t, extractionSystemPrompt, "是类别，不是",
 		"the opposite failure — naming a category — has to stay ruled out too")
 
 	prompt := buildExtractionPrompt(
@@ -289,6 +289,6 @@ func TestExtractionPromptTeachesSubjectLevelNaming(t *testing.T) {
 	require.NotContains(t, prompt, "某选手的参赛项目",
 		"that example taught the model to name queries, which is how the topic table filled "+
 			"with labels that can never match anything again")
-	require.Contains(t, prompt, "same level of",
+	require.Contains(t, prompt, "粒度相同",
 		"a new label has to be written at the level of the ones already tracked")
 }

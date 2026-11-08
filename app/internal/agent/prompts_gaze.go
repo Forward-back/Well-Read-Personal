@@ -1,13 +1,7 @@
 package agent
 
-// GazeTaxonomyPlanPrompt assigns a directory path (category) to every entity /
-// concept page produced by ONE ingest batch in a single call, so the whole set
-// lands on one coherent tree that reuses existing folders — instead of each page
-// inventing its own folders in parallel (which diverges worst on the founding
-// batch, when the KB still has no folders to anchor on). The result is applied
-// in reduce only to pages that don't already have a category, so user edits and
-// previously-filed pages are never churned.
-const GazeSummaryPrompt = `You are a gaze editor. Given the following document content, create a structured gaze summary page in Markdown format.
+// GazeSummaryPrompt 为一篇文档生成知识页摘要。
+const GazeSummaryPrompt = `你是知识页编辑。根据以下文档内容，生成结构化的 Markdown 知识页摘要。
 
 <document>
 <content>
@@ -20,24 +14,23 @@ const GazeSummaryPrompt = `You are a gaze editor. Given the following document c
 </available_gaze_pages>
 
 <instructions>
-1. The FIRST line of your output MUST be: SUMMARY: {one sentence, 15-40 words, describing what this document is about — for gaze index listing}
-2. After the SUMMARY line, write a comprehensive summary of the document in Markdown format.
-3. Include the key facts, arguments, and conclusions.
-4. Use proper heading hierarchy (## for sections, ### for subsections).
-5. **Gaze-link rule**: The available_gaze_pages list above maps slugs to display names and their aliases (format: "[[slug]] = display name (Aliases: a, b)"). Whenever you mention a name or alias that matches a listed entry, you MUST write it as [[slug|display name]] (e.g. [[entity/zhong-guo|中国]]), NOT as bold (**name**) or bare [[slug]]. Use the EXACT slugs provided — do NOT invent new slugs.
-6. **Image rule**: If the document contains <images> tags with <image> elements, you SHOULD include the relevant images in your summary using the Markdown syntax: ![caption](url). Place the images where they are contextually relevant to the text. The URL inside ![caption](url) is an opaque token; reproduce it EXACTLY and VERBATIM, do not alter, shorten, or normalize it.
-7. At the end, include a "## Key Takeaways" section with bullet points.
-8. Write in {{.Language}}.
-9. Keep the summary concise but thorough (500-1500 words depending on document length).
-10. **Empty content rule**: If the <content> block above is empty, contains only image references with no extracted text, or otherwise carries no substantive information, output exactly: "SUMMARY: No textual content was extractable from this document." followed by a brief note explaining that the document could not be summarised. Do NOT invent a topic, do NOT guess from any other clue.
+1. 输出第一行必须是：SUMMARY: {一句话，15-40 字，说明本文档讲什么，用于知识页索引}
+2. SUMMARY 行之后，用 Markdown 写出文档的完整摘要。
+3. 包含关键事实、论点与结论。
+4. 使用正确的标题层级（## 章节，### 小节）。
+5. **知识页链接规则**：上方 available_gaze_pages 把 slug 映射到显示名与别名（格式："[[slug]] = 显示名 (Aliases: a, b)"）。正文提到与列表条目匹配的名称或别名时，必须写成 [[slug|显示名]]（例如 [[entity/zhong-guo|中国]]），不要用加粗（**名称**）或裸 [[slug]]。只使用给定 slug，不得编造新 slug。
+6. **图片规则**：文档包含 <images> 标签与 <image> 元素时，应在摘要中以 Markdown 语法 ![说明](url) 放入相关图片，放在上下文相关的位置。![说明](url) 中的 URL 是不透明 token，必须原样逐字复现，不得修改、截短或规范化。
+7. 结尾包含“## 关键要点”项目列表。
+8. 使用简体中文。
+9. 摘要简洁但完整（按文档长度 500-1500 字）。
+10. **空内容规则**：<content> 为空、只含没有提取文本的图片引用，或没有实质信息时，只输出：“SUMMARY: 无法从本文档中提取文本内容。”并附一句简短说明。不得编造主题，不得依据其他线索猜测。
 </instructions>
 
-Output the SUMMARY line first, then the Markdown content. Do not include any other preamble.`
+先输出 SUMMARY 行，再输出 Markdown 内容。不要其他前言。`
 
-// GazeKnowledgeExtractPrompt extracts both entities and concepts in a single LLM call.
-// Returns a JSON object with "entities" and "concepts" arrays.
-// This replaces the former separate GazeEntityExtractPrompt and GazeConceptExtractPrompt.
-const GazeKnowledgeExtractPrompt = `You are a knowledge extraction system. Analyze the following document and extract all significant entities AND key concepts.
+// GazeKnowledgeExtractPrompt 在单次 LLM 调用中同时抽取实体与概念。
+// 返回包含 "entities" 与 "concepts" 数组的 JSON 对象。
+const GazeKnowledgeExtractPrompt = `你是知识抽取系统。分析以下文档，抽取所有重要实体与关键概念。
 
 <document>
 <content>
@@ -50,99 +43,93 @@ const GazeKnowledgeExtractPrompt = `You are a knowledge extraction system. Analy
 </previous_slugs>
 
 <instructions>
-Return a JSON object with two arrays: "entities" and "concepts".
-**IMPORTANT: Write ALL names, descriptions, and details in {{.Language}}**.
+返回包含两个数组的 JSON 对象："entities" 与 "concepts"。
+**重要：所有名称、描述与细节都使用简体中文**。
 
-If the <content> block above is empty, contains only image references with no extracted text, or otherwise carries no substantive information, return {"entities": [], "concepts": []}. Do NOT invent entities or concepts from any other source.
+<content> 为空、只含没有提取文本的图片引用，或没有实质信息时，返回 {"entities": [], "concepts": []}。不得从其他来源编造实体或概念。
 
-### Slug Continuity Rules
-If previous slugs are provided above, you MUST follow these rules:
-- If an entity or concept from the previous extraction still exists in the current document, **reuse its exact slug** from the previous list. Do NOT generate a new slug for the same thing.
-- If an entity or concept no longer appears in the document, **do NOT include it** in the output.
-- Only generate new slugs for entities/concepts that are genuinely new (not present in the previous list).
-- This ensures slug stability across document updates.
+### Slug 连续性规则
+上方提供 previous_slugs 时，必须遵循：
+- 之前抽取过的实体或概念仍出现在当前文档中时，**复用其原 slug**，不得为同一对象生成新 slug。
+- 实体或概念不再出现在文档中时，**不要包含**在输出中。
+- 只对真正新增的实体/概念生成新 slug。
+- 这样可保证文档更新时 slug 稳定。
 
-### Entities (people, organizations, products, places, technologies, events, etc.)
-Each entity should have:
-- "name": The entity name in {{.Language}} (human-readable)
-- "slug": URL-friendly slug, format "entity/<lowercase-hyphenated-name>" (use romanized/pinyin form for non-Latin names). **Reuse previous slug if the entity was extracted before.**
-- "aliases": An array of strings representing names that refer to THE EXACT SAME entity. Only include: official abbreviations (e.g. "IBM" for "International Business Machines"), full/short name variants (e.g. "腾讯" for "腾讯控股有限公司"), translations (e.g. "Apple" for "苹果公司"), and well-known alternate names (e.g. "Alphabet" for "Google母公司"). Do NOT include parent categories, related products, generic terms, or broader concepts. Provide [] if none.
-- "description": **Index listing summary** — one sentence, 15-40 words, in {{.Language}}. Describes WHAT this entity IS and its role in the document. Must be self-contained (understandable without reading the full page). This will be displayed in the gaze index.
-- "details": A 2-5 sentence summary in {{.Language}} of key facts from the document. **Image rule**: If the document contains relevant <image> elements in an <images> tag, include them in the details using Markdown syntax: ![caption](url). The URL inside ![caption](url) is an opaque token; reproduce it EXACTLY and VERBATIM, do not alter, shorten, or normalize it.
+### 实体（人物、组织、产品、地点、技术、事件等）
+每个实体包含：
+- "name"：实体名称（简体中文，人类可读）
+- "slug"：URL 友好 slug，格式 "entity/<小写连字符名称>"（非拉丁名称用拼音）。**之前抽取过的实体复用原 slug。**
+- "aliases"：指向**完全相同实体**的名称数组。只包含官方缩写（如“IBM”之于“International Business Machines”）、全称/简称变体（如“腾讯”之于“腾讯控股有限公司”）、译名（如“Apple”之于“苹果公司”）以及广为人知的别名（如“Alphabet”之于“Google 母公司”）。不要包含上级分类、相关产品、泛称或更宽泛概念。没有则提供 []。
+- "description"：**索引摘要**——一句话，15-40 字，说明该实体是什么及其在文档中的角色。必须自足（不读完整页面也能理解），将显示在知识页索引中。
+- "details"：2-5 句关键事实摘要。**图片规则**：文档在 <images> 标签中包含相关 <image> 元素时，在 details 中以 ![说明](url) 放入。URL 是不透明 token，必须原样逐字复现，不得修改、截短或规范化。
 
-Only include entities that are substantively discussed (mentioned at least twice or described in detail). Do NOT include generic terms.
+只包含被实质性讨论的实体（至少提及两次或有详细描述）。不要包含泛称。
 
-### Concepts (topics, themes, methodologies, theories, etc.)
-Each concept should have:
-- "name": The concept name in {{.Language}} (human-readable)
-- "slug": URL-friendly slug, format "concept/<lowercase-hyphenated-name>" (use romanized/pinyin form for non-Latin names). **Reuse previous slug if the concept was extracted before.**
-- "aliases": An array of strings representing names that refer to THE EXACT SAME concept. Only include: official abbreviations (e.g. "RAG" for "Retrieval-Augmented Generation"), full/short name variants, and well-known synonyms used interchangeably in the field. Do NOT include sub-topics, related techniques, broader categories, or implementation details. Provide [] if none.
-- "description": **Index listing summary** — one sentence, 15-40 words, in {{.Language}}. Defines WHAT this concept IS. Must be self-contained (understandable without reading the full page). This will be displayed in the gaze index.
-- "details": A 2-5 sentence explanation in {{.Language}} as discussed in the document. **Image rule**: If the document contains relevant <image> elements in an <images> tag, include them in the details using Markdown syntax: ![caption](url). The URL inside ![caption](url) is an opaque token; reproduce it EXACTLY and VERBATIM, do not alter, shorten, or normalize it.
+### 概念（主题、领域、方法论、理论等）
+每个概念包含：
+- "name"：概念名称（简体中文，人类可读）
+- "slug"：URL 友好 slug，格式 "concept/<小写连字符名称>"（非拉丁名称用拼音）。**之前抽取过的概念复用原 slug。**
+- "aliases"：指向**完全相同概念**的名称数组。只包含官方缩写（如“RAG”之于“Retrieval-Augmented Generation”）、全称/简称变体以及领域内通用的同义说法。不要包含子主题、相关技术、上级分类或实现细节。没有则提供 []。
+- "description"：**索引摘要**——一句话，15-40 字，定义该概念是什么。必须自足（不读完整页面也能理解），将显示在知识页索引中。
+- "details"：2-5 句解释，基于文档讨论。**图片规则**：文档在 <images> 标签中包含相关 <image> 元素时，在 details 中以 ![说明](url) 放入。URL 是不透明 token，必须原样逐字复现，不得修改、截短或规范化。
 
-Only include concepts that are substantively discussed. Skip trivial or overly generic concepts.
+只包含被实质性讨论的概念，跳过琐碎或过于宽泛的概念。
 
-### Deduplication Rules
-- If something is a specific named thing (person, company, product, place), put it ONLY in "entities".
-- If something is an abstract idea, methodology, or theory, put it ONLY in "concepts".
-- Never duplicate items across the two arrays.
+### 去重规则
+- 具体命名对象（人物、公司、产品、地点）只放入 "entities"。
+- 抽象想法、方法论或理论只放入 "concepts"。
+- 两个数组之间不得重复。
 
-### JSON Formatting Rules
-- **CRITICAL**: Do NOT use literal newline characters inside JSON string values. If you need a newline in a string, you MUST use the escaped sequence \n.
+### JSON 格式规则
+- **关键**：JSON 字符串值中不得使用字面换行符；需要换行时必须使用转义序列 \n。
 </instructions>
 
-Output ONLY valid JSON. Example:
+只输出有效 JSON。示例：
 {
   "entities": [
     {
-      "name": "Acme Corp",
+      "name": "Acme 公司",
       "slug": "entity/acme-corp",
       "aliases": ["Acme", "Acme Corporation"],
-      "description": "A technology company specializing in AI solutions.",
-      "details": "Acme Corp was founded in 2020 and has grown to 500 employees. They focus on enterprise AI products and recently launched their flagship RAG platform."
+      "description": "一家专注人工智能解决方案的技术公司。",
+      "details": "Acme 公司成立于 2020 年，已发展到 500 名员工，主要做企业级 AI 产品，最近发布了旗舰 RAG 平台。"
     }
   ],
   "concepts": [
     {
-      "name": "Retrieval-Augmented Generation",
+      "name": "检索增强生成",
       "slug": "concept/retrieval-augmented-generation",
       "aliases": ["RAG"],
-      "description": "A technique that combines information retrieval with language model generation.",
-      "details": "RAG works by first retrieving relevant documents from a knowledge base using vector similarity search, then feeding those documents as context to an LLM for answer generation."
+      "description": "把信息检索与语言模型生成结合起来的技术。",
+      "details": "RAG 先通过向量相似度检索从知识库取回相关文档，再把文档作为上下文交给 LLM 生成答案。"
     }
   ]
 }`
 
-// GazeCandidateSlugPrompt (Pass 0 of the chunk-cited pipeline) asks the LLM to
-// scan a document and output the SKELETON of all entities/concepts it contains:
-// name, slug, aliases, a short description, and a short details tiebreaker.
-// The heavy lifting — linking each slug to concrete supporting chunks — is
-// done in a second pass (see GazeChunkCitationPrompt). Because this prompt no
-// longer has to carry full facts per item, it stays cheap even for long docs.
-const GazePageModifySystemPrompt = `You are a gaze editor tasked with updating an existing gaze page. You must process NEW information to add and/or deleted documents whose exclusive contributions must be removed.
+// GazePageModifySystemPrompt 用于更新已有知识页。
+const GazePageModifySystemPrompt = `你是知识页编辑，负责更新已有知识页：吸收新信息，并移除仅由已删除文档贡献的内容。
 
-### SOURCE GROUNDING & MERGE RULES (CRITICAL):
-1. **No Inline Chunk IDs:** Chunk handles such as [c003] are internal processing metadata. NEVER output them in the page body or summary, and remove any legacy inline chunk handles from existing content while editing. Source associations are stored separately by the system.
-2. **Mandatory Grounding:** Every newly added factual claim, entity, or numerical value MUST be directly supported by the provided new source chunks, but the final prose must remain clean Markdown without inline chunk IDs.
-3. **No Hallucination:** Do not invent, synthesize, or infer any information that is not explicitly present in the provided source chunks. If the new chunks clearly and directly supersede or contradict existing content, update the main text to reflect the newer supported information AND add a brief "Contradictions / Updates" section summarizing the change. If the conflict is ambiguous, unresolved, or not directly supported by the provided chunks, do not overwrite the existing content; instead, add only a "Contradictions / Updates" section describing the conflict.
-4. The shared source-context block describes what each source document is about and what kind of document it is. Use it only to calibrate scope, attribution, and tone. Never copy source-context wording into the page as factual evidence.
-5. Stable system-owned output, grounding, safety, and factuality rules override any business instructions.
+### 来源依据与合并规则（关键）：
+1. **不输出内联分块 ID：** [c003] 等分块句柄是内部处理元数据，绝不能在页面正文或摘要中输出；编辑时还要清除旧内容中的内联分块句柄。来源关联由系统单独保存。
+2. **必须有依据：** 每个新增的事实性结论、实体或数值都必须由提供的新源分块直接支撑，但最终正文必须是干净的 Markdown，不含内联分块 ID。
+3. **不得编造：** 不得编造、综合或推断源分块中不存在的信息。新分块明确且直接取代或推翻旧内容时，更新正文并在“矛盾/更新”小节概述变化。冲突含糊、未解决或没有分块直接支撑时，不要覆盖旧内容，只在“矛盾/更新”小节描述冲突。
+4. 共享来源上下文块描述每份源文档的主题与类型，只用于校准范围、归因和语气，不得把其措辞当作事实证据复制到页面。
+5. 系统级输出、依据、安全与事实性规则优先于任何业务指令。
 
-### EDITING AND OUTPUT RULES:
-1. You are a COMPILER, not a creative writer. Stay close to the verbatim source wording. You may lightly reorder, deduplicate, and join related sentences, but must not rephrase for style, expand short statements, or invent transitions.
-2. Do not over-structure. Introduce a section heading only if the source or existing page uses it. Prefer a single top-level heading, short paragraphs, and flat factual lists over an invented hierarchy.
-3. Do not add rhetorical filler such as "aims to provide", "designed to", "旨在帮助", "致力于", or "具有重要意义" unless it appears verbatim in an evidentiary source chunk.
-4. Keep self-reported claims scoped and attributed. Do not elevate a resume, product page, announcement, or first-person statement into an industry-wide fact.
-5. Preserve existing information that remains valid and on-topic. Maintain the existing page's structure and formatting style where possible.
-6. Keep a [[slug|name]] link only when its slug is present in the supplied valid-link list. Never invent a slug and never link a page to itself.
-7. Images may be included only from supplied new information. Treat each Markdown image URL as an opaque token and reproduce it exactly without altering, shortening, or normalizing it.
-8. The first output line must be "SUMMARY: {one sentence, 15-40 words}", followed immediately by clean Markdown page content.
+### 编辑与输出规则：
+1. 你是编译器，不是创意写作者。尽量贴近源文措辞，可轻度调整顺序、去重、合并相关句子，但不得为了风格改写、扩写短句或编造过渡。
+2. 不要过度结构化。只有源文或现有页面使用某标题时才引入；优先单一顶级标题、短段落与平实事实列表，不要自造层级。
+3. 不得添加“旨在提供”“致力于”“具有重要意义”等修辞填充，除非在证据分块中逐字出现。
+4. 自述性内容要限定范围并标明归属。不要把简历、产品页、公告或第一人称陈述提升为行业事实。
+5. 保留仍然有效且切题的现有信息；尽量维持现有页面结构与格式风格。
+6. 只有 slug 出现在有效链接列表时，才保留 [[slug|名称]] 链接；不得编造 slug，也不得让页面链接到自身。
+7. 图片只能来自提供的新信息。每个 Markdown 图片 URL 都是不透明 token，必须原样复现，不得修改、截短或规范化。
+8. 输出第一行必须是 "SUMMARY: {一句话，15-40 字}"，紧接着是干净的 Markdown 页面内容。
 
-Output the SUMMARY line first, followed by the updated Markdown content, with no other preamble.`
+先输出 SUMMARY 行，再输出更新后的 Markdown 内容，不要其他前言。`
 
-// GazePageModifyUserPrompt contains the per-batch and per-page data. The document-
-// level source context deliberately comes first: all pages generated from one
-// source then share the longest possible prefix before page metadata diverges.
+// GazePageModifyUserPrompt 包含每批与每页数据。文档级来源上下文放在最前，
+// 让同一来源生成的页面共享最长前缀。
 const GazePageModifyUserPrompt = `{{if .HasAdditions}}<shared_source_contexts>
 {{.SharedSourceContexts}}</shared_source_contexts>
 {{end}}
@@ -154,7 +141,7 @@ const GazePageModifyUserPrompt = `{{if .HasAdditions}}<shared_source_contexts>
   <aliases>{{.PageAliases}}</aliases>{{end}}
 </page_metadata>
 
-This gaze page is specifically about **{{.PageTitle}}** (a {{.PageType}}). Every statement on the page MUST be directly about this exact {{.PageType}} — not about related, adjacent, or similarly-named things.
+本知识页专门讲 **{{.PageTitle}}**（{{.PageType}}）。页面中的每句话都必须直接围绕这个 {{.PageType}}，不能讲相关、相邻或名称相似的其他对象。
 
 <existing_page_content>
 {{.ExistingContent}}
@@ -165,7 +152,7 @@ This gaze page is specifically about **{{.PageTitle}}** (a {{.PageType}}). Every
 {{.NewContent}}
 </new_information>
 
-The <new_information> block above is assembled from VERBATIM source chunks already cited as directly supporting this page. The preceding <shared_source_contexts> block is framing only, not evidence.
+上方 <new_information> 由已确认直接支撑本页的源分块原文组成；前面的 <shared_source_contexts> 只是背景说明，不是证据。
 {{end}}
 
 {{if .HasRetractions}}
@@ -183,44 +170,44 @@ The <new_information> block above is assembled from VERBATIM source chunks alrea
 </valid_gaze_links>
 
 <instructions>
-1. The FIRST line of your output MUST be: SUMMARY: {one sentence, 15-40 words, describing what this page is about after the update — for gaze index listing}
+1. 输出第一行必须是：SUMMARY: {一句话，15-40 字，说明更新后本页讲什么，用于知识页索引}
 {{if .HasRetractions}}
-2. REMOVE facts/claims that were ONLY sourced from the <deleted_documents> and are NOT present in any <remaining_source_documents> or <new_information>.
+2. 删除仅来自 <deleted_documents>、且不存在于任何 <remaining_source_documents> 或 <new_information> 中的事实/结论。
 {{end}}
 {{if .HasAdditions}}
-3. ADD and MERGE the facts from <new_information> into the page. You are a COMPILER, not a writer:
-   - **CRITICAL CONFLICT CHECK**: First verify that the <new_information> is actually about **{{.PageTitle}}** (as declared in <page_metadata>). If a piece of new info clearly belongs to a DIFFERENT but related thing (e.g., this page is about "Hunyuan Model" but the new info is about "Qwen3"; or this page is about "居民身份证" but the new info is about "工作居住证"), you MUST REJECT that part of the new information and DO NOT add it.
-   - If it is genuinely about {{.PageTitle}} and contradicts old content, prefer the newer information.
+3. 把 <new_information> 中的事实加入并合并到页面。你是编译器，不是写作者：
+   - **关键冲突检查**：先确认 <new_information> 确实在讲 **{{.PageTitle}}**（<page_metadata> 中声明）。如果某条新信息明显属于另一个相关但不同的对象（例如本页是“混元模型”，新信息却是“Qwen3”；或本页是“居民身份证”，新信息却是“工作居住证”），必须拒绝该部分，不得加入。
+   - 确实围绕 {{.PageTitle}} 且与旧内容冲突时，优先采用较新信息。
 {{end}}
-4. Preserve existing information that is still valid and still about {{.PageTitle}}.
-5. Keep [[slug|name]] gaze-link references ONLY if the slug appears in the <valid_gaze_links> list above. Remove any [[slug|name]] whose slug is NOT in that list. Do NOT invent new gaze-link slugs. The page's own slug ({{.PageSlug}}) MUST NOT appear as a [[...]] link inside its own content.
-6. Maintain the existing page structure and formatting style. Use "# {{.PageTitle}}" as the top-level heading if the page does not already have one. Do NOT introduce new heading levels beyond what the source or existing page justifies.
+4. 保留仍然有效且仍围绕 {{.PageTitle}} 的现有信息。
+5. 只有 slug 出现在上方 <valid_gaze_links> 列表中时，才保留 [[slug|名称]] 知识页链接；删除不在列表中的链接。不得编造新知识页 slug。页面自身 slug（{{.PageSlug}}）不得作为 [[...]] 链接出现在自己的内容中。
+6. 维持现有页面结构与格式风格。页面没有顶级标题时使用 "# {{.PageTitle}}"；不要引入源文或现有页面不支持的标题层级。
 {{if .HasRetractions}}
-7. If after removing deleted content the page becomes nearly empty and there is no new information to add, output just: "SUMMARY: (empty page)\n# {{.PageTitle}}\n\n*This page's primary source document was removed.*"
+7. 删除内容后页面几乎为空且没有新信息可加时，只输出："SUMMARY: (空页面)\n# {{.PageTitle}}\n\n*本页的主要源文档已被删除。*"
 {{end}}
-8. Write in {{.Language}}.
+8. 使用简体中文。
 </instructions>
 
-Output the SUMMARY line first, then the updated Markdown content. Do not include any other preamble.`
+先输出 SUMMARY 行，再输出更新后的 Markdown 内容。不要其他前言。`
 
-// GazeIndexIntroPrompt generates the introduction for a NEW index page (first time only).
-const GazeIndexIntroPrompt = `You are a gaze editor. Write a brief introduction for a gaze knowledge base index page.
+// GazeIndexIntroPrompt 为新索引页生成介绍（仅首次）。
+const GazeIndexIntroPrompt = `你是知识页编辑。为知识库索引页写一段简短介绍。
 
 <document_summaries>
 {{.DocumentSummaries}}
 </document_summaries>
 
 <instructions>
-1. Write a title line starting with "# " that reflects the knowledge domain.
-2. Follow with 2-3 sentences describing what this gaze covers, based on the document summaries above.
-3. Keep it concise — this is just the header section, the directory listing will be added separately below.
-4. Write in {{.Language}}.
+1. 写一行以 "# " 开头的标题，体现知识领域。
+2. 根据上方文档摘要，用 2-3 句话说明本知识页覆盖什么。
+3. 保持简洁；这里只是页头，目录列表会由系统单独添加。
+4. 使用简体中文。
 </instructions>
 
-Output ONLY the title and introduction paragraph. Do NOT generate any directory listings or page links.`
+只输出标题与介绍段落，不要生成目录或页面链接。`
 
-// GazeIndexIntroUpdatePrompt incrementally updates an existing index introduction.
-const GazeIndexIntroUpdatePrompt = `You are a gaze editor. Update the introduction section of a gaze index page to reflect recent changes.
+// GazeIndexIntroUpdatePrompt 增量更新已有索引介绍。
+const GazeIndexIntroUpdatePrompt = `你是知识页编辑。更新知识页索引的介绍，反映最近变化。
 
 <current_introduction>
 {{.ExistingIntro}}
@@ -235,15 +222,12 @@ const GazeIndexIntroUpdatePrompt = `You are a gaze editor. Update the introducti
 </document_summaries>
 
 <instructions>
-1. Update the introduction to accurately reflect the current state of the gaze.
-2. If documents were added, mention the new topics if they significantly change the gaze's scope.
-3. If documents were removed, remove references to those topics if they no longer apply.
-4. Keep the same tone, style, and title format as the existing introduction.
-5. Keep it concise — 1 title line + 2-3 sentences.
-6. Write in {{.Language}}.
+1. 更新介绍，准确反映知识页当前状态。
+2. 新增文档明显改变知识页范围时，提及新主题。
+3. 删除文档后，移除不再适用的主题引用。
+4. 保持与现有介绍相同的语气、风格与标题格式。
+5. 保持简洁：1 行标题 + 2-3 句话。
+6. 使用简体中文。
 </instructions>
 
-Output ONLY the updated title and introduction paragraph. Do NOT generate any directory listings or page links.`
-
-// GazeDeduplicationPrompt asks the LLM to identify duplicate entities/concepts
-// between newly extracted items and existing gaze pages.
+只输出更新后的标题与介绍段落，不要生成目录或页面链接。`

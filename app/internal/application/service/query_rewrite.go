@@ -93,7 +93,7 @@ var (
 	queryRewriteGenericDocNumberPattern = regexp.MustCompile(`[\p{Han}]{2,10}[〔（(]\s*\d{4}\s*[〕）)]\s*\d{1,6}\s*号`)
 )
 
-const queryRewriteSystemPrompt = `你是支付领域知识库问答的「查询改写器」。你的唯一任务是根据实体槽和最近对话，把当前问题中的指代（它/这个/那个/上述/上一条等）和省略补全成一个完整、自包含的问题。
+const queryRewriteSystemPrompt = `你是个人知识库问答的「查询改写器」。你的唯一任务是根据实体槽和最近对话，把当前问题中的指代（它/这个/那个/上述/上一条等）和省略补全成一个完整、自包含的问题。
 
 硬性规则：
 1. 只做指代消解和省略补全，不回答问题、不添加解释、不改变用户意图、不引入历史中不存在的实体。

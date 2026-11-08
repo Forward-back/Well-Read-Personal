@@ -133,9 +133,9 @@ func TestSplitTurnSummarizesThePrefixSeparately(t *testing.T) {
 	require.NoError(t, err)
 
 	require.True(t, result.SplitTurn)
-	assert.Contains(t, result.Summary, "Turn Context (split turn)")
+	assert.Contains(t, result.Summary, "本轮上下文（拆分轮次）")
 	require.GreaterOrEqual(t, len(llm.prompts), 1)
-	assert.Contains(t, llm.prompts[len(llm.prompts)-1], "PREFIX of a turn",
+	assert.Contains(t, llm.prompts[len(llm.prompts)-1], "因过长而被拆分的一轮对话的前半部分",
 		"the prefix must be summarized with the prefix instructions, not the history ones")
 }
 
@@ -276,7 +276,7 @@ func TestTruncatedSummaryIsRejected(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.True(t, result.Degraded)
-	assert.Contains(t, result.Summary, "Raw conversation archive")
+	assert.Contains(t, result.Summary, "原始对话归档")
 	assert.NotContains(t, result.Summary, "half a sum")
 }
 
@@ -289,7 +289,7 @@ func TestSummarizerFailureFallsBackToArchive(t *testing.T) {
 
 	assert.True(t, result.Degraded)
 	assert.Greater(t, result.Freed(), 0, "a degraded summary still has to free room")
-	assert.Contains(t, result.Summary, "Raw conversation archive")
+	assert.Contains(t, result.Summary, "原始对话归档")
 }
 
 // Sandbox paths are the detail a prose summarizer drops first, and losing them

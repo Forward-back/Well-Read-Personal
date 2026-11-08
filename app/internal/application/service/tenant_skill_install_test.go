@@ -336,10 +336,10 @@ func TestFormatToolchainSection(t *testing.T) {
 	})
 	require.Contains(t, section, "- uv: /root/.local/bin/uv")
 	require.Contains(t, section, "- python3: /usr/bin/python3")
-	require.Contains(t, section, "not found: npm, pnpm, pip3, pip, node")
+	require.Contains(t, section, "未找到：npm, pnpm, pip3, pip, node")
 
 	require.Contains(t, formatToolchainSection(nil),
-		"locate tools with `command -v <tool>`")
+		"`command -v <tool>`")
 }
 
 func TestRunInstallReportsVerificationFailureCause(t *testing.T) {
@@ -610,16 +610,16 @@ func TestBuildInstallPromptAsksForADeclarationWithoutValues(t *testing.T) {
 	require.Contains(t, prompt, sandbox.SkillRequirementsPath(fx.bundle.Name))
 	require.Contains(t, prompt, ".gaze/requirements.json")
 	require.Contains(t, prompt, `{"env":[]}`)
-	require.Contains(t, prompt, "Never write any value",
+	require.Contains(t, prompt, "绝不写入任何值",
 		"a value the model invents would be stored as the workspace credential")
 	require.Contains(t, prompt, "GAZE_API_KEY",
 		"the installer must be told credential names are declarable, or it writes {\"env\":[]}")
-	require.Contains(t, prompt, "On-demand / optional extras MUST be installed now")
+	require.Contains(t, prompt, "按需/可选扩展包必须现在安装")
 	require.Contains(t, prompt, "uv venv --seed")
 	require.Contains(t, prompt, "install_deps.py")
 	require.Contains(t, prompt, "write_skill_file",
 		"a heredoc truncates at the command-length cap; the file tools are the writer")
-	require.Contains(t, prompt, "write_sandbox_file only writes /workspace",
+	require.Contains(t, prompt, "write_sandbox_file 只写 /workspace",
 		"the installer must be told why the workspace writer cannot help it")
 	require.Contains(t, prompt, "- uv: /root/.local/bin/uv",
 		"the prompt hands over absolute paths instead of a PATH gamble")
@@ -634,8 +634,8 @@ func TestBuildInstallPromptSaysCommandsAlreadyStartInTheSkillDirectory(t *testin
 
 	prompt := buildInstallPrompt(installSkillDir, fx.bundle, nil)
 
-	require.Contains(t, prompt, "shell_exec already starts every command in "+installSkillDir)
-	require.Contains(t, prompt, "do NOT prefix")
+	require.Contains(t, prompt, "shell_exec 的每条命令都从 "+installSkillDir)
+	require.Contains(t, prompt, "不要在命令前加")
 	require.Contains(t, prompt, "cd <skill-dir> &&")
 }
 
@@ -648,10 +648,10 @@ func TestBuildInstallPromptDemandsImportsBeProvenByRunningThem(t *testing.T) {
 
 	prompt := buildInstallPrompt(installSkillDir, fx.bundle, nil)
 
-	require.Contains(t, prompt, "PROVE the skill's imports resolve")
-	require.Contains(t, prompt, "Do not reason about it")
+	require.Contains(t, prompt, "必须证明技能的导入可用")
+	require.Contains(t, prompt, "不要只推理")
 	require.Contains(t, prompt, installSkillDir+"/.venv/bin/python -c 'import x'")
-	require.Contains(t, prompt, "never judges an import",
+	require.Contains(t, prompt, "不会判断导入是否可用",
 		"the agent must not expect the server to catch an unresolved import")
 	require.Contains(t, prompt, "edit_skill_file",
 		"a shipped module Python cannot find is fixed in the script, not with pip")
@@ -665,7 +665,7 @@ func TestBuildInstallPromptNamesOnDemandInstallerInTheArchive(t *testing.T) {
 		"uv": "/root/.local/bin/uv", "python3": "/usr/bin/python3",
 	})
 
-	require.Contains(t, prompt, "This archive ships on-demand installer(s)")
+	require.Contains(t, prompt, "该归档包含按需安装脚本")
 	require.Contains(t, prompt, "scripts/install_deps.py")
 }
 
@@ -677,8 +677,8 @@ func TestBuildInstallPromptMentionsRepairedFrontmatter(t *testing.T) {
 		"uv": "/root/.local/bin/uv", "python3": "/usr/bin/python3",
 	})
 
-	require.Contains(t, prompt, "YAML frontmatter was automatically repaired")
-	require.Contains(t, prompt, "Mention this in your summary")
+	require.Contains(t, prompt, "SKILL.md 的 YAML frontmatter 已自动修复")
+	require.Contains(t, prompt, "请在总结中说明")
 }
 
 func TestInstallSkillRepoNormalizesStoredUserEnvPrincipal(t *testing.T) {
@@ -1614,7 +1614,7 @@ func TestRunInstallHandsVerificationFindingsBackToTheInstaller(t *testing.T) {
 	require.Contains(t, repair, "imports openpyxl")
 	require.Contains(t, repair, installSkillDir+"/.venv",
 		"the round has to be told where the packages belong")
-	require.Contains(t, repair, "Do NOT edit",
+	require.Contains(t, repair, "不得通过修改",
 		"a repair must not be allowed to edit the tree into passing")
 
 	require.Equal(t, 2, fx.loadCheckPasses, "the repair has to be verified, not trusted")

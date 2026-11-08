@@ -551,13 +551,13 @@ func buildRuntimeContextBlock(
 			}
 		}
 		sb.WriteString("  </pinned_documents>\n")
-		sb.WriteString("  <note>The pinned-document set above is authoritative for THIS turn. ")
-		sb.WriteString("Prioritize retrieving content from these documents (e.g. list_knowledge_chunks with the knowledge_id). ")
-		sb.WriteString("If an earlier turn analysed a different document, do NOT reuse that analysis — re-query against the current scope.</note>\n")
+		sb.WriteString("  <note>上方的固定文档集合对本轮具有权威性。")
+		sb.WriteString("优先从这些文档检索内容（例如用 knowledge_id 调用 list_knowledge_chunks）。")
+		sb.WriteString("如果前一轮分析了其他文档，不要复用那次分析，必须针对当前范围重新查询。</note>\n")
 	}
 
-	sb.WriteString("  <communication_instruction>Do not use internal tool names or identifiers in your answers or in Thought. Say \"keyword retrieval\" instead of grep_chunks, \"semantic retrieval\" instead of knowledge_search, \"browse full document\" instead of list_knowledge_chunks; likewise never expose chunk_id, knowledge_id, or other internal IDs—refer to documents by title or name.</communication_instruction>\n")
-	sb.WriteString("  <answer_instruction>When you have gathered enough information, write your complete user-facing answer as your reply and stop—do not request any more tools in that final message. Until then, keep using tools; do not give a partial answer mid-investigation.</answer_instruction>\n")
+	sb.WriteString("  <communication_instruction>回答与思考中不要使用内部工具名或标识符。用“关键词检索”代替 grep_chunks，用“语义检索”代替 knowledge_search，用“浏览完整文档”代替 list_knowledge_chunks；同样不得暴露 chunk_id、knowledge_id 等内部 ID，用标题或名称指代文档。</communication_instruction>\n")
+	sb.WriteString("  <answer_instruction>收集到足够信息后，把完整的用户可见答案写成回复并停止，最后一条消息不要再请求工具。在此之前持续使用工具，不要中途给出不完整答案。</answer_instruction>\n")
 
 	sb.WriteString("</runtime_context>")
 	return sb.String()
@@ -573,9 +573,9 @@ func buildMustUseBlock(mcpServices []*PinnedMCPServiceInfo, skills []*PinnedSkil
 		}
 		if svc.Discoverable && len(svc.ToolNames) > 0 {
 			lines = append(lines, fmt.Sprintf(
-				"Use relevant available MCP functions for service @%s (server_id=%q) before "+
-					"answering. Their descriptions identify the service and original tool names; use "+
-					"discover_mcp_tools if the service needs reconnection or authentication.",
+				"回答前先使用服务 @%s（server_id=%q）相关的可用 MCP 函数。"+
+					"函数描述标明了服务与原始工具名；服务需要重连或认证时使用 "+
+					"discover_mcp_tools。",
 				sanitizeMustUseField(svc.Name), sanitizeMustUseField(svc.ID)))
 			continue
 		}
@@ -583,12 +583,10 @@ func buildMustUseBlock(mcpServices []*PinnedMCPServiceInfo, skills []*PinnedSkil
 			lines = append(
 				lines,
 				fmt.Sprintf(
-					"Use discover_mcp_tools(mode=\"list_tools\", server_id=%q) for the selected MCP service "+
-						"@%s. Describe the required tools and call them through call_mcp_tool before "+
-						"answering; report connection or authentication failures if the service is "+
-						"unavailable.",
-					sanitizeMustUseField(svc.ID),
+					"对选中的 MCP 服务 @%s 使用 discover_mcp_tools(mode=\"list_tools\", server_id=%q)。"+
+						"说明所需工具并通过 call_mcp_tool 调用后再回答；服务不可用时报告连接或认证失败。",
 					sanitizeMustUseField(svc.Name),
+					sanitizeMustUseField(svc.ID),
 				),
 			)
 			continue
@@ -601,20 +599,20 @@ func buildMustUseBlock(mcpServices []*PinnedMCPServiceInfo, skills []*PinnedSkil
 		if display == "" {
 			display = sanitizeMustUseField(svc.ID)
 		}
-		lines = append(lines, fmt.Sprintf("Must use MCP tools whose names start with %s (@%s) to answer the question below.", prefix, display))
+		lines = append(lines, fmt.Sprintf("回答以下问题前必须使用名称以 %s 开头的 MCP 工具（@%s）。", prefix, display))
 	}
 	for _, skill := range skills {
 		if skill == nil || skill.Name == "" {
 			continue
 		}
 		name := sanitizeMustUseField(skill.Name)
-		lines = append(lines, fmt.Sprintf("Must call read_file(path=%q) for @Skill %q before answering.", "skill://"+name+"/SKILL.md", name))
+		lines = append(lines, fmt.Sprintf("回答前必须先调用 read_file(path=%q) 加载 @技能 %q。", "skill://"+name+"/SKILL.md", name))
 	}
 	if len(lines) == 0 {
 		return ""
 	}
 	return "<must_use>\n" + strings.Join(lines, "\n") +
-		"\nThese selections do not replace research into the task's factual content or exclude other relevant available sources unless the user explicitly restricts them.\n</must_use>"
+		"\n这些选择不替代对任务事实内容的检索，也不排除其他相关可用来源，除非用户明确限制。\n</must_use>"
 }
 
 // sanitizeMustUseField strips newlines and angle brackets so an MCP/skill name

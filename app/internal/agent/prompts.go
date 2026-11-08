@@ -218,9 +218,9 @@ func renderPromptPlaceholders(template string, knowledgeBases []*KnowledgeBaseIn
 	if strings.Contains(result, "{{knowledge_bases}}") {
 		var replacement string
 		if len(knowledgeBases) == 0 {
-			replacement = "(no knowledge bases bound to this session)"
+			replacement = "（本会话未绑定知识库）"
 		} else {
-			replacement = "(see `<bound_knowledge_bases>` inside the user message's `<runtime_context>` for the current bound KB list and their capabilities)"
+			replacement = "（当前绑定知识库列表与能力见用户消息 `<runtime_context>` 中的 `<bound_knowledge_bases>`）"
 		}
 		result = strings.ReplaceAll(result, "{{knowledge_bases}}", replacement)
 	}
@@ -235,7 +235,7 @@ func formatSkillsMetadata(skillsMetadata []*skills.SkillMetadata, shellExecEnabl
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("\n\nAvailable skills: read a relevant skill's listed SKILL.md resource with read_file before applying it. Load additional files only as needed; the returned file list already identifies bundled scripts.\n")
+	b.WriteString("\n\n可用技能：应用相关技能前，先用 read_file 读取其列出的 SKILL.md 资源。仅在需要时加载其他文件；返回的文件列表已经标明随包脚本。\n")
 	for _, skill := range skillsMetadata {
 		if skill != nil {
 			fmt.Fprintf(&b, "- %s: %s (read_file path=%q)\n", skill.Name, skill.Description, "skill://"+skill.Name+"/SKILL.md")
@@ -259,29 +259,26 @@ func formatToolGuidance(names []string) string {
 		return false
 	}
 	var b strings.Builder
-	b.WriteString("\n\nTool execution: use only the tools provided for this turn. Plan internally; use a planning tool only when it helps. Read known paths directly. Batch independent reads; keep dependent operations in order. Inspect results before claiming completion.\n")
-	b.WriteString("For long-running operations, prefer a documented asynchronous mode when available. Use the returned task ID to wait or poll at the recommended interval and retrieve the completed result; after a timeout, check the existing task before resubmitting.\n")
-	b.WriteString("On failure, use the reported cause to correct the input or environment. Retry only after something relevant changes. Permission, policy, or missing-configuration failures are not fixed by switching tools; report the concrete blocker if it cannot be corrected within this session.\n")
+	b.WriteString("\n\n工具执行：只使用本轮提供的工具。在内部计划；只有规划工具确有帮助时才使用。已知路径直接读取。独立读取可批量进行，有依赖的操作按顺序执行。声称完成前先检查结果。\n")
+	b.WriteString("长时间操作如提供文档化的异步模式，优先使用。用返回的任务 ID 按建议间隔等待或轮询，获取完成结果；超时后先检查已有任务再重新提交。\n")
+	b.WriteString("失败时根据报告的原因修正输入或环境；只有相关条件发生变化后才重试。权限、策略或缺少配置类失败不能靠换工具解决；本轮无法修正时如实报告具体阻塞。\n")
 	if has("read_file") {
-		b.WriteString("Use read_file for workspace files, saved web:// pages and listed skill:// resources. " +
-			"In older instructions, translate read_skill(skill_name, file_path) to " +
-			"read_file(path=skill://<name>/<file_path or SKILL.md>) and read_sandbox_file to read_file.\n")
+		b.WriteString("工作区文件、已保存的 web:// 页面和列出的 skill:// 资源使用 read_file 读取。" +
+			"旧说明中的 read_skill(skill_name, file_path) 对应 read_file(path=skill://<name>/<file_path 或 SKILL.md>)，read_sandbox_file 对应 read_file。\n")
 	}
 	if has("shell_exec") || has("write_sandbox_file") {
-		b.WriteString("Session workspace: /workspace. Preserve uploaded originals in /workspace/input. " +
-			"/workspace/output is the only directory collected for download, " +
-			"so it takes finished deliverables only; " +
-			"keep drafts and intermediate files in another directory under /workspace. " +
-			"Commands start from their specified working directory on every call. " +
-			"Files and installed packages persist within the session.\n")
+		b.WriteString("会话工作区为 /workspace。上传的原始文件保存在 /workspace/input。" +
+			"/workspace/output 是唯一会被收集用于下载的目录，只放最终交付物；" +
+			"草稿和中间文件放在 /workspace 下的其他目录。" +
+			"每次命令都从指定的工作目录开始。" +
+			"文件与已安装依赖在会话内保留。\n")
 		b.WriteString(sandboxArtifactReferenceGuidance())
 	}
 	if has("shell_exec") && has("read_file") {
-		b.WriteString("For listed skills, run bundled scripts and your own scripts with " +
-			"shell_exec(skill_name=..., command=...). This selects an installed skill's runtime " +
-			"or stages host skill resources, and applies scoped credentials; " +
-			"use $GAZE_SKILL_DIR for bundled files.\n")
-		b.WriteString("In older instructions, translate execute_skill_script(skill_name, script_path, ...) to shell_exec(skill_name=..., command=...).\n")
+		b.WriteString("列出的技能，用 shell_exec(skill_name=..., command=...) 运行随技能脚本或自己的脚本。" +
+			"它会选择已安装技能运行时或准备宿主技能资源，并应用限定凭据；" +
+			"随包文件使用 $GAZE_SKILL_DIR。\n")
+		b.WriteString("旧说明中的 execute_skill_script(skill_name, script_path, ...) 对应 shell_exec(skill_name=..., command=...)。\n")
 	}
 
 	return b.String()
@@ -296,14 +293,11 @@ func formatToolGuidance(names []string) string {
 // so the server can bind the name to the artifact index it hands the client.
 func sandboxArtifactReferenceGuidance() string {
 	var builder strings.Builder
-	builder.WriteString("  - Include key generated deliverables in your final answer as ")
-	builder.WriteString("`![description](sandbox:<file name>)` using the exact file name and no directory path\n")
-	builder.WriteString("    - Images render inline; charts, tables, and documents ")
-	builder.WriteString("render as a card the user clicks to preview\n")
-	builder.WriteString("    - Never reference a sandbox path (`/workspace/output/...`) ")
-	builder.WriteString("or a bare file name directly — neither resolves in the browser\n")
-	builder.WriteString("    - Prefer output file names without spaces or parentheses; ")
-	builder.WriteString("they keep the reference unambiguous\n")
+	builder.WriteString("  - 最终答案需要引用关键生成交付物时，使用 ")
+	builder.WriteString("`![描述](sandbox:<文件名>)`，文件名必须精确且不能带目录路径\n")
+	builder.WriteString("    - 图片会内联渲染；图表、表格和文档会渲染为可点击预览的卡片\n")
+	builder.WriteString("    - 不得直接引用 sandbox 路径（`/workspace/output/...`）或裸文件名，浏览器无法解析\n")
+	builder.WriteString("    - 输出文件名尽量不含空格和括号，避免引用歧义\n")
 	return builder.String()
 }
 
@@ -324,9 +318,9 @@ func renderPromptPlaceholdersWithStatus(
 	// Knowledge bases need special formatting, so handle it first
 	result := renderPromptPlaceholders(template, knowledgeBases)
 
-	status := "Disabled"
+	status := "未启用"
 	if webSearchEnabled {
-		status = "Enabled"
+		status = "已启用"
 	}
 
 	result = types.RenderPromptPlaceholders(result, types.PlaceholderValues{
@@ -409,11 +403,10 @@ func BuildSystemPromptWithOptions(
 
 // Apply to custom prompts too: mid-run delivery is a harness capability.
 const steerGuidance = "<steering_guidance>\n" +
-	"Messages in <steer_message> guide the task in progress. Apply them in context; " +
-	"respond briefly when appropriate, then continue unfinished work. Preserve unfinished objectives, " +
-	"accepted constraints and useful tool results unless explicitly changed. " +
-	"Acknowledging guidance alone does not complete the task. Follow explicit cancellation or replacement requests. " +
-	"Hide delivery tags. Untagged subsequent requests are ordinary user messages.\n</steering_guidance>"
+	"<steer_message> 中的消息用于指导进行中的任务。结合上下文执行；合适时简短回应，然后继续未完成的工作。" +
+	"除非明确变更，保留未完成目标、已接受的约束与有用的工具结果。" +
+	"仅确认收到指导并不等于完成任务。遵循明确的取消或替换请求。" +
+	"隐藏投递标签；未加标签的后续请求是普通用户消息。\n</steering_guidance>"
 
 // GetPureAgentSystemPrompt returns the Pure Agent system prompt from config templates.
 // The template must be defined in config/prompt_templates/agent_system_prompt.yaml

@@ -17,7 +17,7 @@ func TestAppendCustomPromptInstructions(t *testing.T) {
 		if !strings.HasPrefix(got, "base\n\n<gaze_business_instructions>") {
 			t.Fatalf("unexpected prefix: %q", got)
 		}
-		if !strings.Contains(got, "Focus on contracts.") || !strings.Contains(got, "do not conflict") {
+		if !strings.Contains(got, "Focus on contracts.") || !strings.Contains(got, "不妨碍") {
 			t.Fatalf("missing guidance or precedence rule: %q", got)
 		}
 	})

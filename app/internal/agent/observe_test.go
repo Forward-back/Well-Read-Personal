@@ -292,10 +292,10 @@ func TestBuildMustUseBlock_MCPAndSkills(t *testing.T) {
 	assert.Contains(t, block, "<must_use>")
 	assert.NotContains(t, block, "<runtime_context")
 	assert.NotContains(t, block, "<instruction>")
-	assert.Contains(t, block, "Must use MCP tools whose names start with mcp_chemdb_")
+	assert.Contains(t, block, "回答以下问题前必须使用名称以 mcp_chemdb_")
 	assert.Contains(t, block, "@ChemDB")
-	assert.Contains(t, block, `Must call read_file(path="skill://data-analysis/SKILL.md")`)
-	assert.Contains(t, block, `@Skill "data-analysis"`)
+	assert.Contains(t, block, `回答前必须先调用 read_file(path="skill://data-analysis/SKILL.md")`)
+	assert.Contains(t, block, `@技能 "data-analysis"`)
 }
 
 func TestBuildMustUseBlock_MCPToolPrefixOnly(t *testing.T) {
@@ -320,7 +320,7 @@ func TestBuildMustUseBlock_SkipsMCPWithoutTools(t *testing.T) {
 		}},
 		[]*PinnedSkillInfo{{Name: "data-analysis"}},
 	)
-	assert.Contains(t, block, `Must call read_file(path="skill://data-analysis/SKILL.md")`)
+	assert.Contains(t, block, `回答前必须先调用 read_file(path="skill://data-analysis/SKILL.md")`)
 	assert.NotContains(t, block, "DisabledMCP")
 }
 

@@ -1,14 +1,14 @@
-# Generate session title prompt templates
+# 会话标题生成提示词模板
 templates:
   - id: "default_session_title"
-    name: "Standard Title"
-    description: "Generate a concise session title from user's question"
+    name: "标准标题"
+    description: "根据用户问题生成简短的会话标题"
     default: true
     content: |
-      Generate a short session title based on the user's question.
+      根据用户问题生成简短的会话标题。
 
-      Requirements:
-      - 4-10 words
-      - Only extract the intent of the user's question, don't answer about it
-      - Output only the title, no explanation needed
-      - IMPORTANT: Use {{language}} for the title
+      要求：
+      - 4-10 个词
+      - 只提炼用户问题意图，不要回答问题
+      - 只输出标题，不要解释
+      - 使用简体中文

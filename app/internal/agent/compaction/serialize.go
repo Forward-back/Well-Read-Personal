@@ -35,22 +35,22 @@ func serializeConversation(messages []chat.Message) string {
 			continue
 		case "user":
 			if content := truncate(msg.Content, textMaxChars); content != "" {
-				parts = append(parts, "[User]: "+content)
+				parts = append(parts, "[用户]: "+content)
 			}
 		case "assistant":
 			if msg.ReasoningContent != "" {
 				parts = append(parts,
-					"[Assistant thinking]: "+truncate(msg.ReasoningContent, textMaxChars))
+					"[助手思考]: "+truncate(msg.ReasoningContent, textMaxChars))
 			}
 			if msg.Content != "" {
-				parts = append(parts, "[Assistant]: "+truncate(msg.Content, textMaxChars))
+				parts = append(parts, "[助手]: "+truncate(msg.Content, textMaxChars))
 			}
 			if calls := serializeToolCalls(msg.ToolCalls); calls != "" {
-				parts = append(parts, "[Assistant tool calls]: "+calls)
+				parts = append(parts, "[助手工具调用]: "+calls)
 			}
 		case "tool":
 			if content := truncate(msg.Content, toolResultMaxChars); content != "" {
-				parts = append(parts, fmt.Sprintf("[Tool result %s]: %s", msg.Name, content))
+				parts = append(parts, fmt.Sprintf("[工具结果 %s]: %s", msg.Name, content))
 			}
 		}
 	}
@@ -99,7 +99,7 @@ func truncate(s string, maxChars int) string {
 	if len(runes) <= maxChars {
 		return s
 	}
-	return fmt.Sprintf("%s\n\n[... %d more characters truncated]",
+	return fmt.Sprintf("%s\n\n[... 已截断 %d 个字符]",
 		string(runes[:maxChars]), len(runes)-maxChars)
 }
 
@@ -108,20 +108,20 @@ func truncate(s string, maxChars int) string {
 // needs in order not to redo finished work.
 func rawArchive(messages []chat.Message) string {
 	var sb strings.Builder
-	sb.WriteString("Raw conversation archive (LLM summarization unavailable):\n\n")
+	sb.WriteString("原始对话归档（LLM 摘要不可用）：\n\n")
 	for i := range messages {
 		msg := &messages[i]
 		switch msg.Role {
 		case "user":
-			fmt.Fprintf(&sb, "- User: %s\n", truncate(msg.Content, 500))
+			fmt.Fprintf(&sb, "- 用户：%s\n", truncate(msg.Content, 500))
 		case "assistant":
 			if calls := serializeToolCalls(msg.ToolCalls); calls != "" {
-				fmt.Fprintf(&sb, "- Assistant [%s]: %s\n", calls, truncate(msg.Content, 500))
+				fmt.Fprintf(&sb, "- 助手 [%s]：%s\n", calls, truncate(msg.Content, 500))
 				continue
 			}
-			fmt.Fprintf(&sb, "- Assistant: %s\n", truncate(msg.Content, 500))
+			fmt.Fprintf(&sb, "- 助手：%s\n", truncate(msg.Content, 500))
 		case "tool":
-			fmt.Fprintf(&sb, "- Tool[%s]: %s\n", msg.Name, truncate(msg.Content, 500))
+			fmt.Fprintf(&sb, "- 工具[%s]：%s\n", msg.Name, truncate(msg.Content, 500))
 		}
 	}
 	return sb.String()

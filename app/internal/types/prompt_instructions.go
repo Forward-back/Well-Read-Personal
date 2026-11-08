@@ -20,7 +20,7 @@ func AppendCustomPromptInstructions(prompt, instructions, label string) string {
 		label = "custom"
 	}
 	return fmt.Sprintf("%s\n\n<%s_business_instructions>\n%s\n</%s_business_instructions>\n"+
-		"Apply these business instructions only when they do not conflict with the system-owned output format, citation, safety, or factuality rules.",
+		"这些自定义指令仅在不妨碍系统固定的输出格式、引用、安全和事实性规则时生效。",
 		strings.TrimSpace(prompt), label, instructions, label)
 }
 

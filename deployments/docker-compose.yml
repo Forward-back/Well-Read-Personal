@@ -1,5 +1,5 @@
-# 精简版部署（银联商务 RAG 融合项目）
-# 服务：frontend + app + docreader + postgres + redis + ylsw（YLSW 检索引擎）
+# 精简版部署（WellRead Personal 个人版六服务栈）
+# 服务：frontend + app + docreader + postgres + redis + ylsw（RAG 侧车）
 # 已移除：sandbox / odl-hybrid / searxng / minio / neo4j / qdrant / milvus /
 #         weaviate / doris / dex / langfuse / mcp 及配套 volume
 # 原完整版见 docker-compose.full.yml.bak
@@ -38,6 +38,8 @@ services:
         - APK_MIRROR_ARG=${APK_MIRROR_ARG:-}
         - WITH_ANYDOC=${WITH_ANYDOC:-1}
         - GOPROXY_ARG=${GOPROXY_ARG:-https://goproxy.cn,direct}
+        - RUSTUP_DIST_SERVER_ARG=${RUSTUP_DIST_SERVER:-}
+        - RUSTUP_UPDATE_ROOT_ARG=${RUSTUP_UPDATE_ROOT:-}
     container_name: Gaze-app
     ports:
       - "${APP_PORT:-6152}:8080"
@@ -66,15 +68,9 @@ services:
       - AUTO_MIGRATE=${AUTO_MIGRATE:-true}
       - APP_EXTERNAL_URL=${APP_EXTERNAL_URL:-}
       - FRONTEND_BASE_URL=${FRONTEND_BASE_URL:-}
-      # 认证 / 空间 / RBAC / 审计
-      - DISABLE_REGISTRATION=${DISABLE_REGISTRATION:-false}
+      # 认证 / 审计
       - GAZE_AUTH_COMPLEX_PASSWORD_ENABLED=${GAZE_AUTH_COMPLEX_PASSWORD_ENABLED:-false}
-      - GAZE_AUTH_DEFAULT_TENANT_MODE=${GAZE_AUTH_DEFAULT_TENANT_MODE:-create_personal}
-      - GAZE_TENANT_SELF_SERVICE_CREATION_ENABLED=${GAZE_TENANT_SELF_SERVICE_CREATION_ENABLED:-true}
-      - GAZE_TENANT_ENABLE_CROSS_TENANT_ACCESS=${GAZE_TENANT_ENABLE_CROSS_TENANT_ACCESS:-false}
-      - GAZE_TENANT_DEFAULT_STORAGE_QUOTA_GB=${GAZE_TENANT_DEFAULT_STORAGE_QUOTA_GB:-10}
-      - GAZE_INVITATION_TTL=${GAZE_INVITATION_TTL:-168h}
-      - GAZE_AUDIT_RETENTION_DAYS=${GAZE_AUDIT_RETENTION_DAYS:-90}
+      - GAZE_RETRIEVAL_AUDIT_RETENTION_DAYS=${GAZE_RETRIEVAL_AUDIT_RETENTION_DAYS:-30}
       # 数据库设置
       - DB_DRIVER=${DB_DRIVER:-postgres}
       - DB_HOST=${DB_HOST:-postgres}
@@ -134,12 +130,6 @@ services:
       - GAZE_CHAT_ATTACHMENT_WAIT_TIMEOUT_SEC=${GAZE_CHAT_ATTACHMENT_WAIT_TIMEOUT_SEC:-60}
       - GAZE_CHAT_ATTACHMENT_OCR_CONCURRENCY=${GAZE_CHAT_ATTACHMENT_OCR_CONCURRENCY:-8}
       - GAZE_CHAT_ATTACHMENT_OCR_MAX_PAGES=${GAZE_CHAT_ATTACHMENT_OCR_MAX_PAGES:-8}
-      # Tenant / RBAC
-      - GAZE_TENANT_ENABLE_RBAC=${GAZE_TENANT_ENABLE_RBAC:-}
-      - GAZE_TENANT_MAX_OWNED_PER_USER=${GAZE_TENANT_MAX_OWNED_PER_USER:-}
-      - GAZE_TENANT_AUTO_CREATE_API_KEY=${GAZE_TENANT_AUTO_CREATE_API_KEY:-}
-      # 银联商务融合版：共享工作区 ID（注册用户统一加入）
-      - GAZE_SHARED_TENANT_ID=${GAZE_SHARED_TENANT_ID:-}
       # 任务队列
       - GAZE_ASYNQ_CORE_CONCURRENCY=${GAZE_ASYNQ_CORE_CONCURRENCY:-8}
       - GAZE_ASYNQ_POSTPROCESS_CONCURRENCY=${GAZE_ASYNQ_POSTPROCESS_CONCURRENCY:-2}
@@ -147,22 +137,6 @@ services:
       - GAZE_ASYNQ_MAINTENANCE_CONCURRENCY=${GAZE_ASYNQ_MAINTENANCE_CONCURRENCY:-4}
       - GAZE_ASYNQ_SHARED_CONCURRENCY=${GAZE_ASYNQ_SHARED_CONCURRENCY:-6}
       - GAZE_MODEL_MAX_CONCURRENCY=${GAZE_MODEL_MAX_CONCURRENCY:-32}
-      - APK_MIRROR_ARG=${APK_MIRROR_ARG:-}
-      - GAZE_BOOTSTRAP_SYSTEM_ADMIN_EMAIL=${GAZE_BOOTSTRAP_SYSTEM_ADMIN_EMAIL:-}
-      # ========== OIDC 认证（可选） ==========
-      - OIDC_AUTH_ENABLE=${OIDC_AUTH_ENABLE:-false}
-      - OIDC_AUTH_ISSUER_URL=${OIDC_AUTH_ISSUER_URL:-}
-      - OIDC_AUTH_DISCOVERY_URL=${OIDC_AUTH_DISCOVERY_URL:-}
-      - OIDC_AUTH_PROVIDER_DISPLAY_NAME=${OIDC_AUTH_PROVIDER_DISPLAY_NAME:-}
-      - OIDC_AUTH_CLIENT_ID=${OIDC_AUTH_CLIENT_ID:-}
-      - OIDC_AUTH_CLIENT_SECRET=${OIDC_AUTH_CLIENT_SECRET:-}
-      - OIDC_AUTH_AUTHORIZATION_ENDPOINT=${OIDC_AUTH_AUTHORIZATION_ENDPOINT:-}
-      - OIDC_AUTH_TOKEN_ENDPOINT=${OIDC_AUTH_TOKEN_ENDPOINT:-}
-      - OIDC_AUTH_USER_INFO_ENDPOINT=${OIDC_AUTH_USER_INFO_ENDPOINT:-}
-      - OIDC_AUTH_JWKS_URI=${OIDC_AUTH_JWKS_URI:-}
-      - OIDC_AUTH_SCOPES=${OIDC_AUTH_SCOPES:-}
-      - OIDC_USER_INFO_MAPPING_USER_NAME=${OIDC_USER_INFO_MAPPING_USER_NAME:-}
-      - OIDC_USER_INFO_MAPPING_EMAIL=${OIDC_USER_INFO_MAPPING_EMAIL:-}
       # 飞书云文档解析模式（数据源连接器保留）
       - FEISHU_DOCX_PARSE_MODE=${FEISHU_DOCX_PARSE_MODE:-export}
     depends_on:
@@ -256,7 +230,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # YLSW 检索引擎（银联商务 RAG 侧车，Python/Flask，MySQL+FAISS）
+  # RAG 检索引擎（Python/Flask，MySQL+FAISS）
   # 连宿主机 MySQL 3306（YLSW_Service_Table 库）；离线管线关闭——存量走 app 上传路径（§2.2 ②）
   ylsw:
     build:
@@ -277,7 +251,7 @@ services:
       # 本地语料/模型/FAISS 索引（仓库内 data/rag，gitignore）
       - RAG_DATA_DIR=/app/external/Data
       - LOCAL_MODELS_DIR=/app/external/models
-      # ===== 银联商务业务 MySQL（chunks/Text2SQL，宿主机 3306） =====
+      # ===== RAG 业务 MySQL（chunks/Text2SQL，宿主机 3306） =====
       - MYSQL_HOST=${YLSW_MYSQL_HOST:-host.docker.internal}
       - MYSQL_PORT=${YLSW_MYSQL_PORT:-3306}
       - MYSQL_USER=${YLSW_MYSQL_USER:-root}

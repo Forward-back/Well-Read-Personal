@@ -501,5 +501,5 @@ func TestSteerGuidanceAppliesToCustomAgentPrompt(t *testing.T) {
 	prompt := BuildSystemPromptWithOptions(nil, false, nil, "Custom agent instructions.")
 	assert.Contains(t, prompt, "Custom agent instructions.")
 	assert.Contains(t, prompt, steerGuidance)
-	assert.Contains(t, prompt, "Preserve unfinished objectives")
+	assert.Contains(t, prompt, "保留未完成目标")
 }

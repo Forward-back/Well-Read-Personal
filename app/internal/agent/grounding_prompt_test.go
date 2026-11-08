@@ -31,18 +31,18 @@ func TestGroundingGuidanceSurvivesTemplateSelection(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			prompt := BuildSystemPromptWithOptions(tc.kbs, false, &BuildSystemPromptOptions{Config: cfg}, tc.custom)
-			require.Contains(t, prompt, "Before drafting substantive factual content")
-			require.Contains(t, prompt, "presentations, reports, tutorials, and technical instructions")
-			require.Contains(t, prompt, "Reading a generator's instructions or successfully running its script does not verify the subject matter")
-			require.Contains(t, prompt, "translation or formatting of supplied content do not require research")
-			require.Contains(t, prompt, "If relevant sources are unavailable or searches leave gaps")
+			require.Contains(t, prompt, "撰写实质性事实内容前")
+			require.Contains(t, prompt, "演示文稿、报告、教程与技术说明")
+			require.Contains(t, prompt, "阅读生成器说明或成功运行其脚本，不等于验证了主题内容")
+			require.Contains(t, prompt, "对所提供内容的翻译或格式转换，不需要检索")
+			require.Contains(t, prompt, "相关来源不可用或检索存在缺口时")
 			if tc.custom != "" {
 				require.True(t, strings.HasPrefix(prompt, tc.custom))
 			}
 		})
 	}
 	// The legacy builder cannot infer tools, but still needs the evidence policy.
-	require.Contains(t, BuildSystemPrompt(nil, false, "Custom"), "Content grounding")
+	require.Contains(t, BuildSystemPrompt(nil, false, "Custom"), "内容依据")
 }
 
 func TestGroundingUsesRegistryInsteadOfConfiguration(t *testing.T) {
@@ -54,15 +54,15 @@ func TestGroundingUsesRegistryInsteadOfConfiguration(t *testing.T) {
 		absent     []string
 	}{
 		{"skill only with stale flags", []string{tools.ToolReadFile, tools.ToolShellExec}, true,
-			nil, []string{"Available knowledge tools:", "web_search is available", "web_fetch is available"}},
+			nil, []string{"可用知识工具：", "web_search 可用", "web_fetch 可用"}},
 		{"rag", []string{tools.ToolKnowledgeSearch, tools.ToolListKnowledgeChunks}, false,
-			[]string{"Available knowledge tools: knowledge_search, list_knowledge_chunks"}, []string{"gaze_search", "web_search is available"}},
+			[]string{"可用知识工具：knowledge_search、list_knowledge_chunks"}, []string{"gaze_search", "web_search 可用"}},
 		{"gaze", []string{tools.ToolGazeReadPage, tools.ToolGazeSearch}, false,
-			[]string{"Available knowledge tools: gaze_search, gaze_read_page"}, []string{"knowledge_search", "web_search is available"}},
+			[]string{"可用知识工具：gaze_search、gaze_read_page"}, []string{"knowledge_search", "web_search 可用"}},
 		{"registered web", []string{tools.ToolWebSearch, tools.ToolWebFetch}, false,
-			[]string{"web_search is available", "web_fetch is available"}, []string{"Available knowledge tools:"}},
+			[]string{"web_search 可用", "web_fetch 可用"}, []string{"可用知识工具："}},
 		{"no tools", nil, false, nil,
-			[]string{"Available knowledge tools:", "web_search is available", "web_fetch is available"}},
+			[]string{"可用知识工具：", "web_search 可用", "web_fetch 可用"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			engine := newTestEngine(t, &mockChat{})
@@ -73,7 +73,7 @@ func TestGroundingUsesRegistryInsteadOfConfiguration(t *testing.T) {
 				engine.toolRegistry.RegisterTool(newCountingTool(name))
 			}
 			prompt := engine.buildSystemPrompt(context.Background())
-			require.Contains(t, prompt, "Content grounding")
+			require.Contains(t, prompt, "内容依据")
 			for _, want := range tc.want {
 				require.Contains(t, prompt, want)
 			}
@@ -91,6 +91,6 @@ func TestPinnedGenerationSkillKeepsResearchAndKnowledgeScope(t *testing.T) {
 	prompt := engine.RenderUserTurnContent("session", "如何在 Windows Server 2008 上连接 WiFi 网络？制作相关 PPT")
 	require.Contains(t, prompt, "Server operations")
 	require.Contains(t, prompt, `read_file(path="skill://pptx-generator/SKILL.md")`)
-	require.Contains(t, prompt, "do not replace research into the task's factual content")
-	require.Contains(t, prompt, "unless the user explicitly restricts them")
+	require.Contains(t, prompt, "不替代对任务事实内容的检索")
+	require.Contains(t, prompt, "除非用户明确限制")
 }

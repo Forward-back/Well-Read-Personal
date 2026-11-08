@@ -3749,10 +3749,18 @@ func (s *knowledgeService) ProcessDocument(ctx context.Context, t *asynq.Task) e
 	// Step 4: Process chunks (vectorize + index + enqueue async tasks)
 	s.processChunks(ctx, kb, knowledge, chunks, processOpts)
 
-	// Step 5: Push the parsed markdown to the RAG engine (YLSW) for domain
-	// chunking + indexing. Dual-write: a failure never fails the native
-	// pipeline, it enqueues an engine:push_retry task instead (§2.2 ③).
+	// Step 5: Push the parsed markdown and app-owned chunks to the RAG engine
+	// (YLSW) for indexing. RAG never parses or chunks. Dual-write: a failure
+	// never fails the native pipeline; it records the sync failure so the
+	// reconcile sweep can retry, and enqueues an engine:push_retry task.
 	if err := s.pushToEngine(ctx, kb, knowledge, convertResult.MarkdownContent); err != nil {
+		now := time.Now()
+		if updErr := s.repo.UpdateEngineSyncStatus(
+			ctx, knowledge.TenantID, knowledge.ID,
+			types.EngineSyncStatusFailed, err.Error(), &now,
+		); updErr != nil {
+			logger.Warnf(ctx, "Mark engine sync failed for knowledge %s: %v", knowledge.ID, updErr)
+		}
 		s.enqueueEnginePushRetry(ctx, knowledge)
 	}
 
