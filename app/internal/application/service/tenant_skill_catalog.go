@@ -94,24 +94,34 @@ func (s *TenantSkillService) UpdateCatalogDefinition(
 		if value == "" {
 			return nil, apperrors.NewValidationError("技能名称不能为空")
 		}
+		if len([]rune(value)) > maxSkillNameRunes {
+			return nil, apperrors.NewValidationError("技能名称不能超过 100 字符")
+		}
 		entity.Name = value
 	}
 	if version != nil {
 		value := strings.TrimSpace(*version)
-		if len([]rune(value)) > 64 {
+		if len([]rune(value)) > maxSkillVersionRunes {
 			return nil, apperrors.NewValidationError("技能版本过长")
 		}
 		entity.Version = value
 	}
 	if description != nil {
-		entity.Description = strings.TrimSpace(*description)
+		value := strings.TrimSpace(*description)
+		if value == "" {
+			return nil, apperrors.NewValidationError("技能描述不能为空")
+		}
+		if len([]rune(value)) > maxSkillDescriptionRunes {
+			return nil, apperrors.NewValidationError("技能描述不能超过 500 字符")
+		}
+		entity.Description = value
 	}
 	if instructions != nil {
 		value := strings.TrimSpace(*instructions)
 		if value == "" {
 			return nil, apperrors.NewValidationError("skill.md 内容不能为空")
 		}
-		if len([]rune(value)) > 32000 {
+		if len([]rune(value)) > maxSkillInstructionsRunes {
 			return nil, apperrors.NewValidationError("skill.md 内容超过 32000 字符")
 		}
 		entity.Instructions = value

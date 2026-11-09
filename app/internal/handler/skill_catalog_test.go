@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +27,8 @@ type fakeSkillCatalog struct {
 	installErrs  map[string]string
 	deleteErr    error
 	source       string
+	markdown     []byte
+	contentName  string
 	installCalls int
 }
 
@@ -43,6 +47,20 @@ func (f *fakeSkillCatalog) RegisterCatalogFromSource(
 ) (*types.TenantSkillCatalogEntity, error) {
 	f.source = source
 	return &types.TenantSkillCatalogEntity{ID: f.registerID, Name: "pdf"}, nil
+}
+
+func (f *fakeSkillCatalog) RegisterCatalogFromMarkdown(
+	_ context.Context, _ uint64, content []byte,
+) (*types.TenantSkillCatalogEntity, error) {
+	f.markdown = append([]byte(nil), content...)
+	return &types.TenantSkillCatalogEntity{ID: f.registerID, Name: "md"}, nil
+}
+
+func (f *fakeSkillCatalog) RegisterCatalogFromContent(
+	_ context.Context, _ uint64, name, _, _, _ string,
+) (*types.TenantSkillCatalogEntity, error) {
+	f.contentName = name
+	return &types.TenantSkillCatalogEntity{ID: f.registerID, Name: name}, nil
 }
 
 func (f *fakeSkillCatalog) InstallCatalogToConfigs(
@@ -119,6 +137,68 @@ func TestRegisterCatalogFromSource(t *testing.T) {
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusCreated, w.Code)
 	require.Equal(t, "@owner/pdf", catalog.source)
+}
+
+func multipartSkillFile(t *testing.T, filename, content string) (*bytes.Buffer, string) {
+	t.Helper()
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", filename)
+	require.NoError(t, err)
+	_, err = part.Write([]byte(content))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+	return body, writer.FormDataContentType()
+}
+
+func TestRegisterCatalogAcceptsMarkdownUpload(t *testing.T) {
+	catalog := &fakeSkillCatalog{registerID: "cat-md"}
+	router := newCatalogRouter(NewSkillHandler(&fakeUsableSkillLister{}, catalog))
+
+	markdown := "---\nname: summarizer\ndescription: 总结文档\n---\n\n## 步骤\n\n1. 阅读\n"
+	body, contentType := multipartSkillFile(t, "summarizer.md", markdown)
+	req := httptest.NewRequest(http.MethodPost, "/skills/catalog", body)
+	req.Header.Set("Content-Type", contentType)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	require.Equal(t, markdown, string(catalog.markdown))
+	require.Contains(t, w.Body.String(), "cat-md")
+}
+
+func TestRegisterCatalogRejectsNonMarkdownUpload(t *testing.T) {
+	catalog := &fakeSkillCatalog{registerID: "cat-md"}
+	router := newCatalogRouter(NewSkillHandler(&fakeUsableSkillLister{}, catalog))
+
+	body, contentType := multipartSkillFile(t, "skill.txt", "not markdown")
+	req := httptest.NewRequest(http.MethodPost, "/skills/catalog", body)
+	req.Header.Set("Content-Type", contentType)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "only .md")
+	require.Empty(t, catalog.markdown)
+}
+
+func TestRegisterCatalogCreatesSkillFromJSONContent(t *testing.T) {
+	catalog := &fakeSkillCatalog{registerID: "cat-content"}
+	router := newCatalogRouter(NewSkillHandler(&fakeUsableSkillLister{}, catalog))
+
+	body, err := json.Marshal(map[string]string{
+		"name": "writer", "description": "写摘要", "version": "1.0.0", "instructions": "步骤",
+	})
+	require.NoError(t, err)
+	req := httptest.NewRequest(http.MethodPost, "/skills/catalog", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	require.Equal(t, "writer", catalog.contentName)
+	require.Empty(t, catalog.source)
+	require.True(t, strings.Contains(w.Body.String(), "writer"))
 }
 
 func TestRegisterCatalogFromSourceRejectsAnOversizedJSONBody(t *testing.T) {

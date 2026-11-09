@@ -348,7 +348,7 @@ type Message struct {
 	Artifacts MessageArtifacts `json:"artifacts,omitempty" gorm:"type:jsonb;column:artifacts"`
 	// Skill pins the skill selected for this assistant turn. Version and
 	// content hash preserve what was actually injected after later edits.
-	Skill *MessageSkill `json:"skill,omitempty" gorm:"type:jsonb;column:skill"`
+	Skill *MessageSkill `json:"skill,omitempty" gorm:"type:jsonb;column:skill;serializer:json"`
 	// ReadingRunID links this message to an interactive reading run; reading
 	// state itself lives in reading_runs, not in the message JSON.
 	ReadingRunID string `json:"reading_run_id,omitempty" gorm:"type:varchar(36);column:reading_run_id;not null;default:''"`

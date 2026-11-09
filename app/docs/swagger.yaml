@@ -2650,6 +2650,8 @@ definitions:
         type: boolean
       agent_id:
         type: string
+      answer_mode:
+        type: string
       knowledge_base_ids:
         items:
           type: string
@@ -4141,6 +4143,9 @@ definitions:
       agent_source_tenant_id:
         description: Optional disambiguator; backend still verifies the share relation
         type: integer
+      answer_mode:
+        description: study | review; empty = study
+        type: string
       attachment_ids:
         description: Pre-uploaded session-scoped document IDs
         items:
@@ -9024,8 +9029,9 @@ paths:
       consumes:
       - application/json
       - multipart/form-data
-      description: Records a skill without installing it. Send a zip as multipart
-        field "file", or JSON {"source":"..."}.
+      description: Records a prompt-only skill. Multipart field "file" takes a single
+        SKILL.md (zip kept for compatibility); JSON {name,description,version,instructions}
+        creates one from the online editor.
       produces:
       - application/json
       responses:

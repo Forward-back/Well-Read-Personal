@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"bytes"
 	stderrors "errors"
 	"io"
 	"net/http"
+	"path"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -111,7 +113,7 @@ func (h *SkillHandler) ListCatalog(c *gin.Context) {
 
 // RegisterCatalog godoc
 // @Summary      Add a skill to the workspace catalog
-// @Description  Records a skill without installing it. Send a zip as multipart field "file", or JSON {"source":"..."}.
+// @Description  Records a prompt-only skill. Multipart field "file" takes a single SKILL.md (zip kept for compatibility); JSON {name,description,version,instructions} creates one from the online editor.
 // @Tags         Skills
 // @Accept       json
 // @Accept       multipart/form-data
@@ -155,14 +157,29 @@ func (h *SkillHandler) RegisterCatalog(c *gin.Context) {
 		return
 	}
 
-	cat, err := h.catalog.RegisterCatalogFromArchive(
-		c.Request.Context(), sandboxConfigTenantID(c), archive,
-	)
+	var cat *types.TenantSkillCatalogEntity
+	if isZipArchive(archive) {
+		cat, err = h.catalog.RegisterCatalogFromArchive(
+			c.Request.Context(), sandboxConfigTenantID(c), archive,
+		)
+	} else {
+		if !strings.EqualFold(path.Ext(header.Filename), ".md") {
+			_ = c.Error(apperrors.NewBadRequestError("only .md skill files are supported"))
+			return
+		}
+		cat, err = h.catalog.RegisterCatalogFromMarkdown(
+			c.Request.Context(), sandboxConfigTenantID(c), archive,
+		)
+	}
 	if err != nil {
 		respondSkillServiceError(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"success": true, "data": catalogIDResponse(cat)})
+}
+
+func isZipArchive(data []byte) bool {
+	return bytes.HasPrefix(data, []byte("PK\x03\x04")) || bytes.HasPrefix(data, []byte("PK\x05\x06"))
 }
 
 func (h *SkillHandler) registerCatalogFromSource(c *gin.Context) {
@@ -174,6 +191,18 @@ func (h *SkillHandler) registerCatalogFromSource(c *gin.Context) {
 			return
 		}
 		_ = c.Error(apperrors.NewBadRequestError("invalid skill source request"))
+		return
+	}
+	if strings.TrimSpace(req.Name) != "" || strings.TrimSpace(req.Instructions) != "" {
+		cat, err := h.catalog.RegisterCatalogFromContent(
+			c.Request.Context(), sandboxConfigTenantID(c),
+			req.Name, req.Description, req.Version, req.Instructions,
+		)
+		if err != nil {
+			respondSkillServiceError(c, err)
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{"success": true, "data": catalogIDResponse(cat)})
 		return
 	}
 	source := strings.TrimSpace(req.Source)

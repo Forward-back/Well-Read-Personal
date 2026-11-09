@@ -30,6 +30,8 @@ type skillCatalogService interface {
 		name, version, description, instructions *string) (*types.TenantSkillCatalogEntity, error)
 	RegisterCatalogFromArchive(ctx context.Context, tenantID uint64, archive []byte) (*types.TenantSkillCatalogEntity, error)
 	RegisterCatalogFromSource(ctx context.Context, tenantID uint64, source string) (*types.TenantSkillCatalogEntity, error)
+	RegisterCatalogFromMarkdown(ctx context.Context, tenantID uint64, content []byte) (*types.TenantSkillCatalogEntity, error)
+	RegisterCatalogFromContent(ctx context.Context, tenantID uint64, name, description, version, instructions string) (*types.TenantSkillCatalogEntity, error)
 	InstallCatalogToConfigs(ctx context.Context, tenantID uint64, catalogID string, configIDs []string) (*service.CatalogInstallResult, error)
 	DeleteCatalog(ctx context.Context, tenantID uint64, catalogID string) error
 	ListCatalogFiles(ctx context.Context, tenantID uint64, catalogID string) ([]service.SkillFileEntry, error)

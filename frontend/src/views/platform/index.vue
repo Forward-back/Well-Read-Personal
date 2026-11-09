@@ -7,8 +7,8 @@
         <div class="upload-mask" v-show="ismask">
             <UploadMask></UploadMask>
         </div>
-        <!-- 全局设置模态框，供所有 platform 子路由使用 -->
-        <Settings />
+        <!-- 全局设置模态框，供所有 platform 子路由使用；设置路由自身已挂载一份，避免重复 -->
+        <Settings v-if="route.path !== '/platform/settings'" />
         <!-- 全局命令面板 (⌘K)，随 platform 路由存活 -->
         <GlobalCommandPalette />
     </div>

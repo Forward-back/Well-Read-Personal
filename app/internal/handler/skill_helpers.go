@@ -16,7 +16,11 @@ type sandboxConfigService interface {
 }
 
 type skillSourceRequest struct {
-	Source string `json:"source"`
+	Source       string `json:"source"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	Version      string `json:"version"`
+	Instructions string `json:"instructions"`
 }
 
 func sandboxConfigTenantID(c *gin.Context) uint64 {

@@ -115,6 +115,17 @@ export function registerSkillCatalogFromSource(source: string) {
   });
 }
 
+export interface SkillCatalogContentInput {
+  name: string
+  description: string
+  version?: string
+  instructions: string
+}
+
+export function createSkillCatalogContent(payload: SkillCatalogContentInput) {
+  return post<{ data: SkillCatalogRegisterResult }>('/api/v1/skills/catalog', payload);
+}
+
 export function registerSkillCatalogFromFile(
   file: File,
   onProgress?: (percent: number) => void,

@@ -7364,7 +7364,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Records a skill without installing it. Send a zip as multipart field \"file\", or JSON {\"source\":\"...\"}.",
+                "description": "Records a prompt-only skill. Multipart field \"file\" takes a single SKILL.md (zip kept for compatibility); JSON {name,description,version,instructions} creates one from the online editor.",
                 "consumes": [
                     "application/json",
                     "multipart/form-data"
@@ -11435,6 +11435,9 @@ const docTemplate = `{
                 "agent_id": {
                     "type": "string"
                 },
+                "answer_mode": {
+                    "type": "string"
+                },
                 "knowledge_base_ids": {
                     "type": "array",
                     "items": {
@@ -13472,6 +13475,10 @@ const docTemplate = `{
                 "agent_source_tenant_id": {
                     "description": "Optional disambiguator; backend still verifies the share relation",
                     "type": "integer"
+                },
+                "answer_mode": {
+                    "description": "study | review; empty = study",
+                    "type": "string"
                 },
                 "attachment_ids": {
                     "description": "Pre-uploaded session-scoped document IDs",
