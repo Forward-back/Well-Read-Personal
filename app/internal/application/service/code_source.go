@@ -143,6 +143,7 @@ func (s *knowledgeService) SyncCodeSource(
 	sourcePrefix := "code://" + sourceKey + "/"
 	now := time.Now()
 	createdBy, _ := types.UserIDFromContext(ctx)
+	currentIDs := make(map[string]struct{}, len(files))
 
 	for _, file := range files {
 		chunks := chunkCodeFile(file)
@@ -150,7 +151,8 @@ func (s *knowledgeService) SyncCodeSource(
 			result.Skipped++
 			continue
 		}
-		knowledgeID := uuid.NewSHA1(uuid.NameSpaceURL, []byte("wellread-code:"+sourceKey+":"+file.RelPath)).String()
+		knowledgeID := codeKnowledgeID(kbID, sourceKey, file.RelPath)
+		currentIDs[knowledgeID] = struct{}{}
 
 		knowledge := &types.Knowledge{
 			ID:               knowledgeID,
@@ -192,8 +194,13 @@ func (s *knowledgeService) SyncCodeSource(
 				return nil, fmt.Errorf("update code knowledge %s: %w", file.RelPath, err)
 			}
 			_ = s.chunkRepo.DeleteChunksByKnowledgeID(ctx, tenantID, knowledgeID)
-		} else if err := s.repo.CreateKnowledge(ctx, knowledge); err != nil {
-			return nil, fmt.Errorf("create code knowledge %s: %w", file.RelPath, err)
+		} else {
+			// A prior sync may have removed this file, leaving a soft-deleted
+			// tombstone that still owns the stable primary key.
+			_ = s.repo.HardDeleteKnowledge(ctx, tenantID, knowledgeID)
+			if err := s.repo.CreateKnowledge(ctx, knowledge); err != nil {
+				return nil, fmt.Errorf("create code knowledge %s: %w", file.RelPath, err)
+			}
 		}
 
 		appChunks := make([]*types.Chunk, 0, len(chunks))
@@ -243,28 +250,46 @@ func (s *knowledgeService) SyncCodeSource(
 		if item == nil || !strings.HasPrefix(item.Source, sourcePrefix) {
 			continue
 		}
-		rel := strings.TrimPrefix(item.Source, sourcePrefix)
-		if rel == "" {
+		if _, ok := currentIDs[item.ID]; ok {
 			continue
 		}
-		found := false
-		for _, file := range files {
-			if file.RelPath == rel {
-				found = true
-				break
-			}
-		}
-		if found {
-			continue
-		}
-		if err := s.repo.DeleteKnowledge(ctx, tenantID, item.ID); err == nil {
+		if err := s.deleteCodeKnowledgeEntry(ctx, tenantID, item.ID); err == nil {
 			result.Deleted++
+		} else {
+			logger.Warnf(ctx, "Delete stale code knowledge %s failed: %v", item.ID, err)
 		}
 	}
 
 	logger.Infof(ctx, "[code-source] %s files=%d chunks=%d skipped=%d deleted=%d commit=%s",
 		sourceKey, result.Files, result.Chunks, result.Skipped, result.Deleted, result.Commit)
 	return result, nil
+}
+
+// codeKnowledgeID is the stable ID of one synced code file. The knowledge base
+// is part of the key so the same source can be indexed into separate KBs.
+func codeKnowledgeID(kbID, sourceKey, relPath string) string {
+	return uuid.NewSHA1(
+		uuid.NameSpaceURL, []byte("wellread-code:"+kbID+":"+sourceKey+":"+relPath),
+	).String()
+}
+
+// deleteCodeKnowledgeEntry purges one synced code file: chunks, the engine
+// document, and the knowledge row itself. Synced entries use stable IDs, so a
+// soft-deleted tombstone would block the next sync of the same file; the row
+// is hard-deleted instead of leaving a tombstone. The source file on disk is
+// not touched (local mode may point at a user-owned directory).
+func (s *knowledgeService) deleteCodeKnowledgeEntry(ctx context.Context, tenantID uint64, id string) error {
+	if err := s.chunkRepo.DeleteChunksByKnowledgeID(ctx, tenantID, id); err != nil {
+		return err
+	}
+	if err := s.repo.DeleteKnowledge(ctx, tenantID, id); err != nil {
+		return err
+	}
+	if err := s.repo.HardDeleteKnowledge(ctx, tenantID, id); err != nil {
+		return err
+	}
+	s.deleteFromEngine(ctx, id)
+	return nil
 }
 
 func prepareCodeSource(ctx context.Context, req *types.CodeSourceRequest) (root, commit, sourceKey string, err error) {
