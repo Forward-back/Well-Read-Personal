@@ -3211,6 +3211,12 @@ func (s *installSessionService) KnowledgeQAFusion(
 	return nil
 }
 
+func (s *installSessionService) DirectQA(
+	context.Context, *types.QARequest, *event.EventBus,
+) error {
+	return nil
+}
+
 func (s *installSessionService) CreateSession(_ context.Context, session *types.Session) (*types.Session, error) {
 	s.fx.record("create-session")
 	s.fx.sessionCalls = append(s.fx.sessionCalls, "CreateSession")

@@ -50,6 +50,7 @@ type CreateKnowledgeQARequest struct {
 	AgentSourceTenantID   uint64                       `json:"agent_source_tenant_id,omitempty"`      // Optional disambiguator; backend still verifies the share relation
 	WebSearchEnabled      bool                         `json:"web_search_enabled"`                    // Whether web search is enabled for this request
 	AnswerMode            string                       `json:"answer_mode"`                           // study | review; empty = study
+	RetrievalMode         string                       `json:"retrieval_mode"`                        // rag | direct; empty = rag
 	SummaryModelID        string                       `json:"summary_model_id"`                      // Optional summary model ID for this request (overrides session default)
 	MCPServiceIDs         []string                     `json:"mcp_service_ids"`                       // Per-request MCP services selected via @mention
 	SkillNames            []string                     `json:"skill_names"`                           // Per-request Skills selected via @mention

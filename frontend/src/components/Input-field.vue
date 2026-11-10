@@ -512,6 +512,13 @@ const isAgentEnabled = computed(() => settingsStore.isAgentEnabled);
 const isWebSearchEnabled = computed(() => settingsStore.isWebSearchEnabled);
 const answerMode = computed(() => settingsStore.answerMode);
 const setAnswerMode = (mode: 'study' | 'review') => settingsStore.setAnswerMode(mode);
+const retrievalMode = computed(() => settingsStore.retrievalMode);
+const setRetrievalMode = (mode: 'rag' | 'direct') => {
+  settingsStore.setRetrievalMode(mode);
+  if (mode === 'direct' && settingsStore.isAgentStreamMode) {
+    settingsStore.selectAgent(BUILTIN_QUICK_ANSWER_ID);
+  }
+};
 const selectedKbIds = computed(() => settingsStore.settings.selectedKnowledgeBases || []);
 const selectedFileIds = computed(() => settingsStore.settings.selectedFiles || []);
 const selectedTags = computed(() => settingsStore.settings.selectedTags || []);
@@ -2555,8 +2562,16 @@ defineExpose({
       <div class="control-bar" :class="{ 'is-embedded': embeddedMode }">
         <!-- 左侧控制按钮 -->
         <div class="control-left" v-if="!embeddedMode">
+          <!-- RAG / 直连切换 -->
+          <div class="answer-mode-switch" role="group">
+            <button type="button" class="answer-mode-btn" :class="{ active: retrievalMode === 'rag' }"
+              @click.stop="setRetrievalMode('rag')">{{ $t('input.retrievalMode.rag') }}</button>
+            <button type="button" class="answer-mode-btn" :class="{ active: retrievalMode === 'direct' }"
+              @click.stop="setRetrievalMode('direct')">{{ $t('input.retrievalMode.direct') }}</button>
+          </div>
+
           <!-- 学习卡 / 复习卡切换（仅 RAG 快速问答） -->
-          <div v-if="!settingsStore.isAgentStreamMode" class="answer-mode-switch" role="group">
+          <div v-if="!settingsStore.isAgentStreamMode && retrievalMode === 'rag'" class="answer-mode-switch" role="group">
             <button type="button" class="answer-mode-btn" :class="{ active: answerMode === 'study' }"
               @click.stop="setAnswerMode('study')">{{ $t('input.answerMode.study') }}</button>
             <button type="button" class="answer-mode-btn" :class="{ active: answerMode === 'review' }"

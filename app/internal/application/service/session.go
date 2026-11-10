@@ -103,6 +103,7 @@ type sessionService struct {
 	chunkService          interfaces.ChunkService                // Service for chunk operations
 	webSearchStateRepo    interfaces.WebSearchStateService       // Service for web search state
 	webSearchProviderRepo interfaces.WebSearchProviderRepository // Repository for web search provider entities
+	webSearchService      interfaces.WebSearchService            // Direct-mode web search
 	suggestionRepo        interfaces.MessageSuggestionRepository
 	sandboxMgr            sandbox.Manager // Default sandbox backend; used to reclaim per-session MicroVMs on delete
 	sandboxResolver       sandbox.TenantSandboxResolver
@@ -130,6 +131,7 @@ func NewSessionService(cfg *config.Config,
 	agentService interfaces.AgentService,
 	webSearchStateRepo interfaces.WebSearchStateService,
 	webSearchProviderRepo interfaces.WebSearchProviderRepository,
+	webSearchService interfaces.WebSearchService,
 	suggestionRepo interfaces.MessageSuggestionRepository,
 	sandboxMgr sandbox.Manager,
 	sandboxResolver sandbox.TenantSandboxResolver,
@@ -153,6 +155,7 @@ func NewSessionService(cfg *config.Config,
 		agentService:          agentService,
 		webSearchStateRepo:    webSearchStateRepo,
 		webSearchProviderRepo: webSearchProviderRepo,
+		webSearchService:      webSearchService,
 		suggestionRepo:        suggestionRepo,
 		sandboxMgr:            sandboxMgr,
 		sandboxResolver:       sandboxResolver,

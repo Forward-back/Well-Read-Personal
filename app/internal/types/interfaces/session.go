@@ -58,6 +58,9 @@ type SessionService interface {
 	// KnowledgeQAFusion performs knowledge QA through the external YLSW
 	// retrieval/generation engine (银联商务融合版唯一检索引擎).
 	KnowledgeQAFusion(ctx context.Context, req *types.QARequest, eventBus *event.EventBus) error
+	// DirectQA answers one turn with the configured direct model, without
+	// retrieval; optional web search results are injected as context.
+	DirectQA(ctx context.Context, req *types.QARequest, eventBus *event.EventBus) error
 	// AgentQA performs agent-based question answering with conversation history and streaming support.
 	AgentQA(ctx context.Context, req *types.QARequest, eventBus *event.EventBus) error
 }

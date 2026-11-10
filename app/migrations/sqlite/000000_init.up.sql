@@ -1491,6 +1491,7 @@ ALTER TABLE messages ADD COLUMN skill TEXT;
 -- SQLite mirror of 000114_reading_runs.
 
 ALTER TABLE tenants ADD COLUMN reading_model_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE tenants ADD COLUMN direct_model_id TEXT NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS reading_runs (
     id                 TEXT PRIMARY KEY,

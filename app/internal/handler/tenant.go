@@ -261,6 +261,15 @@ func (h *SettingsHandler) GetTenantKV(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
 			"reading_model_id": tenant.ReadingModelID,
 		}})
+	case "direct-config":
+		tenant, _ := types.TenantInfoFromContext(c.Request.Context())
+		if tenant == nil {
+			c.Error(errors.NewInternalServerError("Workspace is empty"))
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+			"direct_model_id": tenant.DirectModelID,
+		}})
 	default:
 		logger.Info(c.Request.Context(), "KV key not supported", "key", key)
 		c.Error(errors.NewBadRequestError("unsupported key"))
@@ -288,6 +297,8 @@ func (h *SettingsHandler) UpdateTenantKV(c *gin.Context) {
 		h.updateTenantMemoryConfigInternal(c)
 	case "reading-config":
 		h.updateTenantReadingConfigInternal(c)
+	case "direct-config":
+		h.updateTenantDirectConfigInternal(c)
 	default:
 		logger.Info(c.Request.Context(), "KV key not supported", "key", key)
 		c.Error(errors.NewBadRequestError("unsupported key"))
@@ -871,5 +882,50 @@ func (h *SettingsHandler) updateTenantReadingConfigInternal(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
 		"reading_model_id": updated.ReadingModelID,
+	}})
+}
+
+func (h *SettingsHandler) updateTenantDirectConfigInternal(c *gin.Context) {
+	ctx := c.Request.Context()
+	var req struct {
+		DirectModelID string `json:"direct_model_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	modelID := strings.TrimSpace(req.DirectModelID)
+	if modelID != "" {
+		if h.modelService == nil {
+			c.Error(errors.NewInternalServerError("模型服务未配置"))
+			return
+		}
+		model, err := h.modelService.GetModelByID(ctx, modelID)
+		if err != nil || model == nil {
+			c.Error(errors.NewBadRequestError("直连模型不存在"))
+			return
+		}
+		if model.Type != types.ModelTypeKnowledgeQA {
+			c.Error(errors.NewBadRequestError("直连模型必须是 KnowledgeQA 类型"))
+			return
+		}
+		if chat.EffectiveThinkingControl(chat.ConfigFromModel(model)) == "none" {
+			c.Error(errors.NewBadRequestError("直连模型必须开启思考模式"))
+			return
+		}
+	}
+	tenant, _ := types.TenantInfoFromContext(ctx)
+	if tenant == nil {
+		c.Error(errors.NewInternalServerError("Workspace is empty"))
+		return
+	}
+	tenant.DirectModelID = modelID
+	updated, err := h.service.UpdateTenant(ctx, tenant)
+	if err != nil {
+		c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+		"direct_model_id": updated.DirectModelID,
 	}})
 }

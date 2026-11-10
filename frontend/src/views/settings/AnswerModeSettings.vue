@@ -10,11 +10,29 @@
     <div class="mode-list">
       <button type="button" class="mode-card" :class="{ active: current === 'study' }" @click="select('study')">
         <span class="mode-title">学习卡</span>
-        <span class="mode-desc">结论、背景、原理拆解、例题应用、易错点，适合打基础。</span>
+        <span class="mode-desc">结论、背景、原理拆解、例题应用、易错点，适合打基础。仅 RAG 模式生效。</span>
       </button>
       <button type="button" class="mode-card" :class="{ active: current === 'review' }" @click="select('review')">
         <span class="mode-title">复习卡</span>
-        <span class="mode-desc">考点清单、易错辨析、2 道自测题，适合考前快速回顾。</span>
+        <span class="mode-desc">考点清单、易错辨析、2 道自测题，适合考前快速回顾。仅 RAG 模式生效。</span>
+      </button>
+    </div>
+
+    <header class="block__header">
+      <div>
+        <h3>默认检索方式</h3>
+        <p>新会话默认的检索方式；当前会话可在输入栏临时切换，不影响这里的全局默认。直连模式需先在「模型与引擎 → 直连模型」中配置。</p>
+      </div>
+    </header>
+
+    <div class="mode-list">
+      <button type="button" class="mode-card" :class="{ active: retrieval === 'rag' }" @click="selectRetrieval('rag')">
+        <span class="mode-title">RAG 检索</span>
+        <span class="mode-desc">先检索知识库再回答，带引用；可切换学习/复习模板。</span>
+      </button>
+      <button type="button" class="mode-card" :class="{ active: retrieval === 'direct' }" @click="selectRetrieval('direct')">
+        <span class="mode-title">直连模型</span>
+        <span class="mode-desc">不检索知识库，直接用思考模型回答；可显式开启联网搜索，网页来源附在答案末尾。</span>
       </button>
     </div>
   </section>
@@ -26,9 +44,14 @@ import { useSettingsStore } from '@/stores/settings'
 
 const settingsStore = useSettingsStore()
 const current = computed(() => settingsStore.answerMode)
+const retrieval = computed(() => settingsStore.retrievalMode)
 
 function select(mode: 'study' | 'review') {
   settingsStore.setDefaultAnswerMode(mode)
+}
+
+function selectRetrieval(mode: 'rag' | 'direct') {
+  settingsStore.setDefaultRetrievalMode(mode)
 }
 </script>
 

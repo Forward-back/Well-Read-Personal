@@ -119,10 +119,14 @@ func (r *tenantRepository) UpdateTenant(ctx context.Context, tenant *types.Tenan
 		if err := tx.Model(&types.Tenant{}).Where("id = ?", tenant.ID).Updates(tenant).Error; err != nil {
 			return err
 		}
-		// Updates(struct) skips zero values, so clearing the reading model or
-		// the prompt override needs an explicit column write.
+		// Updates(struct) skips zero values, so clearing the reading/direct
+		// model or the prompt override needs an explicit column write.
 		if err := tx.Model(&types.Tenant{}).Where("id = ?", tenant.ID).
 			Update("reading_model_id", tenant.ReadingModelID).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&types.Tenant{}).Where("id = ?", tenant.ID).
+			Update("direct_model_id", tenant.DirectModelID).Error; err != nil {
 			return err
 		}
 		return tx.Model(&types.Tenant{}).Where("id = ?", tenant.ID).

@@ -36,6 +36,7 @@
                 <template v-else-if="currentSection === 'models'">
                   <div class="section"><ModelSettings /></div>
                   <div class="section"><ReadingModelSettings /></div>
+                  <div class="section"><DirectModelSettings /></div>
                   <div class="section"><OllamaSettings /></div>
                   <div class="section"><ParserEngineSettings /></div>
                   <div class="section"><StorageEngineSettings /></div>
@@ -73,6 +74,7 @@ import GlobalPromptSettings from './GlobalPromptSettings.vue'
 import ChatHistorySettings from './ChatHistorySettings.vue'
 import ModelSettings from './ModelSettings.vue'
 import ReadingModelSettings from './ReadingModelSettings.vue'
+import DirectModelSettings from './DirectModelSettings.vue'
 import OllamaSettings from './OllamaSettings.vue'
 import ParserEngineSettings from './ParserEngineSettings.vue'
 import StorageEngineSettings from './StorageBackendSettings.vue'

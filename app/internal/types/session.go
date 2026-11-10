@@ -286,6 +286,7 @@ type SessionLastRequestState struct {
 	MentionedItems   MentionedItems `json:"mentioned_items,omitempty"`
 	WebSearchEnabled bool           `json:"web_search_enabled"`
 	AnswerMode       string         `json:"answer_mode,omitempty"`
+	RetrievalMode    string         `json:"retrieval_mode,omitempty"`
 }
 
 // Value implements driver.Valuer for SessionLastRequestState (JSONB).

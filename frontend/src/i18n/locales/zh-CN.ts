@@ -3569,6 +3569,10 @@ export default {
     answerMode: {
       study: '学习',
       review: '复习'
+    },
+    retrievalMode: {
+      rag: 'RAG',
+      direct: '直连'
     }
   },
   manualEditor: {

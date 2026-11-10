@@ -1195,9 +1195,10 @@ const sendMsg = async (value, modelId = '', mentionedItems = [], imageFiles = []
     scrollToBottom(true);
 
     // Get agent mode status from settings store (prefer selectedAgentId for builtins)
-    const agentEnabled = props.embeddedMode
+    const directMode = !props.embeddedMode && useSettingsStoreInstance.retrievalMode === 'direct';
+    const agentEnabled = !directMode && (props.embeddedMode
         ? (props.agentId && props.agentId !== 'builtin-quick-answer')
-        : useSettingsStoreInstance.isAgentStreamMode;
+        : useSettingsStoreInstance.isAgentStreamMode);
 
     // Get web search status from settings store
     const webSearchEnabled = props.embeddedMode ? false : useSettingsStoreInstance.isWebSearchEnabled;
@@ -1219,9 +1220,9 @@ const sendMsg = async (value, modelId = '', mentionedItems = [], imageFiles = []
             fileIdSet.add(item.id);
         }
     }
-    const kbIds = [...kbIdSet];
-    const knowledgeIds = [...fileIdSet];
-    const tagIds = [...new Set((mentionedItems || []).filter(item => item.type === 'tag' && item.id).map(item => item.id))];
+    const kbIds = directMode ? [] : [...kbIdSet];
+    const knowledgeIds = directMode ? [] : [...fileIdSet];
+    const tagIds = directMode ? [] : [...new Set((mentionedItems || []).filter(item => item.type === 'tag' && item.id).map(item => item.id))];
     const mcpServiceIds = [...new Set((mentionedItems || []).filter(item => item.type === 'mcp' && item.id).map(item => item.id))];
     const skillNames = [...new Set((mentionedItems || []).filter(item => item.type === 'skill' && item.id).map(item => item.skill_name || item.id))];
 
@@ -1242,6 +1243,7 @@ const sendMsg = async (value, modelId = '', mentionedItems = [], imageFiles = []
         agent_source_tenant_id: selectedAgentSourceTenantId,
         web_search_enabled: webSearchEnabled,
         answer_mode: props.embeddedMode ? 'study' : useSettingsStoreInstance.answerMode,
+        retrieval_mode: directMode ? 'direct' : 'rag',
         summary_model_id: modelId,
         mcp_service_ids: requestMcpServiceIds,
         skill_names: requestSkillNames,

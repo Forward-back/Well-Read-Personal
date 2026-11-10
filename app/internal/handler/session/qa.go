@@ -54,6 +54,7 @@ type qaRequestContext struct {
 	summaryModelID        string
 	webSearchEnabled      bool
 	answerMode            string
+	retrievalMode         string
 	mentionedItems        types.MentionedItems
 	effectiveTenantID     uint64                   // when using shared agent, tenant ID for model/KB/MCP resolution; 0 = use context tenant
 	sharedAgentReadOnly   bool                     // access was granted by a read-only agent share
@@ -116,6 +117,7 @@ func (rc *qaRequestContext) buildQARequest() *types.QARequest {
 		UserMessageID:       rc.userMessageID,
 		WebSearchEnabled:    rc.webSearchEnabled,
 		AnswerMode:          rc.answerMode,
+		RetrievalMode:       rc.retrievalMode,
 		Attachments:         rc.attachments,
 		// 需求五仅在 Web 快速问答启用；IM/API 请求不进入改写层。
 		QueryRewriteEnabled: !rc.disableQueryRewrite && rc.channel == "web",
@@ -152,6 +154,10 @@ func (h *Handler) parseQARequest(c *gin.Context, logPrefix string) (*qaRequestCo
 	if request.Query == "" {
 		logger.Error(ctx, "Query content is empty")
 		return nil, nil, errors.NewBadRequestError("Query content cannot be empty")
+	}
+	retrievalMode, err := normalizeRetrievalMode(request.RetrievalMode)
+	if err != nil {
+		return nil, nil, errors.NewBadRequestError(err.Error())
 	}
 
 	// Resolve the storage-reference representation up front: once the SSE stream
@@ -392,6 +398,7 @@ func (h *Handler) parseQARequest(c *gin.Context, logPrefix string) (*qaRequestCo
 		summaryModelID:        secutils.SanitizeForLog(request.SummaryModelID),
 		webSearchEnabled:      request.WebSearchEnabled,
 		answerMode:            normalizeAnswerMode(request.AnswerMode),
+		retrievalMode:         retrievalMode,
 		mentionedItems:        convertMentionedItems(request.MentionedItems),
 		effectiveTenantID:     effectiveTenantID,
 		sharedAgentReadOnly:   sharedAgentReadOnly,
@@ -848,6 +855,10 @@ func (h *Handler) KnowledgeQA(c *gin.Context) {
 	}
 
 	// Execute normal mode QA, generate title unless disabled
+	if reqCtx.retrievalMode == "direct" {
+		h.executeQA(reqCtx, qaModeDirect, !request.DisableTitle)
+		return
+	}
 	h.executeQA(reqCtx, qaModeNormal, !request.DisableTitle)
 }
 
@@ -870,6 +881,12 @@ func (h *Handler) AgentQA(c *gin.Context) {
 	reqCtx, request, err := h.parseQARequest(c, "AgentQA")
 	if err != nil {
 		c.Error(err)
+		return
+	}
+
+	// Direct mode wins over agent mode: the two are mutually exclusive in the UI.
+	if reqCtx.retrievalMode == "direct" {
+		h.executeQA(reqCtx, qaModeDirect, !request.DisableTitle)
 		return
 	}
 
@@ -916,6 +933,7 @@ type qaMode int
 const (
 	qaModeNormal qaMode = iota // KnowledgeQA pipeline (RAG / pure chat)
 	qaModeAgent                // Agent engine with tool calling
+	qaModeDirect               // Direct LLM chat without retrieval
 )
 
 // persistTurnMessages writes the user and assistant rows for this turn.
@@ -1101,9 +1119,10 @@ func (h *Handler) executeQA(reqCtx *qaRequestContext, mode qaMode, generateTitle
 		return
 	}
 
-	// Normal mode: register completion handler on EventAgentFinalAnswer
-	// (Agent mode handles completion in the defer block instead)
-	if mode == qaModeNormal {
+	// Normal and direct modes: register completion handler on
+	// EventAgentFinalAnswer (Agent mode handles completion in the defer block
+	// instead)
+	if mode == qaModeNormal || mode == qaModeDirect {
 		var completionHandled bool
 
 		// Persist the pipeline's retrieval/attachment stages so a reloaded
@@ -1164,8 +1183,11 @@ func (h *Handler) executeQA(reqCtx *qaRequestContext, mode qaMode, generateTitle
 				buf := make([]byte, 10240)
 				runtime.Stack(buf, true)
 				stageName := "Knowledge QA"
-				if mode == qaModeAgent {
+				switch mode {
+				case qaModeAgent:
 					stageName = "Agent QA"
+				case qaModeDirect:
+					stageName = "Direct QA"
 				}
 				logger.ErrorWithFields(streamCtx.asyncCtx,
 					errors.NewInternalServerError(fmt.Sprintf("%s service panicked: %v\n%s", stageName, r, string(buf))),
@@ -1232,7 +1254,10 @@ func (h *Handler) executeQA(reqCtx *qaRequestContext, mode qaMode, generateTitle
 
 		var serviceErr error
 		var stageName string
-		if mode == qaModeNormal {
+		if mode == qaModeDirect {
+			stageName = "direct_qa_execution"
+			serviceErr = h.sessionService.DirectQA(streamCtx.asyncCtx, qaReq, streamCtx.eventBus)
+		} else if mode == qaModeNormal {
 			stageName = "knowledge_qa_execution"
 			// 银联商务融合版：检索+生成由 YLSW 引擎完成（唯一引擎）
 			serviceErr = h.sessionService.KnowledgeQAFusion(streamCtx.asyncCtx, qaReq, streamCtx.eventBus)
@@ -1609,6 +1634,7 @@ func (h *Handler) persistLastRequestState(parentCtx context.Context, reqCtx *qaR
 		MentionedItems:   reqCtx.mentionedItems,
 		WebSearchEnabled: reqCtx.webSearchEnabled,
 		AnswerMode:       reqCtx.answerMode,
+		RetrievalMode:    reqCtx.retrievalMode,
 	}
 
 	if err := h.sessionService.UpdateSessionLastRequestState(ctx, reqCtx.sessionID, state); err != nil {
@@ -1725,4 +1751,16 @@ func normalizeAnswerMode(raw string) string {
 		return "review"
 	}
 	return "study"
+}
+
+// normalizeRetrievalMode validates the RAG/direct switch. Empty means RAG.
+func normalizeRetrievalMode(raw string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", "rag":
+		return "rag", nil
+	case "direct":
+		return "direct", nil
+	default:
+		return "", errors.NewBadRequestError("retrieval_mode must be rag or direct")
+	}
 }

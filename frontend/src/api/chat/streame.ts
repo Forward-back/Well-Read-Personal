@@ -40,7 +40,7 @@ export function useStream() {
   let renderTimer: number | null = null
 
   // 启动流式请求
-  const startStream = async (params: { session_id: any; query: any; knowledge_base_ids?: string[]; knowledge_ids?: string[]; tag_ids?: string[]; agent_enabled?: boolean; agent_id?: string; agent_source_tenant_id?: string | number; web_search_enabled?: boolean; summary_model_id?: string; mcp_service_ids?: string[]; skill_names?: string[]; skill_id?: string; mentioned_items?: Array<{id: string; name: string; type: string; kb_type?: string; kb_id?: string; kb_name?: string; service_id?: string; skill_name?: string}>; images?: Array<{data: string}>; attachment_uploads?: Array<{data: string; file_name: string; file_size: number}>; attachment_ids?: string[]; disable_query_rewrite?: boolean; suggestion_attribution?: { suggestion_set_id: string; question_id: string }; method: string; url: string }) => {
+  const startStream = async (params: { session_id: any; query: any; knowledge_base_ids?: string[]; knowledge_ids?: string[]; tag_ids?: string[]; agent_enabled?: boolean; agent_id?: string; agent_source_tenant_id?: string | number; web_search_enabled?: boolean; answer_mode?: 'study' | 'review'; retrieval_mode?: 'rag' | 'direct'; summary_model_id?: string; mcp_service_ids?: string[]; skill_names?: string[]; skill_id?: string; mentioned_items?: Array<{id: string; name: string; type: string; kb_type?: string; kb_id?: string; kb_name?: string; service_id?: string; skill_name?: string}>; images?: Array<{data: string}>; attachment_uploads?: Array<{data: string; file_name: string; file_size: number}>; attachment_ids?: string[]; disable_query_rewrite?: boolean; suggestion_attribution?: { suggestion_set_id: string; question_id: string }; method: string; url: string }) => {
     const myGeneration = ++streamGeneration
     const streamAbort = controller
     // 重置状态
@@ -99,6 +99,12 @@ export function useStream() {
       // Include web_search_enabled if provided
       if (params.web_search_enabled !== undefined) {
         postBody.web_search_enabled = params.web_search_enabled;
+      }
+      if (params.answer_mode) {
+        postBody.answer_mode = params.answer_mode;
+      }
+      if (params.retrieval_mode) {
+        postBody.retrieval_mode = params.retrieval_mode;
       }
       // Include summary_model_id if provided (for non-Agent mode)
       if (params.summary_model_id) {

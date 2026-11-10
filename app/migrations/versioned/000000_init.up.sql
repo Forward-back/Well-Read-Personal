@@ -3807,6 +3807,7 @@ ALTER TABLE messages ADD COLUMN skill JSONB;
 -- 000114: interactive document reading runs.
 
 ALTER TABLE tenants ADD COLUMN reading_model_id VARCHAR(36) NOT NULL DEFAULT '';
+ALTER TABLE tenants ADD COLUMN direct_model_id VARCHAR(36) NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS reading_runs (
     id               VARCHAR(36) PRIMARY KEY,

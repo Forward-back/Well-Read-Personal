@@ -92,6 +92,9 @@ type Tenant struct {
 	// ReadingModelID is the workspace default model for interactive document
 	// reading. Reading never uses the normal RAG/generation model.
 	ReadingModelID string `yaml:"reading_model_id" json:"reading_model_id" gorm:"column:reading_model_id;type:varchar(36);not null;default:''"`
+	// DirectModelID is the workspace model for the direct (non-RAG) chat mode.
+	// Empty means direct mode is not configured.
+	DirectModelID string `yaml:"direct_model_id" json:"direct_model_id" gorm:"column:direct_model_id;type:varchar(36);not null;default:''"`
 	// AgentSystemPrompt overrides the built-in global assistant prompt for
 	// this workspace. Empty means "use the built-in template".
 	AgentSystemPrompt string `yaml:"agent_system_prompt" json:"agent_system_prompt" gorm:"column:agent_system_prompt;type:text;not null;default:''"`

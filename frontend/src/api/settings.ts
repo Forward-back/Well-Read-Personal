@@ -71,3 +71,23 @@ export async function saveAgentSystemPrompt(agentSystemPrompt: string) {
     data?: { agent_system_prompt: string; is_custom: boolean }
   }
 }
+
+export interface DirectConfig {
+  direct_model_id?: string
+}
+
+export async function getDirectConfig() {
+  return await get('/api/v1/settings/kv/direct-config') as unknown as {
+    success: boolean
+    data?: DirectConfig
+  }
+}
+
+export async function updateDirectConfig(directModelId: string) {
+  return await put('/api/v1/settings/kv/direct-config', {
+    direct_model_id: directModelId,
+  }) as unknown as {
+    success: boolean
+    data?: DirectConfig
+  }
+}
