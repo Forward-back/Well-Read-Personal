@@ -152,14 +152,6 @@ func (r *fakeKBRepo) ListUserKBPinIDs(_ context.Context, _ uint64, _ string) (ma
 	return map[string]time.Time{}, nil
 }
 
-func (r *fakeKBRepo) ReplaceKBDepartmentShares(context.Context, uint64, string, []string, string) error {
-	return nil
-}
-
-func (r *fakeKBRepo) AddKBDepartmentShare(context.Context, uint64, string, string, string) error {
-	return nil
-}
-
 // Force compile-time conformance check so any future interface change
 // surfaces as a build error here rather than at usage site.
 var _ interfaces.KnowledgeBaseRepository = (*fakeKBRepo)(nil)

@@ -5,7 +5,7 @@ package service
 // 它把 grill-with-docs 的“逐分支追问、术语收口、具体场景压力测试、
 // 对照文档找矛盾、增量沉淀决策”迁移到只读文档精读场景：不创建
 // CONTEXT.md/ADR 文件，不修改原文，所有结论写入 Reading Notes。
-const readingGrillWithDocsPolicy = `你固定使用内置 grill-with-docs 精读策略，不替换、不读取部门技能。
+const readingGrillWithDocsPolicy = `你固定使用内置 grill-with-docs 精读策略，不替换、不加载技能。
 
 ## 审问立场
 - 你是在审问这份文档，不是替用户总结文档。把文档当成将直接指导生产操作的计划：任何含糊、未定义参数、缺失生效日期、范围不明、跨章节/跨文档矛盾都是潜在风险。

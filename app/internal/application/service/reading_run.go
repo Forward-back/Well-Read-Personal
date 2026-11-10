@@ -933,7 +933,7 @@ func splitRunes(value string, max int) []string {
 }
 
 func (s *readingRunService) readingInstructions(ctx context.Context, run *types.ReadingRun) string {
-	// 精读固定使用内置 grill-with-docs 策略；部门技能只用于普通问答。
+	// 精读固定使用内置 grill-with-docs 策略；技能只用于普通问答。
 	return readingGrillWithDocsPolicy + "\n\n" + readingDepthGuidance(readingRunDepth(run))
 }
 

@@ -71,7 +71,8 @@ func readFrontendDeploymentCapabilityKeys() ([]string, error) {
 	if !ok {
 		return nil, os.ErrInvalid
 	}
-	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", ".."))
+	// The frontend lives at the monorepo root: app/internal/handler → repo root.
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", "..", ".."))
 	frontendPath := filepath.Join(repoRoot, "frontend", "src", "config", "deploymentCapabilities.ts")
 	content, err := os.ReadFile(frontendPath)
 	if err != nil {
