@@ -598,7 +598,10 @@ def _image_markdown(img: dict) -> str:
     if not url:
         return ""
     caption = str(img.get("caption") or "").strip()
-    alt = caption.replace("[", "\\[").replace("]", "\\]") or "图片"
+    # Markdown image labels cannot span lines: a multi-line VLM caption makes
+    # the whole image token unparsable (marked renders it as text/list).
+    alt = " ".join(caption.split())
+    alt = alt.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]") or "图片"
     lines = [f"![{alt}]({url})"]
     meta = []
     if caption:
@@ -639,7 +642,10 @@ class StreamingImageReplacer:
         self.buf += text or ""
         hold = 0
         max_prefix = len(self._HOLD_PREFIX) + 4
-        for i in range(len(self.buf) - 1, max(-1, len(self.buf) - max_prefix - 1), -1):
+        # Scan forward so a split "[[IMG:n]]" holds the longest partial token.
+        # Scanning backward would match the trailing "[" alone and emit the
+        # earlier "[" out of the buffer, leaving an unreplaceable "[IMG:n]]".
+        for i in range(max(0, len(self.buf) - max_prefix), len(self.buf)):
             suffix = self.buf[i:]
             if suffix.startswith("[") and (
                 self._HOLD_PREFIX.startswith(suffix)

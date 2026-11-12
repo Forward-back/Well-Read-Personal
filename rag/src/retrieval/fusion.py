@@ -171,6 +171,12 @@ class FusionEngine:
             "expiry_date": item.get("expiry_date", ""),
             "position_start": item.get("position_start"),
             "position_end": item.get("position_end"),
+            "source_chunk_id": item.get("source_chunk_id", ""),
+            "chunk_type": item.get("chunk_type", "text"),
+            "image_url": item.get("image_url", ""),
+            "image_caption": item.get("image_caption", ""),
+            "image_ocr": item.get("image_ocr", ""),
+            "parent_source_chunk_id": item.get("parent_source_chunk_id", ""),
         }
 
     @staticmethod

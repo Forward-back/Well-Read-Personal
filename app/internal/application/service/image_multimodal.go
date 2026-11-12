@@ -55,6 +55,14 @@ func buildVLMCaptionPrompt(ctx context.Context, cfg types.VLMConfig) string {
 	return types.AppendCustomPromptInstructions(prompt, cfg.CustomInstructions, "image_description")
 }
 
+// multimodalEngineSyncScheduler re-pushes a knowledge's chunks to the RAG
+// engine after all image OCR/caption chunks are written. The initial
+// pushToEngine runs before multimodal tasks finish, so without this second
+// push the image chunks never reach YLSW and image-grounded retrieval misses.
+type multimodalEngineSyncScheduler interface {
+	ScheduleKnowledgeSync(ctx context.Context, tenantID uint64, knowledgeID string)
+}
+
 // ImageMultimodalService handles image:multimodal asynq tasks.
 // It reads images from storage (via FileService for provider:// URLs),
 // performs OCR and VLM caption, and creates child chunks.
@@ -69,6 +77,7 @@ type ImageMultimodalService struct {
 	ollamaService  *ollama.OllamaService
 	taskEnqueuer   interfaces.TaskEnqueuer
 	redisClient    *redis.Client
+	engineSync     multimodalEngineSyncScheduler
 	// fileSvc is the globally configured default FileService used as a fallback
 	// when the tenant-scoped storage config cannot produce a usable service
 	// (e.g. images were saved using the global MINIO_* env vars while the
@@ -97,6 +106,7 @@ func NewImageMultimodalService(
 	ollamaService *ollama.OllamaService,
 	taskEnqueuer interfaces.TaskEnqueuer,
 	redisClient *redis.Client,
+	engineSync *EngineSyncService,
 	fileSvc interfaces.FileService,
 	storageResolver interfaces.StorageBackendResolver,
 	resourceCatalog interfaces.ResourceCatalog,
@@ -113,6 +123,7 @@ func NewImageMultimodalService(
 		ollamaService:   ollamaService,
 		taskEnqueuer:    taskEnqueuer,
 		redisClient:     redisClient,
+		engineSync:      engineSync,
 		fileSvc:         fileSvc,
 		storageResolver: storageResolver,
 		resourceCatalog: resourceCatalog,
@@ -157,7 +168,7 @@ func (s *ImageMultimodalService) Handle(ctx context.Context, task *asynq.Task) e
 			payload.ChunkID, payload.KnowledgeID, payload.KnowledgeBaseID, payload.ImageURL)
 		// Still count this image toward the parent finalize gate so a batch
 		// of dropped orphans cannot strand multimodal:pending forever.
-		s.checkAndFinalizeAllImages(ctx, payload)
+		s.checkAndFinalizeAllImages(ctx, payload, false)
 		return nil
 	}
 
@@ -212,7 +223,7 @@ func (s *ImageMultimodalService) Handle(ctx context.Context, task *asynq.Task) e
 			}
 		}
 		if handleErr == nil || isFinalAsynqAttempt(ctx) {
-			s.checkAndFinalizeAllImages(ctx, payload)
+			s.checkAndFinalizeAllImages(ctx, payload, true)
 		} else {
 			logger.Infof(ctx,
 				"[ImageMultimodal] Skip finalize on retryable error for %s (will count on last attempt)",
@@ -643,8 +654,15 @@ func downloadImageFromURL(imageURL string) ([]byte, error) {
 	return secutils.DownloadBytes(imageURL)
 }
 
-func (s *ImageMultimodalService) checkAndFinalizeAllImages(ctx context.Context, payload types.ImageMultimodalPayload) {
+func (s *ImageMultimodalService) checkAndFinalizeAllImages(
+	ctx context.Context,
+	payload types.ImageMultimodalPayload,
+	scheduleEngineSync bool,
+) {
 	if s.redisClient == nil {
+		if scheduleEngineSync {
+			s.syncEngineAfterMultimodal(ctx, payload)
+		}
 		s.enqueueKnowledgePostProcessTask(ctx, payload)
 		return
 	}
@@ -662,6 +680,9 @@ func (s *ImageMultimodalService) checkAndFinalizeAllImages(ctx context.Context, 
 		logger.Warnf(ctx,
 			"[ImageMultimodal] Decrement failed for %s (%v); fallback-enqueueing post-process",
 			payload.KnowledgeID, err)
+		if scheduleEngineSync {
+			s.syncEngineAfterMultimodal(ctx, payload)
+		}
 		s.enqueueKnowledgePostProcessTask(ctx, payload)
 		return
 	}
@@ -670,8 +691,20 @@ func (s *ImageMultimodalService) checkAndFinalizeAllImages(ctx context.Context, 
 		logger.Infof(ctx, "[ImageMultimodal] All images processed for knowledge %s. Finalizing...", payload.KnowledgeID)
 		s.redisClient.Del(ctx, redisKey)
 
+		if scheduleEngineSync {
+			s.syncEngineAfterMultimodal(ctx, payload)
+		}
 		s.enqueueKnowledgePostProcessTask(ctx, payload)
 	}
+}
+
+// syncEngineAfterMultimodal pushes the document again so the RAG engine picks
+// up the image_ocr/image_caption chunks created after the initial ingest.
+func (s *ImageMultimodalService) syncEngineAfterMultimodal(ctx context.Context, payload types.ImageMultimodalPayload) {
+	if s.engineSync == nil {
+		return
+	}
+	s.engineSync.ScheduleKnowledgeSync(ctx, payload.TenantID, payload.KnowledgeID)
 }
 
 func (s *ImageMultimodalService) enqueueKnowledgePostProcessTask(ctx context.Context, payload types.ImageMultimodalPayload) {
