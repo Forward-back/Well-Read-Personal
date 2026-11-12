@@ -10,6 +10,7 @@ func WebSearchConfigForResponse(cfg *WebSearchConfig, maskSecrets bool) *WebSear
 		return nil
 	}
 	out := *EffectiveWebSearchConfig(cfg)
+	out.APIKeyConfigured = strings.TrimSpace(out.APIKey) != ""
 	if !maskSecrets {
 		return &out
 	}

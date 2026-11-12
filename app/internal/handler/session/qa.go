@@ -1284,6 +1284,17 @@ func (h *Handler) executeQA(reqCtx *qaRequestContext, mode qaMode, generateTitle
 						SessionID: sessionID,
 					},
 				})
+				// Normal/direct modes complete through the final-answer Done
+				// handler. A service error before that handler leaves the SSE
+				// loop waiting for a complete event until the request timeout,
+				// so close the turn here as well.
+				if mode == qaModeNormal || mode == qaModeDirect {
+					streamCtx.eventBus.Emit(streamCtx.asyncCtx, event.Event{
+						Type:      event.EventAgentFinalAnswer,
+						SessionID: sessionID,
+						Data:      event.AgentFinalAnswerData{Done: true},
+					})
+				}
 			}
 		}
 	}()

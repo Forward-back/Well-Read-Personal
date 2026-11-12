@@ -19,6 +19,7 @@ const (
 	WebSearchProviderTypeBing       WebSearchProviderType = "bing"
 	WebSearchProviderTypeGoogle     WebSearchProviderType = "google"
 	WebSearchProviderTypeDuckDuckGo WebSearchProviderType = "duckduckgo"
+	WebSearchProviderTypeDeepSeek   WebSearchProviderType = "deepseek"
 )
 
 // WebSearchProviderEntity represents a configured web search provider instance for a workspace.
@@ -173,6 +174,14 @@ func GetWebSearchProviderTypes() []WebSearchProviderTypeInfo {
 			SupportsProxy:  true,
 			Description:    "DuckDuckGo Search (free, no API key required)",
 			DocsURL:        "https://duckduckgo.com/",
+		},
+		{
+			ID:             "deepseek",
+			Name:           "DeepSeek",
+			RequiresAPIKey: true,
+			SupportsProxy:  true,
+			Description:    "DeepSeek Search API (same API key as DeepSeek chat models)",
+			DocsURL:        "https://api-docs.deepseek.com/guides/search/",
 		},
 		{
 			ID:             "bing",

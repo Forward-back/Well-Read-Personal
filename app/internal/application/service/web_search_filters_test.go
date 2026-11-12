@@ -77,14 +77,21 @@ func TestSupportedProviderTypesAreAvailable(t *testing.T) {
 	require.NoError(t, validateProviderParameters(
 		types.WebSearchProviderTypeDuckDuckGo, types.WebSearchProviderParameters{},
 	))
+	require.True(t, isValidProviderType(types.WebSearchProviderTypeDeepSeek))
+	require.Error(t, validateProviderParameters(
+		types.WebSearchProviderTypeDeepSeek, types.WebSearchProviderParameters{},
+	))
+	require.NoError(t, validateProviderParameters(
+		types.WebSearchProviderTypeDeepSeek, types.WebSearchProviderParameters{APIKey: "test"},
+	))
 	require.False(t, isValidProviderType(types.WebSearchProviderType("brave")),
-		"the personal edition supports only bing, google and duckduckgo")
+		"the personal edition supports only bing, google, duckduckgo and deepseek")
 
 	found := map[string]bool{}
 	for _, info := range types.GetWebSearchProviderTypes() {
 		found[info.ID] = true
 	}
 	require.Equal(t, map[string]bool{
-		"bing": true, "google": true, "duckduckgo": true,
+		"bing": true, "google": true, "duckduckgo": true, "deepseek": true,
 	}, found)
 }

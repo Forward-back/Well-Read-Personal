@@ -15,7 +15,14 @@ func TestWebSearchConfigForResponse_MasksSecrets(t *testing.T) {
 	resp := WebSearchConfigForResponse(cfg, true)
 	require.NotNil(t, resp)
 	assert.Empty(t, resp.APIKey)
+	assert.True(t, resp.APIKeyConfigured)
 	assert.Equal(t, RedactedSecretPlaceholder, resp.ProxyURL)
+}
+
+func TestWebSearchConfigForResponse_NoKeyConfigured(t *testing.T) {
+	resp := WebSearchConfigForResponse(&WebSearchConfig{}, true)
+	require.NotNil(t, resp)
+	assert.False(t, resp.APIKeyConfigured)
 }
 
 func TestWebSearchConfigForResponse_Unmasked(t *testing.T) {
@@ -23,6 +30,7 @@ func TestWebSearchConfigForResponse_Unmasked(t *testing.T) {
 	resp := WebSearchConfigForResponse(cfg, false)
 	require.NotNil(t, resp)
 	assert.Equal(t, "search-secret", resp.APIKey)
+	assert.True(t, resp.APIKeyConfigured)
 	assert.Equal(t, "http://proxy", resp.ProxyURL)
 }
 

@@ -343,7 +343,7 @@ func (h *SettingsHandler) updateTenantWebSearchConfigInternal(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    types.WebSearchConfigForResponse(updatedTenant.WebSearchConfig, true),
+		"data":    h.webSearchConfigForResponse(ctx, updatedTenant),
 		"message": "Web search configuration updated successfully",
 	})
 }
@@ -361,8 +361,30 @@ func (h *SettingsHandler) GetTenantWebSearchConfig(c *gin.Context) {
 	logger.Infof(ctx, "Tenant web search config retrieved successfully, Tenant ID: %d", tenant.ID)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    types.WebSearchConfigForResponse(tenant.WebSearchConfig, true),
+		"data":    h.webSearchConfigForResponse(ctx, tenant),
 	})
+}
+
+// webSearchConfigForResponse adds direct-mode fallback availability so the
+// composer can show the tenant-KV web search toggle without provider entities.
+func (h *SettingsHandler) webSearchConfigForResponse(ctx context.Context, tenant *types.Tenant) *types.WebSearchConfig {
+	out := types.WebSearchConfigForResponse(tenant.WebSearchConfig, true)
+	if out == nil {
+		return nil
+	}
+	out.DirectFallbackAvailable = h.directModelKeyAvailable(ctx, tenant.DirectModelID)
+	return out
+}
+
+func (h *SettingsHandler) directModelKeyAvailable(ctx context.Context, modelID string) bool {
+	if h.modelService == nil || strings.TrimSpace(modelID) == "" {
+		return false
+	}
+	model, err := h.modelService.GetModelByID(ctx, modelID)
+	if err != nil || model == nil {
+		return false
+	}
+	return strings.TrimSpace(model.Parameters.APIKey) != ""
 }
 
 func (h *SettingsHandler) GetTenantParserEngineConfig(c *gin.Context) {

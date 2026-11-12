@@ -26,6 +26,13 @@ type WebSearchConfig struct {
 	RerankModelID      string `json:"rerank_model_id,omitempty"`     // 重排模型ID（用于RAG压缩）
 	DocumentFragments  int    `json:"document_fragments,omitempty"`  // 文档片段数量（用于RAG压缩）
 	ProxyURL           string `json:"proxy_url,omitempty"`           // Optional per-request proxy override; normally empty — use WebSearchProviderEntity.Parameters.proxy_url. Merged at call time when set.
+	// APIKeyConfigured is response-only: true when a key is stored. Never set on
+	// write paths; omitempty keeps it out of persisted tenant JSON.
+	APIKeyConfigured bool `json:"api_key_configured,omitempty"`
+	// DirectFallbackAvailable is response-only: true when direct mode can reuse
+	// the configured direct model's key for DeepSeek search. Never set on
+	// write paths.
+	DirectFallbackAvailable bool `json:"direct_fallback_available,omitempty"`
 }
 
 const (
@@ -82,11 +89,12 @@ func (c *WebSearchConfig) Scan(value interface{}) error {
 
 // WebSearchResult represents a single web search result
 type WebSearchResult struct {
-	Title   string `json:"title"`   // 搜索结果标题
-	URL     string `json:"url"`     // 结果URL
-	Snippet string `json:"snippet"` // 摘要片段
-	Content string `json:"content"` // 完整内容（可选，需要额外抓取）
-	Source  string `json:"source"`  // 来源（如：duckduckgo等）
+	Title   string `json:"title"`             // 搜索结果标题
+	URL     string `json:"url"`               // 结果URL
+	Snippet string `json:"snippet"`           // 摘要片段
+	Summary string `json:"summary,omitempty"` // 较长的模型可读摘要（DeepSeek Search 等提供）
+	Content string `json:"content"`           // 完整内容（可选，需要额外抓取）
+	Source  string `json:"source"`            // 来源（如：duckduckgo等）
 	// Provider-reported age, without inventing an exact publication date.
 	Age string `json:"age,omitempty"`
 

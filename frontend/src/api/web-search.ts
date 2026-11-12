@@ -18,6 +18,10 @@ export interface WebSearchConfig {
   // Deprecated: kept for backward compatibility
   provider?: string
   api_key?: string
+  /** Response-only: whether a key is stored. The key itself is never returned. */
+  api_key_configured?: boolean
+  /** Response-only: whether direct mode can reuse the direct model's key. */
+  direct_fallback_available?: boolean
   max_results: number
   include_date: boolean
   compression_method: string

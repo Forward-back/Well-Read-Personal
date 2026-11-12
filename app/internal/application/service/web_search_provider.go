@@ -131,7 +131,8 @@ func isValidProviderType(provider types.WebSearchProviderType) bool {
 	switch provider {
 	case types.WebSearchProviderTypeBing,
 		types.WebSearchProviderTypeGoogle,
-		types.WebSearchProviderTypeDuckDuckGo:
+		types.WebSearchProviderTypeDuckDuckGo,
+		types.WebSearchProviderTypeDeepSeek:
 		return true
 	default:
 		return false
@@ -154,6 +155,10 @@ func validateProviderParameters(provider types.WebSearchProviderType, params typ
 		}
 	case types.WebSearchProviderTypeDuckDuckGo:
 		// No API key required
+	case types.WebSearchProviderTypeDeepSeek:
+		if params.APIKey == "" {
+			return fmt.Errorf("API key is required for DeepSeek provider")
+		}
 	}
 	if err := validateOptionalProxyURL(params.ProxyURL); err != nil {
 		return err

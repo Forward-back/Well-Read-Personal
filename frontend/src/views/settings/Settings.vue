@@ -29,6 +29,7 @@
                   <div class="section"><UserProfile /></div>
                   <div class="section"><GeneralSettings /></div>
                   <div class="section"><AnswerModeSettings /></div>
+                  <div class="section"><WebSearchSettings /></div>
                   <div class="section"><GlobalPromptSettings /></div>
                   <div class="section"><ChatHistorySettings /></div>
                 </template>
@@ -70,6 +71,7 @@ import { useUIStore } from '@/stores/ui'
 import UserProfile from './UserProfile.vue'
 import GeneralSettings from './GeneralSettings.vue'
 import AnswerModeSettings from './AnswerModeSettings.vue'
+import WebSearchSettings from './WebSearchSettings.vue'
 import GlobalPromptSettings from './GlobalPromptSettings.vue'
 import ChatHistorySettings from './ChatHistorySettings.vue'
 import ModelSettings from './ModelSettings.vue'

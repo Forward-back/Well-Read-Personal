@@ -1128,6 +1128,7 @@ func registerWebSearchProviders(registry *infra_web_search.Registry) {
 	registry.Register("duckduckgo", infra_web_search.NewDuckDuckGoProvider)
 	registry.Register("google", infra_web_search.NewGoogleProvider)
 	registry.Register("bing", infra_web_search.NewBingProvider)
+	registry.Register("deepseek", infra_web_search.NewDeepSeekProvider)
 }
 
 // initConnectorRegistry creates and populates the connector registry with all available connectors.

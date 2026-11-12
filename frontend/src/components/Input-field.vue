@@ -23,6 +23,7 @@ import {
   effectiveContextWindow,
 } from '@/utils/contextWindow';
 import { type CustomAgent, BUILTIN_QUICK_ANSWER_ID, BUILTIN_SMART_REASONING_ID } from '@/api/agent';
+import { getTenantWebSearchConfig, type WebSearchConfig as TenantWebSearchConfig } from '@/api/web-search';
 import { useChatResourcesStore } from '@/stores/chatResources';
 import { useEditorResourcesStore } from '@/stores/editorResources';
 import { useI18n } from 'vue-i18n';
@@ -36,7 +37,6 @@ import {
 import {
   isAgentWebSearchEnabled,
   isAgentWebSearchReady,
-  isTenantWebSearchReady,
 } from '@/utils/agentWebSearch';
 import {
   getAgentNotReadyReasonKeys,
@@ -63,6 +63,20 @@ const {
   webSearchProviders,
 } = storeToRefs(chatResources);
 const { t, locale } = useI18n();
+
+// Direct mode reads the tenant KV config; provider entities only serve agents.
+const tenantWebSearchConfig = ref<TenantWebSearchConfig | null>(null);
+const isTenantDirectWebSearchConfigured = computed(() => {
+  const cfg = tenantWebSearchConfig.value;
+  if (!cfg) return false;
+  const provider = (cfg.provider || '').trim();
+  if (!provider) return false;
+  if (provider === 'duckduckgo') return true;
+  if (provider === 'deepseek') {
+    return cfg.api_key_configured === true || cfg.direct_fallback_available === true;
+  }
+  return cfg.api_key_configured === true;
+});
 
 const selectableSkills = ref<SelectableSkill[]>([]);
 const selectedSkillId = computed({
@@ -437,7 +451,7 @@ const showWebSearchButton = computed(() => {
     return false;
   }
   if (!hasAgentConfig.value) {
-    return isTenantWebSearchReady(webSearchProviders.value);
+    return isTenantDirectWebSearchConfigured.value;
   }
   return isAgentWebSearchReady(
     currentAgentConfig.value,
@@ -782,15 +796,28 @@ const isWebSearchConfigured = computed(() => {
       selectedSharedAgent.value?.web_search_ready,
     );
   }
-  return isTenantWebSearchReady(webSearchProviders.value);
+  return isTenantDirectWebSearchConfigured.value;
 });
 const isWebSearchReadinessKnown = computed(
   () => !settingsStore.selectedAgentSourceTenantId || selectedSharedAgent.value !== undefined
 );
 
+const loadTenantWebSearchConfig = async () => {
+  try {
+    const response = await getTenantWebSearchConfig();
+    tenantWebSearchConfig.value = response?.data || null;
+  } catch (error) {
+    console.error('Failed to load tenant web search config:', error);
+    tenantWebSearchConfig.value = null;
+  }
+};
+
 const loadWebSearchConfig = async (force = false) => {
   try {
-    await chatResources.ensureWebSearchProviders(force);
+    await Promise.all([
+      chatResources.ensureWebSearchProviders(force),
+      loadTenantWebSearchConfig(),
+    ]);
 
     if (isWebSearchReadinessKnown.value && !isWebSearchConfigured.value && settingsStore.isWebSearchEnabled) {
       settingsStore.toggleWebSearch(false);

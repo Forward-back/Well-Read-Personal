@@ -186,11 +186,29 @@ func (s *sessionService) directWebSearch(
 		return nil, fmt.Errorf("web search service is not configured")
 	}
 	cfg := types.EffectiveWebSearchConfig(tenant.WebSearchConfig)
+	if strings.EqualFold(cfg.Provider, string(types.WebSearchProviderTypeDeepSeek)) &&
+		strings.TrimSpace(cfg.APIKey) == "" {
+		cfg.APIKey = s.directModelAPIKey(ctx, tenant.DirectModelID)
+		if cfg.APIKey == "" {
+			return nil, fmt.Errorf("DeepSeek 联网搜索 Key 未配置，请在设置中填写或先配置直连模型")
+		}
+	}
 	providerID := ""
 	if provider, err := s.webSearchProviderRepo.GetDefault(ctx, tenant.ID); err == nil && provider != nil {
 		providerID = provider.ID
 	}
 	return s.webSearchService.Search(ctx, providerID, cfg, query)
+}
+
+func (s *sessionService) directModelAPIKey(ctx context.Context, modelID string) string {
+	if s.modelService == nil || strings.TrimSpace(modelID) == "" {
+		return ""
+	}
+	model, err := s.modelService.GetModelByID(ctx, modelID)
+	if err != nil || model == nil {
+		return ""
+	}
+	return strings.TrimSpace(model.Parameters.APIKey)
 }
 
 func formatWebSearchContext(results []*types.WebSearchResult) string {
@@ -204,7 +222,11 @@ func formatWebSearchContext(results []*types.WebSearchResult) string {
 			continue
 		}
 		fmt.Fprintf(&b, "%d. %s\n   URL: %s\n", i+1, strings.TrimSpace(item.Title), item.URL)
-		if snippet := strings.TrimSpace(item.Snippet); snippet != "" {
+		snippet := strings.TrimSpace(item.Summary)
+		if snippet == "" {
+			snippet = strings.TrimSpace(item.Snippet)
+		}
+		if snippet != "" {
 			fmt.Fprintf(&b, "   摘要: %s\n", snippet)
 		}
 	}
