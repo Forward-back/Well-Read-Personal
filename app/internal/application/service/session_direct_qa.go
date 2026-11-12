@@ -178,7 +178,10 @@ func (s *sessionService) directHistoryMessages(ctx context.Context, qaReq *types
 	return messages
 }
 
-// directWebSearch runs the tenant's default provider with the tenant config.
+// directWebSearch runs web search from the tenant KV config only. Direct mode
+// never consults provider entities: entities belong to Agents, and keeping the
+// two paths separate means an Agent's default provider cannot silently change
+// what direct chat queries.
 func (s *sessionService) directWebSearch(
 	ctx context.Context, tenant *types.Tenant, query string,
 ) ([]*types.WebSearchResult, error) {
@@ -193,11 +196,7 @@ func (s *sessionService) directWebSearch(
 			return nil, fmt.Errorf("DeepSeek 联网搜索 Key 未配置，请在设置中填写或先配置直连模型")
 		}
 	}
-	providerID := ""
-	if provider, err := s.webSearchProviderRepo.GetDefault(ctx, tenant.ID); err == nil && provider != nil {
-		providerID = provider.ID
-	}
-	return s.webSearchService.Search(ctx, providerID, cfg, query)
+	return s.webSearchService.Search(ctx, "", cfg, query)
 }
 
 func (s *sessionService) directModelAPIKey(ctx context.Context, modelID string) string {

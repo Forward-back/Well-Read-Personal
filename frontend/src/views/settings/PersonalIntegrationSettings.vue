@@ -47,6 +47,8 @@
       <p class="hint">MCP 服务地址以 <code>mcp/</code> 实际部署为准；管理接口不接受该密钥，密钥本身也只能在登录后管理。</p>
     </section>
 
+    <WebSearchProviderSettings />
+
     <t-dialog
       v-model:visible="tokenVisible"
       header="请立即保存密钥"
@@ -72,6 +74,7 @@ import {
   resetPersonalAPIKey,
   type PersonalAPIKey,
 } from '@/api/settings'
+import WebSearchProviderSettings from './WebSearchProviderSettings.vue'
 
 const loading = ref(false)
 const creating = ref(false)

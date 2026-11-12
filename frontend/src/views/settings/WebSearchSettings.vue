@@ -30,7 +30,18 @@
         :placeholder="keyConfigured ? '已保存 Key，留空表示保留' : '留空则复用直连模型 Key'"
       />
       <span class="key-status">{{ keyConfigured ? 'Key 已配置' : '未单独配置 Key' }}</span>
+      <t-button
+        v-if="keyConfigured"
+        variant="text"
+        theme="danger"
+        :loading="clearing"
+        @click="clearKey"
+      >
+        清除已保存 Key
+      </t-button>
     </div>
+
+    <p v-if="fallbackWarning" class="fallback-warning">{{ fallbackWarning }}</p>
 
     <div class="action-row">
       <span class="current">当前搜索引擎：{{ currentProviderLabel }}</span>
@@ -41,7 +52,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import {
   getTenantWebSearchConfig,
   updateTenantWebSearchConfig,
@@ -63,25 +74,44 @@ const form = reactive({
 
 const apiKeyInput = ref('')
 const keyConfigured = ref(false)
+const fallbackAvailable = ref(false)
+const fallbackProvider = ref('')
 const loading = ref(false)
 const saving = ref(false)
+const clearing = ref(false)
 
 const currentProviderLabel = computed(
   () => providers.find((item) => item.value === form.provider)?.label || form.provider,
 )
 
+const fallbackWarning = computed(() => {
+  if (form.provider !== 'deepseek' || keyConfigured.value) return ''
+  if (!fallbackAvailable.value) {
+    return '未单独配置 DeepSeek Key，且直连模型没有可用 Key，联网搜索将无法使用。'
+  }
+  if (fallbackProvider.value && fallbackProvider.value.toLowerCase() !== 'deepseek') {
+    return `当前会复用直连模型 Key，但直连模型供应商为 ${fallbackProvider.value}，可能不是 DeepSeek 凭据。`
+  }
+  return ''
+})
+
+const applyConfig = (config: WebSearchConfig) => {
+  form.provider = config.provider || 'deepseek'
+  form.maxResults = config.max_results || 10
+  form.includeDate = config.include_date || false
+  form.compressionMethod = config.compression_method || 'none'
+  form.blacklist = config.blacklist || []
+  keyConfigured.value = config.api_key_configured === true
+  fallbackAvailable.value = config.direct_fallback_available === true
+  fallbackProvider.value = config.direct_fallback_provider || ''
+  apiKeyInput.value = ''
+}
+
 const load = async () => {
   loading.value = true
   try {
     const response = await getTenantWebSearchConfig()
-    const config: WebSearchConfig = response?.data || {}
-    form.provider = config.provider || 'deepseek'
-    form.maxResults = config.max_results || 10
-    form.includeDate = config.include_date || false
-    form.compressionMethod = config.compression_method || 'none'
-    form.blacklist = config.blacklist || []
-    keyConfigured.value = config.api_key_configured === true
-    apiKeyInput.value = ''
+    applyConfig((response?.data || {}) as WebSearchConfig)
   } catch (e: any) {
     MessagePlugin.error(e?.message || '读取联网搜索配置失败')
   } finally {
@@ -101,16 +131,42 @@ const save = async () => {
       compression_method: form.compressionMethod,
       blacklist: form.blacklist,
     })
-    if (apiKey) {
-      keyConfigured.value = true
-    }
-    apiKeyInput.value = ''
     MessagePlugin.success('联网搜索配置已保存')
+    await load()
   } catch (e: any) {
     MessagePlugin.error(e?.message || '保存联网搜索配置失败')
   } finally {
     saving.value = false
   }
+}
+
+const clearKey = () => {
+  const dialog = DialogPlugin.confirm({
+    header: '清除 DeepSeek Key',
+    body: '清除后将回退到直连模型 Key；如直连模型不是 DeepSeek，联网搜索可能失败。',
+    confirmBtn: { content: '清除', theme: 'danger' },
+    onConfirm: async () => {
+      clearing.value = true
+      try {
+        await updateTenantWebSearchConfig({
+          provider: form.provider,
+          api_key: '',
+          clear_api_key: true,
+          max_results: form.maxResults,
+          include_date: form.includeDate,
+          compression_method: form.compressionMethod,
+          blacklist: form.blacklist,
+        })
+        MessagePlugin.success('已清除保存的 Key')
+        dialog.hide()
+        await load()
+      } catch (e: any) {
+        MessagePlugin.error(e?.message || '清除 Key 失败')
+      } finally {
+        clearing.value = false
+      }
+    },
+  })
 }
 
 onMounted(load)
@@ -191,6 +247,16 @@ onMounted(load)
 .current {
   font-size: 13px;
   color: var(--td-text-color-secondary);
+}
+
+.fallback-warning {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--td-warning-color-light);
+  color: var(--td-text-color-primary);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .action-row {

@@ -373,7 +373,21 @@ func (h *SettingsHandler) webSearchConfigForResponse(ctx context.Context, tenant
 		return nil
 	}
 	out.DirectFallbackAvailable = h.directModelKeyAvailable(ctx, tenant.DirectModelID)
+	if out.DirectFallbackAvailable {
+		out.DirectFallbackProvider = h.directModelProvider(ctx, tenant.DirectModelID)
+	}
 	return out
+}
+
+func (h *SettingsHandler) directModelProvider(ctx context.Context, modelID string) string {
+	if h.modelService == nil || strings.TrimSpace(modelID) == "" {
+		return ""
+	}
+	model, err := h.modelService.GetModelByID(ctx, modelID)
+	if err != nil || model == nil {
+		return ""
+	}
+	return strings.TrimSpace(model.Parameters.Provider)
 }
 
 func (h *SettingsHandler) directModelKeyAvailable(ctx context.Context, modelID string) bool {

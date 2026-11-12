@@ -33,6 +33,12 @@ type WebSearchConfig struct {
 	// the configured direct model's key for DeepSeek search. Never set on
 	// write paths.
 	DirectFallbackAvailable bool `json:"direct_fallback_available,omitempty"`
+	// DirectFallbackProvider is response-only: provider id of the direct model
+	// whose key would be reused (e.g. "deepseek"). Never persisted.
+	DirectFallbackProvider string `json:"direct_fallback_provider,omitempty"`
+	// ClearAPIKey is request-only: true removes the stored tenant KV key even
+	// though empty api_key means "keep the current key" on normal saves.
+	ClearAPIKey bool `json:"clear_api_key,omitempty"`
 }
 
 const (

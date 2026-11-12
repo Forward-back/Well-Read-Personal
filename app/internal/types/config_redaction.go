@@ -11,6 +11,7 @@ func WebSearchConfigForResponse(cfg *WebSearchConfig, maskSecrets bool) *WebSear
 	}
 	out := *EffectiveWebSearchConfig(cfg)
 	out.APIKeyConfigured = strings.TrimSpace(out.APIKey) != ""
+	out.ClearAPIKey = false
 	if !maskSecrets {
 		return &out
 	}
@@ -146,6 +147,12 @@ func MergeWebSearchConfigForUpdate(incoming, existing *WebSearchConfig) *WebSear
 	}
 	out.APIKey = PreserveIfRedacted(out.APIKey, prev.APIKey)
 	out.ProxyURL = PreserveIfRedacted(out.ProxyURL, prev.ProxyURL)
+	// Explicit clear wins over the empty-means-preserve contract. The request
+	// flag never reaches persisted tenant JSON.
+	if out.ClearAPIKey {
+		out.APIKey = ""
+		out.ClearAPIKey = false
+	}
 	return &out
 }
 

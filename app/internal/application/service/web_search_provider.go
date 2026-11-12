@@ -62,7 +62,11 @@ func (s *webSearchProviderService) UpdateProvider(ctx context.Context, provider 
 	}
 
 	if provider.Provider != "" {
-		if err := validateProviderParameters(provider.Provider, provider.Parameters); err != nil {
+		// Updates may legitimately carry an empty api_key: clearing a stored
+		// secret is a supported action through the credentials subresource, and
+		// editing the rest of the row afterwards must not re-require it. Required
+		// secret validation still runs on create.
+		if err := validateOptionalProxyURL(provider.Parameters.ProxyURL); err != nil {
 			return err
 		}
 	}

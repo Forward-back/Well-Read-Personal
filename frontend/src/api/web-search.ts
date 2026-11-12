@@ -22,6 +22,10 @@ export interface WebSearchConfig {
   api_key_configured?: boolean
   /** Response-only: whether direct mode can reuse the direct model's key. */
   direct_fallback_available?: boolean
+  /** Response-only: provider of the direct model whose key would be reused. */
+  direct_fallback_provider?: string
+  /** Request-only: explicitly remove the stored tenant KV key. */
+  clear_api_key?: boolean
   max_results: number
   include_date: boolean
   compression_method: string

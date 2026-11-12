@@ -48,6 +48,21 @@ func TestMergeWebSearchConfigForUpdate_PreservesRedactedSecrets(t *testing.T) {
 	assert.Equal(t, 10, merged.MaxResults)
 }
 
+func TestMergeWebSearchConfigForUpdate_ClearsKeyOnExplicitRequest(t *testing.T) {
+	existing := &WebSearchConfig{APIKey: "stored-key"}
+	incoming := &WebSearchConfig{APIKey: "", ClearAPIKey: true, MaxResults: 10}
+	merged := MergeWebSearchConfigForUpdate(incoming, existing)
+	require.NotNil(t, merged)
+	assert.Empty(t, merged.APIKey)
+	assert.False(t, merged.ClearAPIKey)
+}
+
+func TestWebSearchConfigForResponse_DoesNotLeakClearFlag(t *testing.T) {
+	resp := WebSearchConfigForResponse(&WebSearchConfig{ClearAPIKey: true}, true)
+	require.NotNil(t, resp)
+	assert.False(t, resp.ClearAPIKey)
+}
+
 func TestMergeParserEngineConfigForUpdate_PreservesRedactedSecrets(t *testing.T) {
 	existing := &ParserEngineConfig{
 		MinerUAPIKey:          "mineru-secret",
