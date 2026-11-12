@@ -1,0 +1,82 @@
+[
+  {
+    "id": "q1",
+    "mode": "study",
+    "kb": "text",
+    "question": "程序查询方式如何判断设备就绪？CPU 在等待期间处于什么状态？",
+    "min_chars": 600,
+    "max_chars": 2800
+  },
+  {
+    "id": "q2",
+    "mode": "study",
+    "kb": "text",
+    "question": "中断隐指令完成哪三件事？断点和现场有什么区别？",
+    "min_chars": 600,
+    "max_chars": 2800
+  },
+  {
+    "id": "q3",
+    "mode": "study",
+    "kb": "text",
+    "question": "比较程序查询、中断驱动、DMA 三种 I/O 控制方式的 CPU 参与程度与数据传送单位。",
+    "min_chars": 600,
+    "max_chars": 2800
+  },
+  {
+    "id": "q4",
+    "mode": "review",
+    "kb": "text",
+    "question": "单级中断与多重中断的核心区别是什么？屏蔽字在其中起什么作用？",
+    "min_chars": 900,
+    "max_chars": 1800
+  },
+  {
+    "id": "q5",
+    "mode": "study",
+    "kb": "text",
+    "question": "描述单级中断处理的完整流程，包括中断隐指令和中断服务程序的主要步骤。",
+    "min_chars": 600,
+    "max_chars": 2800
+  },
+  {
+    "id": "q6",
+    "mode": "review",
+    "kb": "text",
+    "question": "多重中断处理中两次开中断分别在哪里？为什么需要这样安排？",
+    "min_chars": 900,
+    "max_chars": 1800
+  },
+  {
+    "id": "q7",
+    "mode": "study",
+    "kb": "text",
+    "question": "I/O 接口的基本结构包含哪些部分？I/O 端口编址有哪两种方式？",
+    "min_chars": 600,
+    "max_chars": 2800
+  },
+  {
+    "id": "q8",
+    "mode": "review",
+    "kb": "text",
+    "question": "中断响应优先级与处理优先级有什么区别？为什么需要屏蔽字来动态调整？",
+    "min_chars": 900,
+    "max_chars": 1800
+  },
+  {
+    "id": "q9",
+    "mode": "study",
+    "kb": "text",
+    "question": "为什么高速磁盘的大批量数据传输通常采用 DMA 而不是中断驱动？DMA 与通道方式有何区别？",
+    "min_chars": 600,
+    "max_chars": 2800
+  },
+  {
+    "id": "q10",
+    "mode": "study",
+    "kb": "image",
+    "question": "这张图片中的项目代码是什么？右侧圆形是什么颜色？",
+    "min_chars": 300,
+    "max_chars": 1500
+  }
+]
