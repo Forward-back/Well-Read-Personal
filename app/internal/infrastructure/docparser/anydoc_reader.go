@@ -48,6 +48,14 @@ func (r *AnydocReader) Read(ctx context.Context, req *types.ReadRequest) (*types
 		return nil, fmt.Errorf("anydoc engine does not support file type %q", fileTypeOf(req))
 	}
 
+	// anydoc renders digital PDFs straight to Markdown and never returns their
+	// embedded images. Multimodal PDFs must go through the builtin parser so
+	// figures, charts and scanned pages become image chunks.
+	if format == "pdf" && req.EnableMultimodal && r.canFallback() {
+		logger.Infof(ctx, "[anydoc] %q multimodal PDF, using builtin parser for image extraction", req.FileName)
+		return r.readPDFWithFallback(ctx, req, "multimodal_pdf", "multimodal_pdf")
+	}
+
 	converted, err := anydoc.Convert(req.FileContent, anydoc.Options{
 		Format:     format,
 		WithAssets: r.extractImages,
@@ -90,14 +98,23 @@ func (r *AnydocReader) readScannedPDF(ctx context.Context, req *types.ReadReques
 	}
 
 	logger.Infof(ctx, "[anydoc] %q has no text layer, falling back to builtin for scanned-PDF OCR", req.FileName)
+	return r.readPDFWithFallback(ctx, req, "scanned_pdf", "scanned_pdf")
+}
+
+func (r *AnydocReader) readPDFWithFallback(
+	ctx context.Context,
+	req *types.ReadRequest,
+	reason string,
+	imageSourceType string,
+) (*types.ReadResult, error) {
 	fallbackReq := *req
 	fallbackReq.ParserEngine = BuiltinEngineName
 	result, err := r.fallback.Read(ctx, &fallbackReq)
 	if err != nil {
-		return nil, fmt.Errorf("anydoc scanned-PDF fallback failed for %q: %w", req.FileName, err)
+		return nil, fmt.Errorf("anydoc %s fallback failed for %q: %w", reason, req.FileName, err)
 	}
 	if result == nil {
-		return nil, fmt.Errorf("anydoc scanned-PDF fallback returned no result for %q", req.FileName)
+		return nil, fmt.Errorf("anydoc %s fallback returned no result for %q", reason, req.FileName)
 	}
 	if result.Metadata == nil {
 		result.Metadata = map[string]string{}
@@ -105,9 +122,9 @@ func (r *AnydocReader) readScannedPDF(ctx context.Context, req *types.ReadReques
 	if result.Metadata["parser"] == "" {
 		result.Metadata["parser"] = BuiltinEngineName
 	}
-	result.Metadata["anydoc_fallback"] = "scanned_pdf"
+	result.Metadata["anydoc_fallback"] = reason
 	if result.Metadata["image_source_type"] == "" {
-		result.Metadata["image_source_type"] = "scanned_pdf"
+		result.Metadata["image_source_type"] = imageSourceType
 	}
 	return result, nil
 }

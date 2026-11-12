@@ -37,6 +37,8 @@ type EngineSyncService struct {
 	mu      sync.Mutex
 	started bool
 	running map[string]struct{}
+	pending map[string]struct{}
+	locks   map[string]*sync.Mutex
 }
 
 // NewEngineSyncService creates the resync service.
@@ -54,6 +56,8 @@ func NewEngineSyncService(
 		tenantRepo:    tenantRepo,
 		ragEngine:     ragEngine,
 		running:       make(map[string]struct{}),
+		pending:       make(map[string]struct{}),
+		locks:         make(map[string]*sync.Mutex),
 		cron: cron.New(cron.WithSeconds(), cron.WithChain(
 			cron.Recover(cron.DefaultLogger),
 		)),
@@ -134,11 +138,45 @@ func (s *EngineSyncService) ScheduleKnowledgeSync(ctx context.Context, tenantID 
 		return
 	}
 	baseCtx := context.WithoutCancel(ctx)
-	go func() {
-		if err := s.syncOne(baseCtx, knowledge); err != nil {
-			logger.Warnf(baseCtx, "[EngineSync] auto resync knowledge %s failed: %v", knowledgeID, err)
+	key := fmt.Sprintf("%d/%s", tenantID, knowledgeID)
+	s.mu.Lock()
+	s.pending[key] = struct{}{}
+	if _, busy := s.running[key]; busy {
+		s.mu.Unlock()
+		return
+	}
+	s.running[key] = struct{}{}
+	s.mu.Unlock()
+	go s.drainScheduledSync(baseCtx, key, knowledgeID)
+}
+
+// drainScheduledSync runs one resync per queued request. A schedule that
+// arrives while a push is in flight sets pending again, so the loop re-reads
+// chunks and pushes a second time instead of dropping the update.
+func (s *EngineSyncService) drainScheduledSync(ctx context.Context, key, knowledgeID string) {
+	for {
+		s.mu.Lock()
+		if _, queued := s.pending[key]; !queued {
+			delete(s.running, key)
+			s.mu.Unlock()
+			return
 		}
-	}()
+		delete(s.pending, key)
+		s.mu.Unlock()
+
+		knowledge, err := s.knowledgeRepo.GetKnowledgeByIDOnly(ctx, knowledgeID)
+		if err != nil || knowledge == nil {
+			logger.Warnf(ctx, "[EngineSync] scheduled resync skipped for knowledge %s: %v", knowledgeID, err)
+			continue
+		}
+		lock := s.keyMutex(key)
+		lock.Lock()
+		err = s.syncOneCore(ctx, knowledge)
+		lock.Unlock()
+		if err != nil {
+			logger.Warnf(ctx, "[EngineSync] auto resync knowledge %s failed: %v", knowledgeID, err)
+		}
+	}
 }
 
 // engineSyncPublishWait bounds how long a publish (merge/rollback) waits for
@@ -252,26 +290,32 @@ func (s *EngineSyncService) runDaily(ctx context.Context) {
 }
 
 // syncOne rebuilds markdown from the current chunks and re-ingests with the
-// same document ID (YLSW /ingest is an idempotent rebuild). Concurrent pushes
-// for the same document are collapsed to one.
+// same document ID (YLSW /ingest is an idempotent rebuild). Pushes for the
+// same document are serialized so a caller that marked the document pending
+// always pushes after the previous push finishes.
 func (s *EngineSyncService) syncOne(ctx context.Context, knowledge *types.Knowledge) error {
 	if knowledge == nil || knowledge.ID == "" || knowledge.TenantID == 0 {
 		return nil
 	}
 	key := fmt.Sprintf("%d/%s", knowledge.TenantID, knowledge.ID)
-	s.mu.Lock()
-	if _, busy := s.running[key]; busy {
-		s.mu.Unlock()
-		return nil
-	}
-	s.running[key] = struct{}{}
-	s.mu.Unlock()
-	defer func() {
-		s.mu.Lock()
-		delete(s.running, key)
-		s.mu.Unlock()
-	}()
+	lock := s.keyMutex(key)
+	lock.Lock()
+	defer lock.Unlock()
+	return s.syncOneCore(ctx, knowledge)
+}
 
+func (s *EngineSyncService) keyMutex(key string) *sync.Mutex {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	lock, ok := s.locks[key]
+	if !ok {
+		lock = &sync.Mutex{}
+		s.locks[key] = lock
+	}
+	return lock
+}
+
+func (s *EngineSyncService) syncOneCore(ctx context.Context, knowledge *types.Knowledge) error {
 	now := time.Now()
 	fail := func(err error) error {
 		if updErr := s.knowledgeRepo.UpdateEngineSyncStatus(

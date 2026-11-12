@@ -4091,6 +4091,7 @@ func (s *knowledgeService) convert(
 		ParserEngine:          parserEngine,
 		RequestID:             payload.RequestId,
 		ParserEngineOverrides: mergedOverrides,
+		EnableMultimodal:      payload.EnableMultimodel,
 	}
 
 	if !isURL {

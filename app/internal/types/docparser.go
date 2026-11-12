@@ -13,6 +13,8 @@ type ReadRequest struct {
 	ParserEngine          string
 	RequestID             string
 	ParserEngineOverrides map[string]string
+	// EnableMultimodal asks engines that support it to preserve embedded images.
+	EnableMultimodal bool
 }
 
 // ReadResult is the transport-agnostic result of document reading.

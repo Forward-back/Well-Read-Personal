@@ -99,6 +99,35 @@ func TestAnydocReaderFallsBackForScannedPDF(t *testing.T) {
 	}
 }
 
+func TestAnydocReaderUsesFallbackForMultimodalPDF(t *testing.T) {
+	fallback := &stubDocReader{result: &types.ReadResult{
+		MarkdownContent: "![chart](images/chart_1.png)",
+		ImageRefs: []types.ImageRef{{
+			Filename:    "chart_1.png",
+			OriginalRef: "images/chart_1.png",
+			ImageData:   []byte("png"),
+		}},
+	}}
+	result, err := NewAnydocReader(nil, fallback).Read(context.Background(), &types.ReadRequest{
+		FileName:         "report.pdf",
+		FileType:         "pdf",
+		FileContent:      []byte("%PDF-1.7"),
+		EnableMultimodal: true,
+	})
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if fallback.got == nil || fallback.got.ParserEngine != BuiltinEngineName {
+		t.Fatalf("fallback request = %+v, want builtin engine", fallback.got)
+	}
+	if len(result.ImageRefs) != 1 {
+		t.Errorf("image refs = %d, want 1", len(result.ImageRefs))
+	}
+	if result.Metadata["anydoc_fallback"] != "multimodal_pdf" {
+		t.Errorf("anydoc_fallback = %q, want multimodal_pdf", result.Metadata["anydoc_fallback"])
+	}
+}
+
 func TestAnydocReaderScannedPDFWithoutFallbackKeepsError(t *testing.T) {
 	_, err := NewAnydocReader(nil, nil).readScannedPDF(context.Background(), &types.ReadRequest{
 		FileName: "exam.pdf",
