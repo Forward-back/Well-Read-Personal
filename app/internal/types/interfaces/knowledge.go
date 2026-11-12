@@ -25,6 +25,19 @@ type KnowledgeService interface {
 		channel string,
 		processOverrides *types.KnowledgeProcessOverrides,
 	) (*types.Knowledge, error)
+	// CreateKnowledgeFromMarkdownArchive imports a zip of Markdown files. Each
+	// Markdown entry becomes its own knowledge record; relative-path images are
+	// extracted from the archive and fed into the multimodal pipeline.
+	CreateKnowledgeFromMarkdownArchive(
+		ctx context.Context,
+		kbID string,
+		file *multipart.FileHeader,
+		metadata map[string]string,
+		enableMultimodel *bool,
+		tagIDs []string,
+		channel string,
+		processOverrides *types.KnowledgeProcessOverrides,
+	) (*types.MarkdownArchiveImportResult, error)
 	// CreateKnowledgeFromURL creates knowledge from a URL.
 	// When fileName or fileType is provided (or the URL path has a known file extension),
 	// the URL is treated as a direct file download instead of a web page crawl.

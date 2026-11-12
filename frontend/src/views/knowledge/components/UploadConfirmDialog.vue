@@ -64,6 +64,14 @@
               </div>
 
               <div class="files-list-wrap">
+                <div v-if="hasLooseMarkdown" class="section-notice archive-import-notice">
+                  <t-icon name="info-circle-filled" />
+                  <span>{{ t('uploadConfirm.markdownSingleHint') }}</span>
+                </div>
+                <div v-if="hasZipFiles" class="section-notice archive-import-notice">
+                  <t-icon name="info-circle-filled" />
+                  <span>{{ t('uploadConfirm.markdownZipHint') }}</span>
+                </div>
                 <div v-if="mode === 'manual' && manualPreview" class="manual-source-panel">
                   <p class="manual-source-title" :title="manualPreview.title">{{ manualPreview.title }}</p>
                   <p class="manual-source-meta">
@@ -814,6 +822,14 @@ const batchFileExts = computed(() => {
 })
 
 const hasPdf = computed(() => batchFileExts.value.includes('pdf'))
+
+const hasZipFiles = computed(() => {
+  return localFiles.value.some(file => getFileExt(file) === 'zip')
+})
+
+const hasLooseMarkdown = computed(() => {
+  return localFiles.value.some(file => ['md', 'markdown'].includes(getFileExt(file)))
+})
 
 const chunkingStrategyOptions = computed(() => [
   { label: t('knowledgeEditor.chunking.strategies.auto.label'), value: 'auto' },

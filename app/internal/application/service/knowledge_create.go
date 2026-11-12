@@ -26,6 +26,16 @@ func (s *knowledgeService) CreateKnowledgeFromFile(ctx context.Context,
 	kbID string, file *multipart.FileHeader, metadata map[string]string, enableMultimodel *bool, customFileName string, tagIDs []string, channel string,
 	processOverrides *types.KnowledgeProcessOverrides,
 ) (*types.Knowledge, error) {
+	return s.createKnowledgeFromFile(ctx, kbID, file, metadata, enableMultimodel, customFileName, tagIDs, channel, processOverrides, "")
+}
+
+// createKnowledgeFromFile carries an optional hash override so archive imports
+// dedupe on the original Markdown bytes even though the stored file has its
+// image references rewritten.
+func (s *knowledgeService) createKnowledgeFromFile(ctx context.Context,
+	kbID string, file *multipart.FileHeader, metadata map[string]string, enableMultimodel *bool, customFileName string, tagIDs []string, channel string,
+	processOverrides *types.KnowledgeProcessOverrides, hashOverride string,
+) (*types.Knowledge, error) {
 	logger.Info(ctx, "Start creating knowledge from file")
 
 	// Use custom filename if provided, otherwise use original filename. Folder
@@ -76,12 +86,16 @@ func (s *knowledgeService) CreateKnowledgeFromFile(ctx context.Context,
 		return nil, ErrInvalidFileType
 	}
 
-	// Calculate file hash for deduplication
-	logger.Info(ctx, "Calculating file hash")
-	hash, err := calculateFileHash(file)
-	if err != nil {
-		logger.Errorf(ctx, "Failed to calculate file hash: %v", err)
-		return nil, err
+	// Calculate file hash for deduplication. Archive imports pass the hash of
+	// the original Markdown so re-uploading the same zip remains a duplicate.
+	hash := hashOverride
+	if hash == "" {
+		logger.Info(ctx, "Calculating file hash")
+		hash, err = calculateFileHash(file)
+		if err != nil {
+			logger.Errorf(ctx, "Failed to calculate file hash: %v", err)
+			return nil, err
+		}
 	}
 
 	// Check if file already exists

@@ -132,65 +132,99 @@ func splitMarkdownImageTarget(
 	raw string,
 	refMap map[string]types.ImageRef,
 ) (path string, pathStart int, pathEnd int, ok bool) {
+	path, pathStart, pathEnd, ok = markdownImageTargetPath(raw)
+	if !ok {
+		return "", 0, 0, false
+	}
+	if _, found := refMap[path]; !found {
+		return "", 0, 0, false
+	}
+	return path, pathStart, pathEnd, true
+}
+
+// markdownImageTargetPath extracts the destination path from one raw
+// `![alt](...)` target, stripping an optional title. Indices are relative to
+// raw so callers can rewrite just the path and keep the title intact.
+func markdownImageTargetPath(raw string) (string, int, int, bool) {
 	start, end := trimMarkdownSpaceBounds(raw, 0, len(raw))
 	if start >= end {
 		return "", 0, 0, false
 	}
 
-	trimmed := raw[start:end]
-	if _, found := refMap[trimmed]; found {
-		return trimmed, start, end, true
-	}
-
 	if raw[start] == '<' {
-		return splitAngleMarkdownImageTarget(raw, start, end, refMap)
+		closeIdx := -1
+		for i := start + 1; i < end; i++ {
+			if raw[i] == '>' && !isEscaped(raw, i) {
+				closeIdx = i
+				break
+			}
+		}
+		if closeIdx == -1 || closeIdx == start+1 {
+			return "", 0, 0, false
+		}
+		if !isEmptyOrMarkdownImageTitleSuffix(raw[closeIdx+1 : end]) {
+			return "", 0, 0, false
+		}
+		return raw[start+1 : closeIdx], start + 1, closeIdx, true
 	}
 
-	titleStart, found := parseMarkdownImageTitleSuffix(trimmed)
-	if !found {
-		return "", 0, 0, false
-	}
-
-	pathEnd = start + titleStart
-	for pathEnd > start && isMarkdownSpace(raw[pathEnd-1]) {
-		pathEnd--
-	}
-	if pathEnd == start {
-		return "", 0, 0, false
-	}
-
-	path = raw[start:pathEnd]
-	if _, found := refMap[path]; !found {
-		return "", 0, 0, false
-	}
-	return path, start, pathEnd, true
-}
-
-func splitAngleMarkdownImageTarget(
-	raw string,
-	start int,
-	end int,
-	refMap map[string]types.ImageRef,
-) (path string, pathStart int, pathEnd int, ok bool) {
-	closeIdx := -1
-	for i := start + 1; i < end; i++ {
-		if raw[i] == '>' && !isEscaped(raw, i) {
-			closeIdx = i
-			break
+	pathEnd := end
+	if titleStart, found := parseMarkdownImageTitleSuffix(raw[start:end]); found {
+		pathEnd = start + titleStart
+		for pathEnd > start && isMarkdownSpace(raw[pathEnd-1]) {
+			pathEnd--
 		}
 	}
-	if closeIdx == -1 {
+	if pathEnd <= start {
 		return "", 0, 0, false
+	}
+	return raw[start:pathEnd], start, pathEnd, true
+}
+
+// RewriteMarkdownImageTargets rewrites every image destination in markdown.
+// resolve receives the destination (title already stripped). When it returns
+// keep=false, the whole image construct is replaced with its alt text; callers
+// use that to drop images that cannot be resolved. Relative order is preserved
+// and untouched text is copied verbatim.
+func RewriteMarkdownImageTargets(markdown string, resolve func(target string) (string, bool)) string {
+	spans := scanMarkdownImageTargets(markdown)
+	if len(spans) == 0 {
+		return markdown
 	}
 
-	path = raw[start+1 : closeIdx]
-	if _, found := refMap[path]; !found {
-		return "", 0, 0, false
+	var b strings.Builder
+	b.Grow(len(markdown))
+	last := 0
+	for _, span := range spans {
+		if span.ImageStart < last {
+			continue
+		}
+		b.WriteString(markdown[last:span.ImageStart])
+		raw := markdown[span.TargetStart:span.TargetEnd]
+		target, pathStart, pathEnd, ok := markdownImageTargetPath(raw)
+		replacement, keep := "", false
+		if ok && resolve != nil {
+			replacement, keep = resolve(target)
+		}
+		if keep {
+			b.WriteString(markdown[span.ImageStart:span.TargetStart])
+			b.WriteString(raw[:pathStart])
+			b.WriteString(replacement)
+			b.WriteString(raw[pathEnd:])
+			if span.TargetEnd < len(markdown) {
+				b.WriteByte(markdown[span.TargetEnd])
+			}
+		} else {
+			alt := strings.TrimSpace(markdown[span.ImageStart+2 : span.TargetStart-2])
+			b.WriteString(alt)
+		}
+		last = span.TargetEnd + 1
+		if last > len(markdown) {
+			last = len(markdown)
+		}
 	}
-	if !isEmptyOrMarkdownImageTitleSuffix(raw[closeIdx+1 : end]) {
-		return "", 0, 0, false
-	}
-	return path, start + 1, closeIdx, true
+	b.WriteString(markdown[last:])
+	return b.String()
 }
 
 func parseMarkdownImageTitleSuffix(raw string) (titleStart int, ok bool) {

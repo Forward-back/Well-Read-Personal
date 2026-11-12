@@ -27,6 +27,7 @@ import {
   listKnowledgeTags,
   updateKnowledgeTagBatch,
   uploadKnowledgeFile,
+  uploadKnowledgeArchive,
   createKnowledgeFromURL,
   reparseKnowledge,
   cancelKnowledgeParse,
@@ -189,8 +190,11 @@ const missingStorageEngine = computed(() => {
 const parserEngines = computed<ParserEngineInfo[]>(() => editorResources.parserEngines);
 
 const supportedFileTypes = computed<Set<string>>(() => {
+  // Markdown zip import is handled by the app itself and does not depend on a
+  // parser engine, so it stays available even before the engine list loads.
+  const available = new Set<string>(['zip'])
   const engines = parserEngines.value
-  if (!engines.length) return new Set<string>()
+  if (!engines.length) return available
 
   const rules: { file_types: string[]; engine: string }[] =
     kbInfo.value?.chunking_config?.parser_engine_rules || []
@@ -200,7 +204,6 @@ const supportedFileTypes = computed<Set<string>>(() => {
     for (const ft of r.file_types) ruleMap.set(ft, r.engine)
   }
 
-  const available = new Set<string>()
   const availableEngineNames = new Set(
     engines.filter(e => e.Available !== false).map(e => e.Name)
   )
@@ -1809,6 +1812,40 @@ const showUploadResultMessages = (
   }
 };
 
+const uploadFileExt = (name: string) => {
+  const dot = name.lastIndexOf('.');
+  return dot >= 0 ? name.substring(dot + 1).toLowerCase() : '';
+};
+
+const showMarkdownArchiveResult = (data: any) => {
+  const documents = Array.isArray(data?.documents) ? data.documents : [];
+  const errors = Array.isArray(data?.errors) ? data.errors : [];
+  const importedImages = Number(data?.images_imported || 0);
+  const skippedImages = Number(data?.images_skipped || 0);
+
+  if (documents.length === 0) {
+    const detail = errors[0] ? `${errors[0].entry}: ${errors[0].message}` : '';
+    MessagePlugin.error(detail || t('knowledgeBase.markdownArchiveFailedAll'));
+    return;
+  }
+
+  let message = t('knowledgeBase.markdownArchiveSummary', {
+    docs: documents.length,
+    images: importedImages,
+  });
+  if (skippedImages > 0) {
+    message += t('knowledgeBase.markdownArchiveSkipped', { count: skippedImages });
+  }
+  if (errors.length > 0) {
+    message += t('knowledgeBase.markdownArchiveFailed', { count: errors.length });
+  }
+  if (errors.length > 0 || skippedImages > 0) {
+    MessagePlugin.warning(message);
+  } else {
+    MessagePlugin.success(message);
+  }
+};
+
 const executeUploadBatch = async (
   files: File[],
   options: {
@@ -1828,10 +1865,34 @@ const executeUploadBatch = async (
     : undefined;
   let successCount = 0;
   let failCount = 0;
+  let archiveCount = 0;
   const totalCount = files.length;
   const hasFolderPaths = files.some(isFolderUpload);
 
   for (const file of files) {
+    if (uploadFileExt(file.name) === 'zip') {
+      archiveCount++;
+      try {
+        const responseData: any = await uploadKnowledgeArchive(targetKbId, {
+          file,
+          tag_ids: tagIdsToUpload,
+          process_config: options.processConfig,
+        });
+        const data = responseData?.data ?? responseData;
+        const documents = Array.isArray(data?.documents) ? data.documents : [];
+        if (documents.length > 0) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+        showMarkdownArchiveResult(data);
+      } catch (error: any) {
+        failCount++;
+        MessagePlugin.error(error?.error?.message || error?.message || t('knowledgeBase.markdownArchiveFailedAll'));
+      }
+      continue;
+    }
+
     try {
       const uploadData: {
         file: File
@@ -1883,7 +1944,9 @@ const executeUploadBatch = async (
     }));
   }
 
-  showUploadResultMessages(successCount, failCount, totalCount, hasFolderPaths ? 'folder' : 'document');
+  if (!(totalCount === 1 && archiveCount === 1)) {
+    showUploadResultMessages(successCount, failCount, totalCount, hasFolderPaths ? 'folder' : 'document');
+  }
   return { successCount, failCount };
 };
 

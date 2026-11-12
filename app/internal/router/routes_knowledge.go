@@ -38,6 +38,7 @@ func RegisterKnowledgeRoutes(r *gin.RouterGroup, handler *handler.KnowledgeHandl
 	kbRead := kb.With(apiKeyRetrieve(apiKeyFullAccess()))
 	{
 		kb.POST("/file", handler.CreateKnowledgeFromFile)
+		kb.POST("/archive", handler.CreateKnowledgeFromMarkdownArchive)
 		kb.POST("/url", handler.CreateKnowledgeFromURL)
 		kb.POST("/manual", handler.CreateManualKnowledge)
 		kbRead.GET("", handler.ListKnowledge)

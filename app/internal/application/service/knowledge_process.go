@@ -3665,6 +3665,15 @@ func (s *knowledgeService) ProcessDocument(ctx context.Context, t *asynq.Task) e
 	// Step 2: Store images and update markdown references
 	var storedImages []docparser.StoredImage
 
+	// Markdown has no sidecar file to resolve local images from. Zip imports
+	// rewrite resolvable images to provider URLs before storage; every other
+	// image reference is dropped here, matching the upload notice.
+	if convertResult != nil && isMarkdownKnowledgeFileType(knowledge.FileType) {
+		var markdownImages []docparser.StoredImage
+		convertResult.MarkdownContent, markdownImages = applyMarkdownImagePolicy(convertResult.MarkdownContent)
+		storedImages = append(storedImages, markdownImages...)
+	}
+
 	if s.imageResolver != nil && convertResult != nil {
 		fileSvc := s.resolveFileService(ctx, kb)
 		tenantID, _ := ctx.Value(types.TenantIDContextKey).(uint64)

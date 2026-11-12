@@ -342,6 +342,100 @@ func (h *KnowledgeHandler) CreateKnowledgeFromFile(c *gin.Context) {
 	})
 }
 
+// CreateKnowledgeFromMarkdownArchive godoc
+// @Summary      从 zip 导入 Markdown 文档
+// @Description  每个 Markdown 条目创建一条知识，压缩包内相对路径图片一并抽取并进入多模态流水线
+// @Tags         知识管理
+// @Accept       multipart/form-data
+// @Produce      json
+// @Param        id                path      string  true   "知识库ID"
+// @Param        file              formData  file    true   "zip 压缩包"
+// @Param        metadata          formData  string  false  "元数据JSON"
+// @Param        enable_multimodel formData  bool    false  "启用多模态处理"
+// @Param        tag_ids           formData  string  false  "分类ID列表，逗号分隔"
+// @Param        process_config    formData  string  false  "处理配置JSON（KnowledgeProcessOverrides）"
+// @Success      200               {object}  map[string]interface{}  "导入结果"
+// @Failure      400               {object}  errors.AppError         "请求参数错误"
+// @Security     Bearer
+// @Security     ApiKeyAuth
+// @Router       /knowledge-bases/{id}/knowledge/archive [post]
+func (h *KnowledgeHandler) CreateKnowledgeFromMarkdownArchive(c *gin.Context) {
+	ctx := c.Request.Context()
+	_, kbID, effectiveTenantID, err := h.validateKnowledgeBaseAccess(c)
+	if err != nil {
+		c.Error(err)
+		return
+	}
+	ctx = types.WithExecutionTenant(c.Request.Context(), effectiveTenantID)
+
+	maxSizeMB := utils.GetMaxFileSizeMB()
+	maxSize := maxSizeMB * 1024 * 1024
+	limitUploadBody(c, maxSize)
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		if isRequestBodyTooLarge(err) {
+			c.Error(errors.NewBadRequestError(fmt.Sprintf("文件大小不能超过%dMB", maxSizeMB)))
+			return
+		}
+		c.Error(errors.NewBadRequestError("File upload failed").WithDetails(err.Error()))
+		return
+	}
+	if file.Size > maxSize {
+		c.Error(errors.NewBadRequestError(fmt.Sprintf("文件大小不能超过%dMB", maxSizeMB)))
+		return
+	}
+
+	var metadata map[string]string
+	if raw := c.PostForm("metadata"); raw != "" {
+		if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
+			c.Error(errors.NewBadRequestError("Invalid metadata format").WithDetails(err.Error()))
+			return
+		}
+	}
+
+	var enableMultimodel *bool
+	if raw := c.PostForm("enable_multimodel"); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			c.Error(errors.NewBadRequestError("Invalid enable_multimodel format").WithDetails(err.Error()))
+			return
+		}
+		enableMultimodel = &parsed
+	}
+
+	var processOverrides *types.KnowledgeProcessOverrides
+	if raw := c.PostForm("process_config"); raw != "" {
+		processOverrides = &types.KnowledgeProcessOverrides{}
+		if err := json.Unmarshal([]byte(raw), processOverrides); err != nil {
+			c.Error(errors.NewBadRequestError("Invalid process_config format").WithDetails(err.Error()))
+			return
+		}
+	}
+	if enableMultimodel != nil && (processOverrides == nil || processOverrides.EnableMultimodel == nil) {
+		if processOverrides == nil {
+			processOverrides = &types.KnowledgeProcessOverrides{EnableMultimodel: enableMultimodel}
+		} else {
+			processOverrides.EnableMultimodel = enableMultimodel
+		}
+	}
+
+	tagIDs := parseCommaSeparatedTagIDs(c.PostForm("tag_ids"))
+	result, err := h.kgService.CreateKnowledgeFromMarkdownArchive(
+		ctx, kbID, file, metadata, enableMultimodel, tagIDs, c.PostForm("channel"), processOverrides,
+	)
+	if err != nil {
+		if appErr, ok := errors.IsAppError(err); ok {
+			c.Error(appErr)
+			return
+		}
+		logger.ErrorWithFields(ctx, err, nil)
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
+}
+
 // CreateKnowledgeFromURL godoc
 // @Summary      从URL创建知识
 // @Description  从指定URL抓取内容并创建知识条目。当提供 file_name/file_type 或 URL 路径含已知文件扩展名时，自动切换为文件下载模式

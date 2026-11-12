@@ -214,6 +214,31 @@ export function uploadKnowledgeFile(
   return postUpload(`/api/v1/knowledge-bases/${kbId}/knowledge/file`, formData, onProgress);
 }
 
+export function uploadKnowledgeArchive(
+  kbId: string,
+  data: {
+    file: File
+    tag_ids?: string[]
+    process_config?: KnowledgeProcessOverrides | string
+  },
+  onProgress?: (progressEvent: any) => void,
+) {
+  const formData = new FormData();
+  formData.append('file', data.file);
+  if (data.tag_ids && data.tag_ids.length > 0) {
+    formData.append('tag_ids', data.tag_ids.join(','));
+  }
+  if (data.process_config) {
+    formData.append(
+      'process_config',
+      typeof data.process_config === 'string'
+        ? data.process_config
+        : JSON.stringify(data.process_config),
+    );
+  }
+  return postUpload(`/api/v1/knowledge-bases/${kbId}/knowledge/archive`, formData, onProgress);
+}
+
 // 从URL创建知识
 // data.tag_ids: 可选，指定知识所属的多个标签 ID
 export function createKnowledgeFromURL(

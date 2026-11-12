@@ -55,6 +55,13 @@ func isIconImage(data []byte) bool {
 	return false
 }
 
+// IsIconImage reports whether image bytes look like an icon or decorative
+// element. Exported for import paths outside the resolver that apply the same
+// filtering before persisting images.
+func IsIconImage(data []byte) bool {
+	return isIconImage(data)
+}
+
 // StoredImage describes an image that has been saved to storage.
 type StoredImage struct {
 	OriginalRef string // reference in the original markdown
@@ -244,6 +251,12 @@ func isProviderScheme(p string) bool {
 		}
 	}
 	return false
+}
+
+// IsProviderImageURL reports whether a markdown image destination already
+// points at provider storage and must not be downloaded or re-saved.
+func IsProviderImageURL(p string) bool {
+	return isProviderScheme(p)
 }
 
 // isWhitelistedImageHost checks if the image URL's host is in the whitelist.

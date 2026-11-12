@@ -5230,6 +5230,8 @@ export default {
     reparseSource: '待重新解析文档',
     reparseHint: '将沿用上次解析的配置，可在此调整',
     manualCharCount: '{count} 个字符',
+    markdownSingleHint: '直接上传单个 Markdown 时不会导入图片；如需图片，请把 Markdown 与图片目录一起打包为 zip 上传。',
+    markdownZipHint: 'zip 导入会为每篇 Markdown 创建一条知识，并抽取相对路径图片；图片 OCR/图注需要启用多模态。',
     pdfForceScanned: {
       label: '按扫描件解析 PDF',
       description: '适用于网页打印、扫描件、图片型 PDF。开启后会逐页 OCR，解析更完整但耗时和模型调用更多。'
@@ -5340,6 +5342,10 @@ export default {
     uploadSuccess: '文件上传成功！',
     uploadFailed: '文件上传失败！',
     fileExists: '文件已存在',
+    markdownArchiveSummary: 'zip 导入完成：{docs} 篇 Markdown，{images} 张图片',
+    markdownArchiveSkipped: '，跳过 {count} 张图片',
+    markdownArchiveFailed: '，{count} 篇失败',
+    markdownArchiveFailedAll: 'zip 导入失败或未找到可导入的 Markdown',
     uploadAllSuccess: '成功上传 {count} 个文件！',
     uploadPartialSuccess: '上传完成：成功 {success} 个，失败 {fail} 个',
     uploadAllFailed: '所有文件上传失败',
