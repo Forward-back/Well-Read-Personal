@@ -40,7 +40,16 @@ func escapeLikeKeyword(keyword string) string {
 // counter jump back up and never reach zero (the "stuck
 // pending_subtasks_count / never promoted to completed" bug). Omitting
 // the column here means Save can never touch it.
-var omitFieldsOnUpdate = []string{"DeletedAt", "PendingSubtasksCount"}
+//
+// The engine_sync_* columns are owned the same way: only the column-scoped
+// UpdateEngineSyncStatus may change them. Enrichment tasks (summary, metadata,
+// images) load the row early, run slow work, then Save unrelated fields;
+// without this omission they write back a stale sync status and can flip a
+// freshly synced document back to pending/failed.
+var omitFieldsOnUpdate = []string{
+	"DeletedAt", "PendingSubtasksCount",
+	"EngineSyncStatus", "EngineSyncRequestedAt", "EngineSyncCompletedAt", "EngineSyncError",
+}
 
 // knowledgeRepository implements knowledge base and knowledge repository interface
 type knowledgeRepository struct {

@@ -3684,7 +3684,7 @@ func (s *knowledgeService) ProcessDocument(ctx context.Context, t *asynq.Task) e
 		if updatedMarkdown != "" {
 			convertResult.MarkdownContent = updatedMarkdown
 		}
-		storedImages = images
+		storedImages = append(storedImages, images...)
 
 		// Resolve remote http(s) images (e.g. markdown external URLs) → download + upload to storage.
 		// ResolveAndStore handles inline bytes and base64; ResolveRemoteImages handles http/https URLs.

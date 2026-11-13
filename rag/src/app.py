@@ -471,7 +471,7 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
             f"总计 {_ms(t0, t_llm)}"
         )
 
-        answer = _replace_image_tokens(answer, image_candidates)
+        answer = _replace_image_tokens(answer, image_candidates, set())
         logger.info(
             f">>> 查询完成: 答案 {len(answer)} 字 / 图片 {len(image_candidates)} 张"
         )
@@ -613,7 +613,7 @@ def _image_markdown(img: dict) -> str:
     return "\n".join(lines)
 
 
-def _replace_image_tokens(text: str, images: list[dict]) -> str:
+def _replace_image_tokens(text: str, images: list[dict], used: set[str] | None = None) -> str:
     if not text or not images:
         return text
 
@@ -624,7 +624,13 @@ def _replace_image_tokens(text: str, images: list[dict]) -> str:
             return ""
         if idx < 1 or idx > len(images):
             return ""
-        return _image_markdown(images[idx - 1])
+        img = images[idx - 1]
+        url = str(img.get("url") or "").strip()
+        if used is not None and url:
+            if url in used:
+                return ""
+            used.add(url)
+        return _image_markdown(img)
 
     return _IMAGE_TOKEN_RE.sub(_sub, text)
 
@@ -637,6 +643,8 @@ class StreamingImageReplacer:
     def __init__(self, images: list[dict]):
         self.images = images
         self.buf = ""
+        # One image per URL per answer: repeated placeholder numbers are dropped.
+        self.used: set[str] = set()
 
     def feed(self, text: str) -> str:
         self.buf += text or ""
@@ -657,10 +665,10 @@ class StreamingImageReplacer:
             out, self.buf = self.buf[:-hold], self.buf[-hold:]
         else:
             out, self.buf = self.buf, ""
-        return _replace_image_tokens(out, self.images)
+        return _replace_image_tokens(out, self.images, self.used)
 
     def flush(self) -> str:
-        out = _replace_image_tokens(self.buf, self.images)
+        out = _replace_image_tokens(self.buf, self.images, self.used)
         self.buf = ""
         return out
 

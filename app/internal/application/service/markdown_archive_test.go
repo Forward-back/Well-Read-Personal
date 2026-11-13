@@ -142,6 +142,68 @@ func TestCreateKnowledgeFromMarkdownArchiveImportsEachMarkdown(t *testing.T) {
 	require.Contains(t, first, "remote", "skipped image should keep alt text")
 }
 
+func TestCreateKnowledgeFromMarkdownArchiveResolvesImagesOutsideMarkdownDir(t *testing.T) {
+	archive := buildZip(t, map[string][]byte{
+		"二、物理层/2.1 概述.md":     []byte("![a](粘贴图片/a.png)"),
+		"粘贴图片/a.png":          testPNG(t),
+		"guide/b.md":          []byte("![c](images/c.png)"),
+		"assets/images/c.png": testPNG(t),
+	})
+	header, err := multipartHeaderFromBytes("docs.zip", archive)
+	require.NoError(t, err)
+
+	svc, fileSvc, _ := newMarkdownArchiveTestService(t)
+	result, err := svc.CreateKnowledgeFromMarkdownArchive(
+		newCreateKnowledgeFileContext(), "kb-1", header, nil, nil, nil, "", nil,
+	)
+	require.NoError(t, err)
+	require.Empty(t, result.Errors)
+	require.Equal(t, 2, result.ImagesImported)
+	require.Equal(t, 0, result.ImagesSkipped)
+	require.Len(t, fileSvc.savedURLs, 2)
+	for _, doc := range result.Documents {
+		require.Contains(t, fileSvc.savedDocs[doc.Knowledge.ID], "local://images/")
+	}
+}
+
+func TestCreateKnowledgeFromMarkdownArchiveSkipsAmbiguousImageMatches(t *testing.T) {
+	archive := buildZip(t, map[string][]byte{
+		"guide/b.md":     []byte("![x](images/x.png)"),
+		"a/images/x.png": testPNG(t),
+		"b/images/x.png": testPNG(t),
+	})
+	header, err := multipartHeaderFromBytes("docs.zip", archive)
+	require.NoError(t, err)
+
+	svc, _, _ := newMarkdownArchiveTestService(t)
+	result, err := svc.CreateKnowledgeFromMarkdownArchive(
+		newCreateKnowledgeFileContext(), "kb-1", header, nil, nil, nil, "", nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, 0, result.ImagesImported)
+	require.Equal(t, 1, result.ImagesSkipped)
+	require.Len(t, result.Documents, 1)
+	require.Contains(t, strings.Join(result.Documents[0].SkippedReasons, "\n"), "多个目录")
+}
+
+func TestCreateKnowledgeFromMarkdownArchiveResolvesVaultAbsoluteImagePaths(t *testing.T) {
+	archive := buildZip(t, map[string][]byte{
+		"二、物理层/2.1 概述.md": []byte("![a](/考研/408/计算机网络/images/a.png)"),
+		"images/a.png":    testPNG(t),
+	})
+	header, err := multipartHeaderFromBytes("docs.zip", archive)
+	require.NoError(t, err)
+
+	svc, _, _ := newMarkdownArchiveTestService(t)
+	result, err := svc.CreateKnowledgeFromMarkdownArchive(
+		newCreateKnowledgeFileContext(), "kb-1", header, nil, nil, nil, "", nil,
+	)
+	require.NoError(t, err)
+	require.Empty(t, result.Errors)
+	require.Equal(t, 1, result.ImagesImported)
+	require.Equal(t, 0, result.ImagesSkipped)
+}
+
 func TestCreateKnowledgeFromMarkdownArchiveRejectsTraversal(t *testing.T) {
 	archive := buildZip(t, map[string][]byte{
 		"../evil.md": []byte("# evil"),

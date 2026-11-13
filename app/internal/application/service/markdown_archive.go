@@ -90,15 +90,7 @@ func (s *knowledgeService) CreateKnowledgeFromMarkdownArchive(
 
 	tenantID, _ := ctx.Value(types.TenantIDContextKey).(uint64)
 	fileSvc := s.resolveFileService(ctx, kb)
-	exact := make(map[string]*zip.File, len(entries))
-	folded := make(map[string]*zip.File, len(entries))
-	for _, entry := range entries {
-		exact[entry.name] = entry.file
-		key := strings.ToLower(entry.name)
-		if _, exists := folded[key]; !exists {
-			folded[key] = entry.file
-		}
-	}
+	archiveLookup := newMarkdownArchiveLookup(entries)
 
 	multimodal := enableMultimodel
 	if multimodal == nil {
@@ -113,7 +105,7 @@ func (s *knowledgeService) CreateKnowledgeFromMarkdownArchive(
 	}
 	for _, entry := range markdownEntries {
 		doc, importErr := s.importMarkdownArchiveEntry(
-			ctx, kb, entry, exact, folded, imageCache, fileSvc, tenantID,
+			ctx, kb, entry, archiveLookup, imageCache, fileSvc, tenantID,
 			metadata, multimodal, tagIDs, channel, processOverrides,
 		)
 		if importErr != nil {
@@ -139,8 +131,7 @@ func (s *knowledgeService) importMarkdownArchiveEntry(
 	ctx context.Context,
 	kb *types.KnowledgeBase,
 	entry markdownArchiveEntry,
-	exact map[string]*zip.File,
-	folded map[string]*zip.File,
+	lookup *markdownArchiveLookup,
 	imageCache map[string]string,
 	fileSvc interfaces.FileService,
 	tenantID uint64,
@@ -179,17 +170,17 @@ func (s *knowledgeService) importMarkdownArchiveEntry(
 			recordSkip(target + "：" + reason)
 			return "", false
 		}
-		zipFile := lookupArchiveEntry(resolved, exact, folded)
+		zipFile, matched, reason := lookup.find(mdDir, resolved)
 		if zipFile == nil {
-			recordSkip(target + "：压缩包内不存在")
+			recordSkip(target + "：" + reason)
 			return "", false
 		}
-		ext := strings.ToLower(path.Ext(resolved))
+		ext := strings.ToLower(path.Ext(matched))
 		if _, ok := markdownArchiveImageExtensions[strings.TrimPrefix(ext, ".")]; !ok {
 			recordSkip(target + "：不是支持的图片格式")
 			return "", false
 		}
-		if cached, ok := imageCache[resolved]; ok {
+		if cached, ok := imageCache[matched]; ok {
 			imported[cached] = struct{}{}
 			return cached, true
 		}
@@ -216,7 +207,7 @@ func (s *knowledgeService) importMarkdownArchiveEntry(
 			recordSkip(target + "：图片保存失败")
 			return "", false
 		}
-		imageCache[resolved] = servingURL
+		imageCache[matched] = servingURL
 		imported[servingURL] = struct{}{}
 		return servingURL, true
 	})
@@ -314,29 +305,100 @@ func resolveArchiveImagePath(mdDir, target string) (string, bool, string) {
 	if parsed.Scheme != "" || parsed.Host != "" {
 		return "", false, "不是本地相对路径"
 	}
-	if strings.HasPrefix(target, "/") || strings.HasPrefix(target, "\\") {
-		return "", false, "绝对路径不支持"
-	}
 	decoded, err := url.PathUnescape(parsed.Path)
 	if err != nil {
 		decoded = parsed.Path
 	}
 	decoded = strings.ReplaceAll(decoded, "\\", "/")
+	// Note-exporting tools often rewrite image targets to vault-absolute paths
+	// such as "/考研/408/images/a.png". Inside an archive that is still a
+	// local reference, so strip the leading slash and resolve against the zip
+	// root; the lookup falls back to a unique suffix/base-name match.
+	rootRelative := strings.HasPrefix(decoded, "/")
+	if rootRelative {
+		decoded = strings.TrimLeft(decoded, "/")
+	}
 	if decoded == "" {
 		return "", false, "图片地址为空"
 	}
 	resolved := path.Clean(path.Join(mdDir, decoded))
+	if rootRelative {
+		resolved = path.Clean(decoded)
+	}
 	if resolved == "." || resolved == ".." || strings.HasPrefix(resolved, "../") || path.IsAbs(resolved) {
 		return "", false, "路径越出压缩包目录"
 	}
 	return resolved, true, ""
 }
 
-func lookupArchiveEntry(name string, exact, folded map[string]*zip.File) *zip.File {
-	if file := exact[name]; file != nil {
-		return file
+type markdownArchiveLookup struct {
+	exact    map[string]*zip.File
+	folded   map[string]*zip.File
+	bySuffix map[string][]string
+	byBase   map[string][]string
+}
+
+func newMarkdownArchiveLookup(entries []markdownArchiveEntry) *markdownArchiveLookup {
+	lookup := &markdownArchiveLookup{
+		exact:    make(map[string]*zip.File, len(entries)),
+		folded:   make(map[string]*zip.File, len(entries)),
+		bySuffix: make(map[string][]string, len(entries)),
+		byBase:   make(map[string][]string, len(entries)),
 	}
-	return folded[strings.ToLower(name)]
+	for _, entry := range entries {
+		lookup.exact[entry.name] = entry.file
+		key := strings.ToLower(entry.name)
+		if _, exists := lookup.folded[key]; !exists {
+			lookup.folded[key] = entry.file
+		}
+		lookup.byBase[strings.ToLower(path.Base(entry.name))] = append(
+			lookup.byBase[strings.ToLower(path.Base(entry.name))], key)
+		segments := strings.Split(key, "/")
+		for i := 1; i < len(segments); i++ {
+			suffix := strings.Join(segments[i:], "/")
+			lookup.bySuffix[suffix] = append(lookup.bySuffix[suffix], key)
+		}
+	}
+	return lookup
+}
+
+// find resolves an image reference against the archive. Exported notes often
+// keep Markdown in one folder and images in a sibling or root-level folder, so
+// after the Markdown directory and the archive root it falls back to a unique
+// path-suffix or file-name match. Ambiguous matches are skipped, never guessed.
+func (l *markdownArchiveLookup) find(mdDir, target string) (*zip.File, string, string) {
+	candidates := []string{path.Clean(path.Join(mdDir, target))}
+	if root := path.Clean(target); root != candidates[0] {
+		candidates = append(candidates, root)
+	}
+	for _, candidate := range candidates {
+		if file := l.exact[candidate]; file != nil {
+			return file, candidate, ""
+		}
+		key := strings.ToLower(candidate)
+		if file := l.folded[key]; file != nil {
+			return file, key, ""
+		}
+	}
+	for _, candidate := range candidates {
+		matches := l.bySuffix[strings.ToLower(candidate)]
+		switch len(matches) {
+		case 1:
+			return l.folded[matches[0]], matches[0], ""
+		case 0:
+		default:
+			return nil, "", "同名图片存在多个目录，无法确定"
+		}
+	}
+	matches := l.byBase[strings.ToLower(path.Base(target))]
+	switch len(matches) {
+	case 1:
+		return l.folded[matches[0]], matches[0], ""
+	case 0:
+		return nil, "", "压缩包内不存在"
+	default:
+		return nil, "", "同名图片存在多个目录，无法确定"
+	}
 }
 
 func readZipEntry(entry *zip.File, max int64) ([]byte, error) {

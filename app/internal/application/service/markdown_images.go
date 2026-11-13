@@ -38,15 +38,25 @@ func applyMarkdownImagePolicy(markdown string) (string, []docparser.StoredImage)
 			clean = clean[:idx]
 		}
 		ext := strings.TrimPrefix(strings.ToLower(path.Ext(clean)), ".")
+		resourceRef := strings.HasPrefix(target, "resource://")
 		if _, ok := markdownImageFileExtensions[ext]; !ok {
-			return "", false
+			if !resourceRef {
+				return "", false
+			}
+			// resource:// handles are opaque and carry no extension; the
+			// multimodal loader detects the real content type from bytes.
+			ext = ""
 		}
 		if _, ok := seen[target]; !ok {
 			seen[target] = struct{}{}
+			mimeType := ""
+			if ext != "" {
+				mimeType = mime.TypeByExtension("." + ext)
+			}
 			images = append(images, docparser.StoredImage{
 				OriginalRef: target,
 				ServingURL:  target,
-				MimeType:    mime.TypeByExtension("." + ext),
+				MimeType:    mimeType,
 			})
 		}
 		return target, true
