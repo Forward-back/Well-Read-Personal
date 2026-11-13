@@ -40,3 +40,6 @@ rag/src_backup_*/
 
 # Logs
 **/*.log
+
+# Local Claude Code settings
+.claude/settings.local.json

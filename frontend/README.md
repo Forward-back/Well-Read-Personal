@@ -110,6 +110,6 @@ docker build -f Dockerfile -t gaze-ui:latest .
 
 - 文档总入口：`../README.md`
 - 当前进度：`../docs/03-进度与交接/当前进度.md`
-- 个人版需求：`../docs/个人版改造/需求与范围.md`
-- 页面与提示词：`../docs/个人版改造/页面与提示词.md`
+- 个人版需求：`../docs/01-项目总览/系统总览.md`
+- 页面与交互规范：`../docs/02-需求与设计/界面规范.md`
 - 设计源说明：`design/README.md`

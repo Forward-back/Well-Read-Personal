@@ -119,7 +119,7 @@ RAG 侧 e2e 见 `../rag/docs/测试与评测.md`。
 ## 10. 相关文档
 
 - 文档索引：`../docs/03-进度与交接/当前进度.md`
-- 个人版需求：`../docs/个人版改造/需求与范围.md`
+- 个人版需求：`../docs/01-项目总览/系统总览.md`
 - 部署：`../deployments/README.md`
 - 前端：`../frontend/README.md`
 - RAG：`../rag/README.md`
