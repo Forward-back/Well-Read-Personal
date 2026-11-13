@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""Run the RAG study/review 10-question acceptance against a live WellRead stack."""
+"""Run the RAG study/review acceptance against a live WellRead stack.
+
+Code cases validate their Mermaid ecosystem diagram with headless Chrome, so
+set NODE_PATH=frontend/node_modules and CHROME_PATH before running.
+"""
 
 import argparse
 import json
+import os
 import re
+import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -21,6 +28,8 @@ REQUIRED_CATEGORIES = ("concept", "compare", "process", "structure", "boundary",
 ZERO_HIT_TERMS = ("未找到", "资料不足", "没有找到", "无法从", "不包含", "无法回答", "无法确定")
 RESOURCE_URL_RE = re.compile(r"resource://[A-Za-z0-9_-]+")
 FENCED_CODE_RE = re.compile(r"```.*?```", re.S)
+MERMAID_BLOCK_RE = re.compile(r"```mermaid\s*(.*?)```", re.S)
+MERMAID_VALIDATOR = Path(__file__).with_name("validate_mermaid.mjs")
 
 
 def load_env_file(path: Path) -> dict:
@@ -141,6 +150,47 @@ def stream_qa(base_url, token, session_id, payload, timeout):
     return "".join(parts).strip(), references, errors
 
 
+def _mermaid_nodes(code):
+    nodes = set()
+    for line in code.splitlines():
+        head = re.match(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:[\[(\{]|--|==)", line)
+        if head:
+            nodes.add(head.group(1))
+        for match in re.finditer(r"-->\s*(?:\|[^|]*\|\s*)?([A-Za-z_][A-Za-z0-9_]*)", line):
+            nodes.add(match.group(1))
+    return len(nodes)
+
+def check_mermaid_diagram(answer):
+    """Require a renderable Mermaid flowchart with 3-8 nodes for code answers."""
+    blocks = MERMAID_BLOCK_RE.findall(answer)
+    if not blocks:
+        return ["code answer missing mermaid ecosystem diagram"], 0
+    code = blocks[0].strip()
+    if not re.match(r"(flowchart|graph)\b", code):
+        return ["mermaid block is not a flowchart"], 0
+    nodes = _mermaid_nodes(code)
+    if nodes < 3 or nodes > 8:
+        return [f"mermaid diagram has {nodes} nodes, expected 3-8"], nodes
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".mmd", delete=False, encoding="utf-8") as handle:
+            handle.write(code)
+            path = handle.name
+        try:
+            proc = subprocess.run(
+                ["node", str(MERMAID_VALIDATOR), path],
+                capture_output=True, text=True, encoding="utf-8", timeout=120, env=os.environ,
+            )
+        finally:
+            os.unlink(path)
+        line = (proc.stdout or "").strip().splitlines()[-1] if proc.stdout else ""
+        result = json.loads(line) if line else {"ok": False, "error": proc.stderr[-300:]}
+        if not result.get("ok"):
+            return [f"mermaid parse failed: {result.get('error', 'unknown')[:200]}"], nodes
+    except Exception as exc:  # noqa: BLE001 - validator missing must not crash the suite
+        return [f"mermaid validator unavailable: {exc}"], nodes
+    return [], nodes
+
+
 def evaluate(case, answer, references, errors, candidates):
     problems = []
     if errors:
@@ -225,6 +275,7 @@ def evaluate(case, answer, references, errors, candidates):
         "refs": len(references),
         "ref_files": [key[0] for key in ref_keys],
         "images": len(IMAGE_URL_RE.findall(answer)),
+        "mermaid_blocks": len(MERMAID_BLOCK_RE.findall(answer)),
         "image_urls": IMAGE_URL_RE.findall(answer)[:10],
         "headings": re.findall(r"^#{1,4}\s+(.+)$", answer, flags=re.MULTILINE),
         "has_table": "|" in answer,
