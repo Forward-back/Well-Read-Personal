@@ -31,6 +31,9 @@ const (
 	maxMarkdownArchiveImages      = 1_000
 	maxMarkdownArchiveImageBytes  = 20 << 20
 	maxMarkdownArchiveReasons     = 10
+	// maxMarkdownArchiveImagesPerDocument caps distinct images per Markdown
+	// entry so one figure-heavy note cannot flood the multimodal queue.
+	maxMarkdownArchiveImagesPerDocument = 60
 )
 
 var markdownArchiveImageExtensions = map[string]struct{}{
@@ -98,6 +101,7 @@ func (s *knowledgeService) CreateKnowledgeFromMarkdownArchive(
 		multimodal = &enabled
 	}
 	imageCache := make(map[string]string)
+	imageHashes := make(map[string]string)
 
 	result := &types.MarkdownArchiveImportResult{
 		MarkdownCount: len(markdownEntries),
@@ -105,7 +109,7 @@ func (s *knowledgeService) CreateKnowledgeFromMarkdownArchive(
 	}
 	for _, entry := range markdownEntries {
 		doc, importErr := s.importMarkdownArchiveEntry(
-			ctx, kb, entry, archiveLookup, imageCache, fileSvc, tenantID,
+			ctx, kb, entry, archiveLookup, imageCache, imageHashes, fileSvc, tenantID,
 			metadata, multimodal, tagIDs, channel, processOverrides,
 		)
 		if importErr != nil {
@@ -133,6 +137,7 @@ func (s *knowledgeService) importMarkdownArchiveEntry(
 	entry markdownArchiveEntry,
 	lookup *markdownArchiveLookup,
 	imageCache map[string]string,
+	imageHashes map[string]string,
 	fileSvc interfaces.FileService,
 	tenantID uint64,
 	metadata map[string]string,
@@ -197,6 +202,16 @@ func (s *knowledgeService) importMarkdownArchiveEntry(
 			recordSkip(target + "：图片过小，按图标跳过")
 			return "", false
 		}
+		contentHash := fmt.Sprintf("%x", md5.Sum(data))
+		if cached, ok := imageHashes[contentHash]; ok {
+			imageCache[matched] = cached
+			imported[cached] = struct{}{}
+			return cached, true
+		}
+		if len(imported) >= maxMarkdownArchiveImagesPerDocument {
+			recordSkip(fmt.Sprintf("%s：超过单文档图片上限（%d）", target, maxMarkdownArchiveImagesPerDocument))
+			return "", false
+		}
 		mimeType := mime.TypeByExtension(ext)
 		if mimeType == "" {
 			mimeType = http.DetectContentType(data)
@@ -208,6 +223,7 @@ func (s *knowledgeService) importMarkdownArchiveEntry(
 			return "", false
 		}
 		imageCache[matched] = servingURL
+		imageHashes[contentHash] = servingURL
 		imported[servingURL] = struct{}{}
 		return servingURL, true
 	})

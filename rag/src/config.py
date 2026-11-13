@@ -138,13 +138,13 @@ MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "8000"))
 # 学习卡需要更长上下文与输出；复习卡保持更快更短。
 ANSWER_MODE_BUDGETS = {
     "study": {
-        "context_chars": int(os.getenv("STUDY_MAX_CONTEXT_CHARS", "16000")),
-        "max_tokens": int(os.getenv("STUDY_MAX_TOKENS", "4096")),
+        "context_chars": int(os.getenv("STUDY_MAX_CONTEXT_CHARS", "6000")),
+        "max_tokens": int(os.getenv("STUDY_MAX_TOKENS", "1500")),
         "timeout": int(os.getenv("STUDY_GENERATE_TIMEOUT", "90")),
     },
     "review": {
-        "context_chars": int(os.getenv("REVIEW_MAX_CONTEXT_CHARS", "8000")),
-        "max_tokens": int(os.getenv("REVIEW_MAX_TOKENS", "2048")),
+        "context_chars": int(os.getenv("REVIEW_MAX_CONTEXT_CHARS", "3000")),
+        "max_tokens": int(os.getenv("REVIEW_MAX_TOKENS", "700")),
         "timeout": int(os.getenv("REVIEW_GENERATE_TIMEOUT", "45")),
     },
 }

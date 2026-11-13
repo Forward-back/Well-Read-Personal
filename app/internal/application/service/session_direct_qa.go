@@ -17,6 +17,7 @@ const directSystemPrompt = `你是 WellRead Personal，服务单一用户的阅�
 - 使用简体中文，回答清晰、结构化，必要时分点或使用表格。
 - 不确定的事实要说明不确定性；不编造来源、链接或引用。
 - 如果提供了「网页搜索资料」，优先采用并可用 [编号] 标注来源；没有提供的链接一律不要虚构。
+- 不要输出网页来源清单、链接列表或「网页来源」小节，系统会在答案末尾自动追加。
 - 当前模式不输出知识库引用与图片。`
 
 // DirectQA answers one turn with the configured direct model, without any
@@ -240,12 +241,25 @@ func formatWebSearchSources(results []*types.WebSearchResult) string {
 	var b strings.Builder
 	b.WriteString("\n\n---\n\n**网页来源**\n")
 	n := 0
+	seen := make(map[string]struct{}, len(results))
 	for _, item := range results {
-		if item == nil || strings.TrimSpace(item.URL) == "" {
+		if item == nil {
 			continue
 		}
+		url := strings.TrimSpace(item.URL)
+		if url == "" {
+			continue
+		}
+		if _, dup := seen[url]; dup {
+			continue
+		}
+		seen[url] = struct{}{}
 		n++
-		fmt.Fprintf(&b, "%d. [%s](%s)\n", n, strings.TrimSpace(item.Title), item.URL)
+		title := strings.TrimSpace(item.Title)
+		if title == "" {
+			title = url
+		}
+		fmt.Fprintf(&b, "%d. [%s](%s)\n", n, title, url)
 	}
 	if n == 0 {
 		return ""

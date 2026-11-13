@@ -40,6 +40,7 @@ from retrieval.chunk_store import ChunkStore
 from retrieval.fusion import FusionEngine
 from retrieval.planner import plan_query, execute_plan, generate_query_variants
 from llm.generator import (
+    NO_EVIDENCE_ANSWER,
     generate_answer, generate_synthesis_answer, generate_chitchat_answer,
 )
 from prompt_guard import REFUSAL_ANSWER
@@ -444,7 +445,14 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
             if on_delta is not None:
                 on_delta(txt)
 
-        if planner_multi:
+        zero_hit = not text_reranked and not image_candidates
+        if zero_hit:
+            # Planner intermediates are model output, not evidence. Answering
+            # from them after the evidence gate produced full cards for
+            # questions the knowledge base does not cover.
+            logger.info("  零命中：跳过 LLM，直接返回资料不足提示")
+            answer = NO_EVIDENCE_ANSWER
+        elif planner_multi:
             answer = generate_synthesis_answer(
                 question, planner_exec.intermediates, contexts, style,
                 answer_mode=mode, timing=timing if collect_timing else None,

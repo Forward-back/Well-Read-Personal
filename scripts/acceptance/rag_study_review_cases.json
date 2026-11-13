@@ -1,82 +1,26 @@
 [
-  {
-    "id": "q1",
-    "mode": "study",
-    "kb": "text",
-    "question": "程序查询方式如何判断设备就绪？CPU 在等待期间处于什么状态？",
-    "min_chars": 600,
-    "max_chars": 2800
-  },
-  {
-    "id": "q2",
-    "mode": "study",
-    "kb": "text",
-    "question": "中断隐指令完成哪三件事？断点和现场有什么区别？",
-    "min_chars": 600,
-    "max_chars": 2800
-  },
-  {
-    "id": "q3",
-    "mode": "study",
-    "kb": "text",
-    "question": "比较程序查询、中断驱动、DMA 三种 I/O 控制方式的 CPU 参与程度与数据传送单位。",
-    "min_chars": 600,
-    "max_chars": 2800
-  },
-  {
-    "id": "q4",
-    "mode": "review",
-    "kb": "text",
-    "question": "单级中断与多重中断的核心区别是什么？屏蔽字在其中起什么作用？",
-    "min_chars": 900,
-    "max_chars": 1800
-  },
-  {
-    "id": "q5",
-    "mode": "study",
-    "kb": "text",
-    "question": "描述单级中断处理的完整流程，包括中断隐指令和中断服务程序的主要步骤。",
-    "min_chars": 600,
-    "max_chars": 2800
-  },
-  {
-    "id": "q6",
-    "mode": "review",
-    "kb": "text",
-    "question": "多重中断处理中两次开中断分别在哪里？为什么需要这样安排？",
-    "min_chars": 900,
-    "max_chars": 1800
-  },
-  {
-    "id": "q7",
-    "mode": "study",
-    "kb": "text",
-    "question": "I/O 接口的基本结构包含哪些部分？I/O 端口编址有哪两种方式？",
-    "min_chars": 600,
-    "max_chars": 2800
-  },
-  {
-    "id": "q8",
-    "mode": "review",
-    "kb": "text",
-    "question": "中断响应优先级与处理优先级有什么区别？为什么需要屏蔽字来动态调整？",
-    "min_chars": 900,
-    "max_chars": 1800
-  },
-  {
-    "id": "q9",
-    "mode": "study",
-    "kb": "text",
-    "question": "为什么高速磁盘的大批量数据传输通常采用 DMA 而不是中断驱动？DMA 与通道方式有何区别？",
-    "min_chars": 600,
-    "max_chars": 2800
-  },
-  {
-    "id": "q10",
-    "mode": "study",
-    "kb": "image",
-    "question": "这张图片中的项目代码是什么？右侧圆形是什么颜色？",
-    "min_chars": 300,
-    "max_chars": 1500
-  }
+  {"id": "q1", "category": "concept", "mode": "study", "kb": "text", "question": "程序查询方式如何判断设备就绪？CPU 在等待期间处于什么状态？", "min_chars": 600, "max_chars": 2800, "target_min": 800, "target_max": 1500},
+  {"id": "q2", "category": "concept", "mode": "study", "kb": "text", "question": "中断隐指令完成哪三件事？断点和现场有什么区别？", "min_chars": 600, "max_chars": 2800, "target_min": 800, "target_max": 1500},
+  {"id": "q3", "category": "compare", "mode": "study", "kb": "text", "question": "比较程序查询、中断驱动、DMA 三种 I/O 控制方式的 CPU 参与程度与数据传送单位。", "min_chars": 600, "max_chars": 2800, "target_min": 800, "target_max": 1500},
+  {"id": "q4", "category": "compare", "mode": "review", "kb": "text", "question": "单级中断与多重中断的核心区别是什么？屏蔽字在其中起什么作用？", "min_chars": 400, "max_chars": 1800, "target_min": 400, "target_max": 800},
+  {"id": "q5", "category": "process", "mode": "study", "kb": "text", "question": "描述单级中断处理的完整流程，包括中断隐指令和中断服务程序的主要步骤。", "min_chars": 600, "max_chars": 2800, "target_min": 800, "target_max": 1500},
+  {"id": "q6", "category": "process", "mode": "review", "kb": "text", "question": "多重中断处理中两次开中断分别在哪里？为什么需要这样安排？", "min_chars": 400, "max_chars": 1800, "target_min": 400, "target_max": 800},
+  {"id": "q7", "category": "structure", "mode": "study", "kb": "text", "question": "I/O 接口的基本结构包含哪些部分？I/O 端口编址有哪两种方式？", "min_chars": 600, "max_chars": 2800, "target_min": 800, "target_max": 1500},
+  {"id": "q8", "category": "boundary", "mode": "review", "kb": "text", "question": "中断响应优先级与处理优先级有什么区别？为什么需要屏蔽字来动态调整？", "min_chars": 400, "max_chars": 1800, "target_min": 400, "target_max": 800},
+  {"id": "q9", "category": "boundary", "mode": "study", "kb": "text", "question": "为什么高速磁盘的大批量数据传输通常采用 DMA 而不是中断驱动？DMA 与通道方式有何区别？", "min_chars": 600, "max_chars": 2800, "target_min": 800, "target_max": 1500},
+  {"id": "q10", "category": "image", "mode": "study", "kb": "image", "question": "这张图片中的项目代码是什么？右侧圆形是什么颜色？", "min_chars": 300, "max_chars": 1500, "expect_image": true},
+  {"id": "q11", "category": "concept", "mode": "study", "kb": "image", "question": "物理层的主要功能是什么？请结合文档说明比特传输与接口特性的关系。", "min_chars": 600, "max_chars": 2800, "target_min": 800, "target_max": 1500},
+  {"id": "q12", "category": "compare", "mode": "study", "kb": "image", "question": "FDM、TDM、WDM 分别切分哪种资源？为什么说 WDM 本质仍是频分复用？", "min_chars": 600, "max_chars": 2800, "target_min": 800, "target_max": 1500},
+  {"id": "q13", "category": "process", "mode": "study", "kb": "image", "question": "在码分复用中，接收端如何从叠加信号恢复某个站发送的比特？请说明判决规则。", "min_chars": 600, "max_chars": 2800, "target_min": 800, "target_max": 1500},
+  {"id": "q14", "category": "structure", "mode": "study", "kb": "image", "question": "光纤由哪几层构成？单模与多模光纤的传播方式有什么不同？", "min_chars": 600, "max_chars": 2800, "target_min": 800, "target_max": 1500},
+  {"id": "q15", "category": "boundary", "mode": "study", "kb": "image", "question": "为什么双绞线的传输距离通常限制在 100 米左右？超过后如何处理？", "min_chars": 600, "max_chars": 2800, "target_min": 800, "target_max": 1500},
+  {"id": "q16", "category": "boundary", "mode": "study", "kb": "image", "question": "在码分复用中，发送比特 0、发送比特 1 和静默三者在信道上的发送内容有什么区别？", "min_chars": 600, "max_chars": 2800, "target_min": 800, "target_max": 1500},
+  {"id": "q17", "category": "code", "mode": "study", "kb": "code", "question": "chunk_store.py 启动时加载什么数据？它如何解析 FAISS 命中的 vector_id？", "min_chars": 400, "max_chars": 2200, "target_min": 500, "target_max": 1500},
+  {"id": "q18", "category": "code", "mode": "study", "kb": "code", "question": "bm25_search.py 使用什么分词与索引方案？查询时返回哪些字段？", "min_chars": 400, "max_chars": 2200, "target_min": 500, "target_max": 1500},
+  {"id": "q19", "category": "code", "mode": "study", "kb": "code", "question": "fusion.py 中 RRF 融合与 BGE 重排序分别做什么？", "min_chars": 400, "max_chars": 2200, "target_min": 500, "target_max": 1500},
+  {"id": "q20", "category": "image", "mode": "study", "kb": "image", "question": "文档里有一张关于同轴电缆结构的插图，请配图说明它的层次结构。", "min_chars": 300, "max_chars": 1800},
+  {"id": "q21", "category": "image", "mode": "study", "kb": "image", "question": "请配图讲解光纤的结构，并在讲解中使用文档插图（至少插入一张图）。", "min_chars": 300, "max_chars": 1800},
+  {"id": "q22", "category": "zero", "mode": "study", "kb": "text", "question": "量子色动力学的渐近自由如何用格点规范理论严格证明？", "min_chars": 1, "max_chars": 400, "expect_zero_hit": true},
+  {"id": "q23", "category": "zero", "mode": "study", "kb": "text", "question": "请给出 2026 年诺贝尔物理学奖得主的完整名单和获奖理由。", "min_chars": 1, "max_chars": 400, "expect_zero_hit": true},
+  {"id": "q24", "category": "structure", "mode": "study", "kb": "text", "question": "I/O 接口中的数据寄存器、状态寄存器和控制寄存器各起什么作用？", "min_chars": 600, "max_chars": 2800, "target_min": 800, "target_max": 1500}
 ]

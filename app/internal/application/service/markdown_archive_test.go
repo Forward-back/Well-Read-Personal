@@ -160,7 +160,7 @@ func TestCreateKnowledgeFromMarkdownArchiveResolvesImagesOutsideMarkdownDir(t *t
 	require.Empty(t, result.Errors)
 	require.Equal(t, 2, result.ImagesImported)
 	require.Equal(t, 0, result.ImagesSkipped)
-	require.Len(t, fileSvc.savedURLs, 2)
+	require.Len(t, fileSvc.savedURLs, 1, "identical test PNG bytes share one stored image")
 	for _, doc := range result.Documents {
 		require.Contains(t, fileSvc.savedDocs[doc.Knowledge.ID], "local://images/")
 	}
@@ -202,6 +202,27 @@ func TestCreateKnowledgeFromMarkdownArchiveResolvesVaultAbsoluteImagePaths(t *te
 	require.Empty(t, result.Errors)
 	require.Equal(t, 1, result.ImagesImported)
 	require.Equal(t, 0, result.ImagesSkipped)
+}
+
+func TestCreateKnowledgeFromMarkdownArchiveDedupesIdenticalImageBytes(t *testing.T) {
+	image := testPNG(t)
+	archive := buildZip(t, map[string][]byte{
+		"a.md":    []byte("![x](x/a.png)"),
+		"b.md":    []byte("![x](y/a.png)"),
+		"x/a.png": image,
+		"y/a.png": image,
+	})
+	header, err := multipartHeaderFromBytes("docs.zip", archive)
+	require.NoError(t, err)
+
+	svc, fileSvc, _ := newMarkdownArchiveTestService(t)
+	result, err := svc.CreateKnowledgeFromMarkdownArchive(
+		newCreateKnowledgeFileContext(), "kb-1", header, nil, nil, nil, "", nil,
+	)
+	require.NoError(t, err)
+	require.Empty(t, result.Errors)
+	require.Equal(t, 2, result.ImagesImported)
+	require.Len(t, fileSvc.savedURLs, 1, "identical bytes under different paths share one stored image")
 }
 
 func TestCreateKnowledgeFromMarkdownArchiveRejectsTraversal(t *testing.T) {

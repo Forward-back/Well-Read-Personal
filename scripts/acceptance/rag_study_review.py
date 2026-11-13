@@ -17,6 +17,9 @@ IMAGE_RE = re.compile(r"!\[[^\]]*\]\(resource://[^)]+\)")
 IMAGE_URL_RE = re.compile(r"!\[[^\]]*\]\((resource://[^)]+)\)")
 STUDY_TERMS = ("结论", "背景", "定义", "原理", "易错", "考点")
 REVIEW_TERMS = ("考点", "易错", "自测")
+REQUIRED_CATEGORIES = ("concept", "compare", "process", "structure", "boundary", "code", "image")
+ZERO_HIT_TERMS = ("未找到", "资料不足", "没有找到", "无法从", "不包含", "无法回答", "无法确定")
+RESOURCE_URL_RE = re.compile(r"resource://[A-Za-z0-9_-]+")
 
 
 def load_env_file(path: Path) -> dict:
@@ -85,6 +88,22 @@ def delete_session(base_url, token, session_id):
         print(f"warn: failed to delete session {session_id}: {exc}", file=sys.stderr)
 
 
+def load_image_candidate_urls(base_url, token, kb_id):
+    """Collect every stored image URL in the KB; used to prove that an answer
+    only embeds images the retrieval candidate list actually offered."""
+    urls = set()
+    body = request_json(base_url, "GET", f"/api/v1/knowledge-bases/{kb_id}/knowledge?page=1&page_size=200", token=token)
+    for doc in body.get("data") or []:
+        doc_id = doc.get("id")
+        if not doc_id:
+            continue
+        chunks = request_json(base_url, "GET", f"/api/v1/chunks/{doc_id}?page=1&page_size=200", token=token)
+        for row in chunks.get("data") or []:
+            blob = (row.get("image_info") or "") + "\n" + (row.get("content") or "")
+            urls.update(RESOURCE_URL_RE.findall(blob))
+    return urls
+
+
 def stream_qa(base_url, token, session_id, payload, timeout):
     req = urllib.request.Request(
         f"{base_url.rstrip('/')}/api/v1/knowledge-chat/{session_id}",
@@ -121,7 +140,7 @@ def stream_qa(base_url, token, session_id, payload, timeout):
     return "".join(parts).strip(), references, errors
 
 
-def evaluate(case, answer, references, errors):
+def evaluate(case, answer, references, errors, candidates):
     problems = []
     if errors:
         problems.append("SSE error: " + "; ".join(errors)[:300])
@@ -135,35 +154,61 @@ def evaluate(case, answer, references, errors):
             problems.append(f"forbidden term: {term}")
     if "[[IMG:" in answer:
         problems.append("unreplaced [[IMG:n]] placeholder")
+    for target in re.findall(r"!\[[^\]]*\]\(([^)]+)\)", answer):
+        if not target.startswith("resource://"):
+            problems.append(f"raw non-resource image markdown: {target[:80]}")
 
-    ref_files = [(r.get("knowledge_filename") or r.get("knowledge_title") or "").strip() for r in references]
-    if not references:
-        problems.append("no references")
-    if any(not name for name in ref_files):
-        problems.append("reference without file name")
-
-    if case["kb"] == "image":
-        images = len(IMAGE_RE.findall(answer))
-        if images < 1:
-            problems.append("image answer has no resource:// image")
+    ref_keys = []
+    for ref in references:
+        name = (ref.get("knowledge_filename") or ref.get("knowledge_title") or "").strip()
+        ref_id = str(ref.get("id") or ref.get("app_chunk_id") or "").strip()
+        if not name:
+            problems.append("reference without file name")
+        if not ref_id:
+            problems.append("reference without traceable id")
+        ref_keys.append((name, ref_id))
+    if case.get("expect_zero_hit"):
+        if references:
+            problems.append(f"zero-hit expected no references, got {len(references)}")
+        if IMAGE_RE.search(answer):
+            problems.append("zero-hit answer embeds an image")
+        if not any(term in answer for term in ZERO_HIT_TERMS):
+            problems.append("zero-hit answer missing data-gap guidance")
+        if any(term in answer for term in ("易错点", "考点清单", "自测题", "一句话结论")):
+            problems.append("zero-hit answer produced a full study/review card")
+    elif case.get("category") == "image":
         if not references:
             problems.append("image answer has no references")
+        images = IMAGE_URL_RE.findall(answer)
+        if case.get("expect_image") and not images:
+            problems.append("image answer has no resource:// image")
+        if candidates and images:
+            unknown = [url for url in images if url not in candidates]
+            if unknown:
+                problems.append("image URL not in retrieval candidates: " + ", ".join(unknown[:3]))
+        if len(images) != len(set(images)):
+            problems.append("duplicate image URL in answer")
     else:
+        if not references:
+            problems.append("no references")
         terms = STUDY_TERMS if case["mode"] == "study" else REVIEW_TERMS
         hits = [term for term in terms if term in answer]
-        minimum = 2 if case["mode"] == "study" else 2
-        if len(hits) < minimum:
+        if len(hits) < 2:
             problems.append(f"{case['mode']} sections missing (found {hits})")
         if case["mode"] == "review" and "自测" not in answer and "答案" not in answer:
             problems.append("review answer missing self-test")
 
+    if len(ref_keys) != len(set(ref_keys)):
+        problems.append("duplicate references")
+
     return {
         "ok": not problems,
         "problems": problems,
+        "category": case.get("category", ""),
         "chars": chars,
         "refs": len(references),
-        "ref_files": ref_files,
-        "images": len(IMAGE_RE.findall(answer)),
+        "ref_files": [key[0] for key in ref_keys],
+        "images": len(IMAGE_URL_RE.findall(answer)),
         "image_urls": IMAGE_URL_RE.findall(answer)[:10],
         "headings": re.findall(r"^#{1,4}\s+(.+)$", answer, flags=re.MULTILINE),
         "has_table": "|" in answer,
@@ -178,11 +223,14 @@ def main():
     parser.add_argument("--password")
     parser.add_argument("--text-kb", default="测试库")
     parser.add_argument("--image-kb", default="图片多模态验收")
+    parser.add_argument("--code-kb", default="验收库-36048")
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--only", help="comma-separated case ids")
     parser.add_argument("--out", type=Path)
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--keep-sessions", action="store_true")
+    parser.add_argument("--enforce-target", action="store_true",
+                        help="fail when target-range adherence is below 80%")
     args = parser.parse_args()
 
     env = load_env_file(args.env_file)
@@ -197,12 +245,23 @@ def main():
         cases = [case for case in cases if case["id"] in wanted]
     if not cases:
         parser.error("no cases selected")
+    if not args.only:
+        category_counts = {}
+        for case in cases:
+            category_counts[case.get("category", "")] = category_counts.get(case.get("category", ""), 0) + 1
+        missing = [name for name in REQUIRED_CATEGORIES if category_counts.get(name, 0) < 3]
+        if missing:
+            parser.error(f"question bank needs at least 3 cases per category; missing: {missing}")
 
     token = login(args.base_url, email, password)
     kb_ids = {
         "text": resolve_kb(args.base_url, token, args.text_kb),
         "image": resolve_kb(args.base_url, token, args.image_kb),
+        "code": resolve_kb(args.base_url, token, args.code_kb),
     }
+    candidates = None
+    if any(case.get("category") == "image" for case in cases):
+        candidates = load_image_candidate_urls(args.base_url, token, kb_ids["image"])
 
     results, failed = [], 0
     for case in cases:
@@ -222,13 +281,26 @@ def main():
                 },
                 args.timeout,
             )
-            verdict = evaluate(case, answer, references, errors)
+            verdict = evaluate(case, answer, references, errors, candidates)
         except Exception as exc:  # noqa: BLE001 - one failed case must not stop the rest
             verdict = {"ok": False, "problems": [str(exc)], "chars": 0, "refs": 0, "ref_files": [], "images": 0}
         finally:
             if not args.keep_sessions:
                 delete_session(args.base_url, token, session_id)
-        result = {"id": case["id"], "mode": case["mode"], "kb": case["kb"], "elapsed_s": round(time.time() - started, 1), **verdict}
+        target_min = case.get("target_min")
+        target_max = case.get("target_max")
+        within_target = None
+        if target_min is not None and target_max is not None and verdict["chars"]:
+            within_target = target_min <= verdict["chars"] <= target_max
+        result = {
+            "id": case["id"],
+            "category": case.get("category", ""),
+            "mode": case["mode"],
+            "kb": case["kb"],
+            "elapsed_s": round(time.time() - started, 1),
+            "within_target": within_target,
+            **verdict,
+        }
         results.append(result)
         if not verdict["ok"]:
             failed += 1
@@ -236,11 +308,26 @@ def main():
         detail = "" if verdict["ok"] else " — " + "; ".join(verdict["problems"])
         print(f"{status}  {case['id']} {case['mode']}/{case['kb']} chars={result['chars']} refs={result['refs']}{detail}")
 
-    summary = {"total": len(results), "passed": len(results) - failed, "failed": failed, "results": results}
+    target_cases = [r for r in results if r.get("within_target") is not None]
+    target_ok = sum(1 for r in target_cases if r["within_target"])
+    target_rate = (target_ok / len(target_cases)) if target_cases else 1.0
+    summary = {
+        "total": len(results),
+        "passed": len(results) - failed,
+        "failed": failed,
+        "target_cases": len(target_cases),
+        "target_within": target_ok,
+        "target_rate": round(target_rate, 3),
+        "results": results,
+    }
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(f"report: {args.out}")
+    print(f"target-range adherence: {target_ok}/{len(target_cases)} ({target_rate:.0%})")
+    if args.enforce_target and target_rate < 0.8:
+        print("target-range adherence below 80%", file=sys.stderr)
+        return 1
     return 1 if failed else 0
 
 

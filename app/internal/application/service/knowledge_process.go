@@ -4249,6 +4249,37 @@ func (s *knowledgeService) failKnowledge(
 	return nil, fmt.Errorf(format, args...)
 }
 
+// maxMultimodalImagesPerDocument bounds per-document OCR/caption tasks. A
+// figure-heavy PDF otherwise fans out into hundreds of model calls and clogs
+// the shared multimodal queue.
+const maxMultimodalImagesPerDocument = 80
+
+// selectMultimodalImages drops duplicate serving URLs and enforces the
+// per-document budget. Returns the selected images and how many were skipped.
+func selectMultimodalImages(images []docparser.StoredImage) ([]docparser.StoredImage, int) {
+	selected := make([]docparser.StoredImage, 0, len(images))
+	seen := make(map[string]struct{}, len(images))
+	skipped := 0
+	for _, img := range images {
+		url := strings.TrimSpace(img.ServingURL)
+		if url == "" {
+			skipped++
+			continue
+		}
+		if _, dup := seen[url]; dup {
+			skipped++
+			continue
+		}
+		if len(selected) >= maxMultimodalImagesPerDocument {
+			skipped++
+			continue
+		}
+		seen[url] = struct{}{}
+		selected = append(selected, img)
+	}
+	return selected, skipped
+}
+
 // enqueueImageMultimodalTasks enqueues asynq tasks for multimodal image processing.
 func (s *knowledgeService) enqueueImageMultimodalTasks(
 	ctx context.Context,
@@ -4259,6 +4290,15 @@ func (s *knowledgeService) enqueueImageMultimodalTasks(
 	metadata map[string]string,
 ) {
 	if s.task == nil || len(images) == 0 {
+		return
+	}
+	images, skipped := selectMultimodalImages(images)
+	if skipped > 0 {
+		logger.Warnf(ctx,
+			"[ImageMultimodal] knowledge %s: %d image(s) skipped (duplicate or over per-document limit %d)",
+			knowledge.ID, skipped, maxMultimodalImagesPerDocument)
+	}
+	if len(images) == 0 {
 		return
 	}
 
