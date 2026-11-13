@@ -1352,7 +1352,7 @@ func (s *knowledgeService) moveKnowledgeReparse(
 	before := *knowledge
 	cleanup := *knowledge
 	cleanup.StorageSize = 0
-	if err := s.cleanupKnowledgeResources(ctx, &cleanup); err != nil {
+	if err := s.cleanupKnowledgeResources(ctx, &cleanup, true); err != nil {
 		return fmt.Errorf("failed to clean up source: %w", err)
 	}
 	if err := s.repo.DeleteKnowledgeTagRelations(ctx, knowledge.ID); err != nil {

@@ -96,7 +96,7 @@ func TestCleanupStopsBeforeSideEffectsWhenKBUnavailable(t *testing.T) {
 			row.EmbeddingModelID = "bound-model"
 			// Engine/model dependencies remain absent: touching a fallback backend
 			// would panic instead of preserving the lookup error and original data.
-			err = f.svc.cleanupKnowledgeResources(f.ctx, row)
+			err = f.svc.cleanupKnowledgeResources(f.ctx, row, false)
 			require.Error(t, err)
 			if lookup.err != nil {
 				require.ErrorIs(t, err, lookup.err)

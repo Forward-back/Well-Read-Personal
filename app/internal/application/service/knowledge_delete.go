@@ -619,7 +619,9 @@ func (s *knowledgeService) executeKnowledgeDelete(plan *knowledgeDeletePlan, sin
 	return nil
 }
 
-func (s *knowledgeService) cleanupKnowledgeResources(ctx context.Context, knowledge *types.Knowledge) error {
+func (s *knowledgeService) cleanupKnowledgeResources(
+	ctx context.Context, knowledge *types.Knowledge, preserveExtractedImages bool,
+) error {
 	logger.GetLogger(ctx).Infof("Cleaning knowledge resources before manual update, knowledge ID: %s", knowledge.ID)
 
 	var cleanupErr error
@@ -675,7 +677,11 @@ func (s *knowledgeService) cleanupKnowledgeResources(ctx context.Context, knowle
 	// Delete extracted images after chunks are deleted. The claims released
 	// here are re-taken by triggerManualProcessing, which always runs after
 	// this cleanup and re-binds whatever the new body still references.
-	deleteExtractedImages(ctx, fileSvc, knowledgeResourceOwners(s.resourceCatalog, knowledge.ID), imageURLs)
+	// Reparse/move reprocess the SAME stored body, so its resource:// images
+	// must survive; deleting them would make every image unreadable.
+	if !preserveExtractedImages {
+		deleteExtractedImages(ctx, fileSvc, knowledgeResourceOwners(s.resourceCatalog, knowledge.ID), imageURLs)
+	}
 
 	namespace := types.NameSpace{KnowledgeBase: knowledge.KnowledgeBaseID, Knowledge: knowledge.ID}
 	if err := s.graphEngine.DelGraph(ctx, []types.NameSpace{namespace}); err != nil {

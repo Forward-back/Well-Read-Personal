@@ -2566,7 +2566,7 @@ func (s *knowledgeService) ReparseKnowledge(
 
 	// For non-manual knowledge, cleanup synchronously then enqueue document processing
 	logger.Infof(ctx, "Cleaning up existing resources for knowledge: %s", knowledgeID)
-	if err := s.cleanupKnowledgeResources(ctx, existing); err != nil {
+	if err := s.cleanupKnowledgeResources(ctx, existing, true); err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
 			"knowledge_id": knowledgeID,
 		})
@@ -3241,7 +3241,7 @@ func (s *knowledgeService) ProcessManualUpdate(ctx context.Context, t *asynq.Tas
 
 	// Cleanup old resources (indexes, chunks, graph) for update operations
 	if payload.NeedCleanup {
-		if err := s.cleanupKnowledgeResources(ctx, knowledge); err != nil {
+		if err := s.cleanupKnowledgeResources(ctx, knowledge, false); err != nil {
 			logger.ErrorWithFields(ctx, err, map[string]interface{}{
 				"knowledge_id": payload.KnowledgeID,
 			})
