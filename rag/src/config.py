@@ -144,8 +144,13 @@ ANSWER_MODE_BUDGETS = {
     },
     "review": {
         "context_chars": int(os.getenv("REVIEW_MAX_CONTEXT_CHARS", "3000")),
-        "max_tokens": int(os.getenv("REVIEW_MAX_TOKENS", "700")),
+        "max_tokens": int(os.getenv("REVIEW_MAX_TOKENS", "650")),
         "timeout": int(os.getenv("REVIEW_GENERATE_TIMEOUT", "45")),
+    },
+    "code": {
+        "context_chars": int(os.getenv("CODE_MAX_CONTEXT_CHARS", "8000")),
+        "max_tokens": int(os.getenv("CODE_MAX_TOKENS", "800")),
+        "timeout": int(os.getenv("CODE_GENERATE_TIMEOUT", "90")),
     },
 }
 DEFAULT_ANSWER_MODE = os.getenv("DEFAULT_ANSWER_MODE", "study")

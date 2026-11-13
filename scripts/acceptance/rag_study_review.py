@@ -20,6 +20,7 @@ REVIEW_TERMS = ("考点", "易错", "自测")
 REQUIRED_CATEGORIES = ("concept", "compare", "process", "structure", "boundary", "code", "image")
 ZERO_HIT_TERMS = ("未找到", "资料不足", "没有找到", "无法从", "不包含", "无法回答", "无法确定")
 RESOURCE_URL_RE = re.compile(r"resource://[A-Za-z0-9_-]+")
+FENCED_CODE_RE = re.compile(r"```.*?```", re.S)
 
 
 def load_env_file(path: Path) -> dict:
@@ -144,7 +145,12 @@ def evaluate(case, answer, references, errors, candidates):
     problems = []
     if errors:
         problems.append("SSE error: " + "; ".join(errors)[:300])
-    chars = len(answer)
+    raw_chars = len(answer)
+    chars = raw_chars
+    if case.get("category") == "code":
+        # Code answers are measured by their prose; fenced code is capped
+        # separately and would otherwise dominate the character budget.
+        chars = len(FENCED_CODE_RE.sub("", answer))
     if chars < case["min_chars"] or chars > case["max_chars"]:
         problems.append(f"chars {chars} outside {case['min_chars']}-{case['max_chars']}")
     if not answer:
@@ -188,6 +194,15 @@ def evaluate(case, answer, references, errors, candidates):
                 problems.append("image URL not in retrieval candidates: " + ", ".join(unknown[:3]))
         if len(images) != len(set(images)):
             problems.append("duplicate image URL in answer")
+    elif case.get("category") == "code":
+        if not references:
+            problems.append("no references")
+        terms = ("一句话结论", "宏观", "实现流程", "设计", "边界")
+        hits = [term for term in terms if term in answer]
+        if len(hits) < 2:
+            problems.append(f"code template sections missing (found {hits})")
+        if not re.search(r"[\w./\\-]+\.(?:go|py|js|ts|tsx|jsx|java|kt|rs|c|cc|cpp|h|hpp|cs|rb|php|swift|scala|sh|sql|lua|vue):\d+", answer):
+            problems.append("code answer missing path:line location")
     else:
         if not references:
             problems.append("no references")
@@ -206,6 +221,7 @@ def evaluate(case, answer, references, errors, candidates):
         "problems": problems,
         "category": case.get("category", ""),
         "chars": chars,
+        "raw_chars": raw_chars,
         "refs": len(references),
         "ref_files": [key[0] for key in ref_keys],
         "images": len(IMAGE_URL_RE.findall(answer)),
@@ -223,7 +239,7 @@ def main():
     parser.add_argument("--password")
     parser.add_argument("--text-kb", default="测试库")
     parser.add_argument("--image-kb", default="图片多模态验收")
-    parser.add_argument("--code-kb", default="验收库-36048")
+    parser.add_argument("--code-kb", default="代码导读验收")
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--only", help="comma-separated case ids")
     parser.add_argument("--out", type=Path)

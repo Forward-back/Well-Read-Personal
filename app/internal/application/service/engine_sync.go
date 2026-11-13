@@ -364,6 +364,59 @@ func (s *EngineSyncService) syncOneCore(ctx context.Context, knowledge *types.Kn
 	return nil
 }
 
+// engineChunkContent prefixes code chunks with their source location so the
+// engine (which stores no per-chunk code metadata) can cite path:line.
+func engineChunkContent(chunk *types.Chunk) string {
+	content := strings.TrimSpace(chunk.Content)
+	if content == "" || len(chunk.Metadata) == 0 {
+		return content
+	}
+	var meta map[string]interface{}
+	if err := json.Unmarshal(chunk.Metadata, &meta); err != nil {
+		return content
+	}
+	codeMeta, ok := meta["code"].(map[string]interface{})
+	if !ok {
+		return content
+	}
+	pathValue, _ := codeMeta["path"].(string)
+	pathValue = strings.TrimSpace(pathValue)
+	if pathValue == "" {
+		return content
+	}
+	startLine := int(metadataNumber(codeMeta["start_line"]))
+	endLine := int(metadataNumber(codeMeta["end_line"]))
+	if startLine <= 0 && endLine <= 0 {
+		return content
+	}
+	location := pathValue
+	if startLine > 0 && endLine >= startLine {
+		location = fmt.Sprintf("%s:%d-%d", pathValue, startLine, endLine)
+	} else if startLine > 0 {
+		location = fmt.Sprintf("%s:%d", pathValue, startLine)
+	}
+	if strings.HasPrefix(content, location) {
+		return content
+	}
+	return location + "\n" + content
+}
+
+func metadataNumber(value interface{}) float64 {
+	switch number := value.(type) {
+	case float64:
+		return number
+	case int:
+		return float64(number)
+	case int64:
+		return float64(number)
+	case json.Number:
+		parsed, _ := number.Float64()
+		return parsed
+	default:
+		return 0
+	}
+}
+
 // buildEngineMarkdown concatenates enabled text chunks in chunk_index order.
 // Disabled chunks are user-removed content and stay out of the engine.
 func buildEngineMarkdown(chunks []*types.Chunk) string {
@@ -372,7 +425,7 @@ func buildEngineMarkdown(chunks []*types.Chunk) string {
 		if chunk == nil || !chunk.IsEnabled || chunk.ChunkType != types.ChunkTypeText {
 			continue
 		}
-		content := strings.TrimSpace(chunk.Content)
+		content := engineChunkContent(chunk)
 		if content == "" {
 			continue
 		}
@@ -443,7 +496,7 @@ func toEngineIngestChunks(chunks []*types.Chunk) []engine.IngestChunk {
 			ChunkIndex: chunk.ChunkIndex,
 			StartAt:    chunk.StartAt,
 			EndAt:      chunk.EndAt,
-			Content:    chunk.Content,
+			Content:    engineChunkContent(chunk),
 			ChunkType:  "text",
 		})
 	}

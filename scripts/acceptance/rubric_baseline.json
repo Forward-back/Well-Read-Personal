@@ -1,0 +1,31 @@
+{
+  "recorded_at": "2026-11-13",
+  "model": "deepseek-flash",
+  "prompt_version": "study/review templates before code reading card",
+  "scale": "1-5",
+  "dimensions": ["accuracy", "source_priority", "structure", "readability", "citations"],
+  "samples": [
+    {
+      "id": "q1",
+      "mode": "study",
+      "kb": "测试库",
+      "chars": 955,
+      "scores": {"accuracy": 4, "source_priority": 4, "structure": 4, "readability": 4, "citations": 4}
+    },
+    {
+      "id": "q4",
+      "mode": "review",
+      "kb": "测试库",
+      "chars": 765,
+      "scores": {"accuracy": 4, "source_priority": 4, "structure": 4, "readability": 4, "citations": 4}
+    },
+    {
+      "id": "q17",
+      "mode": "study",
+      "kb": "验收库-36048",
+      "chars": 1356,
+      "note": "scored on the pre-code-template answer; code reading card added afterwards, rescore after next run",
+      "scores": {"accuracy": 4, "source_priority": 4, "structure": 4, "readability": 4, "citations": 4}
+    }
+  ]
+}

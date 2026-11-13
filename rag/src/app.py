@@ -386,6 +386,10 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
         text_reranked = [
             c for c in reranked if (c.get("chunk_type") or "text") != "image"
         ]
+        effective_mode = _effective_answer_mode(mode, text_reranked)
+        if effective_mode != mode:
+            logger.info(f"  代码库命中，回答模板切换: {mode} → {effective_mode}")
+            mode = effective_mode
         _stage("rerank_done", {
             "reranked": len(text_reranked), "images": len(image_candidates),
         }, _rerank_detail(text_reranked))
@@ -429,7 +433,7 @@ def _run_query(question: str, collect_timing: bool = False, collect_trace: bool 
             logger.info(f"  召回上下文[{i}] ({len(ctx)}字符): {preview}...")
 
         # ── 7. LLM 生成（基础提示词 + 学习/复习模板 + 技能 + 语言规则）──
-        _stage("generate_start", None, {"model": DEEPSEEK_MODEL, "answer_mode": mode})
+        _stage("generate_start", {"answer_mode": mode}, {"model": DEEPSEEK_MODEL})
         style = compute_answer_style(text_reranked or reranked, question)
         logger.info(
             f"[PROMPT] 模式={mode} 文档语言={style['doc_lang']} "
@@ -599,6 +603,30 @@ def _collect_image_candidates(reranked: list[dict]) -> list[dict]:
 
 
 _IMAGE_TOKEN_RE = re.compile(r"\[\[IMG:(\d+)\]\]")
+
+CODE_FILE_EXTENSIONS = {
+    ".go", ".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".kt", ".rs",
+    ".c", ".cc", ".cpp", ".h", ".hpp", ".cs", ".rb", ".php", ".swift",
+    ".scala", ".sh", ".sql", ".lua", ".vue",
+}
+
+
+def _looks_like_code_answer(rows: list[dict]) -> bool:
+    """Code knowledge bases are detected from retrieved file names so the
+    caller keeps using the study/review switch without a new UI mode."""
+    if not rows:
+        return False
+    code = sum(
+        1 for row in rows
+        if os.path.splitext(str(row.get("file_name") or ""))[1].lower() in CODE_FILE_EXTENSIONS
+    )
+    return code * 2 >= len(rows)
+
+
+def _effective_answer_mode(requested: str, rows: list[dict]) -> str:
+    if requested == "study" and _looks_like_code_answer(rows):
+        return "code"
+    return requested
 
 
 def _image_markdown(img: dict) -> str:
