@@ -1,14 +1,33 @@
 # WellRead Frontend
 
-WellRead 个人版的 Vue 3 单页应用：问答、知识库、精读、技能与设置。前端只负责展示与交互，认证与数据范围最终由后端判定。
+WellRead 个人版的 Vue 3 单页应用：问答、知识库、精读、复习、技能与设置。前端只负责展示与交互，认证与数据范围最终由后端判定。
 
 ## 技术栈
 
 - Vue 3 + TypeScript + Vite 7
-- TDesign Vue Next
+- TDesign Vue Next（存量页面）
+- shadcn-vue + Tailwind CSS（复习 V2 起渐进迁移）
+- ECharts（统计页图表）
 - Pinia（状态）、Vue Router（路由）
 - vue-i18n（多语言）
 - Markdown/Mermaid/KaTeX、Office 预览、xlsx 导入等展示能力
+
+## UI 组件（复习 V2）
+
+复习 V2 起，新页面组件参考 `shadcn.com.cn` 的组合方式，用 `shadcn-vue` 实现；旧页面继续 TDesign，不允许同页混用。
+
+```bash
+npm install -D tailwindcss @tailwindcss/vite
+npx shadcn-vue@latest init
+npx shadcn-vue@latest add button dialog dropdown-menu context-menu tabs sheet card badge progress table input select tooltip separator skeleton
+```
+
+- 组件源码进入 `src/components/ui`，按需添加，不引入全量组件库。
+- `components.json` 别名：`@/components`、`@/components/ui`、`@/lib/utils`。
+- 语义色 token 映射现有 TDesign CSS 变量，保持品牌绿与当前圆角；不采用 shadcn 默认色板。
+- 首版不全局引入 Tailwind Preflight，避免影响 TDesign 旧页面；组件基础重置局部化。
+- 统计图表用 ECharts，不用 shadcn-vue Chart。
+- 完整规则与组件范围见 `docs/02-需求与设计/界面规范.md` §6。
 
 ## 目录地图
 

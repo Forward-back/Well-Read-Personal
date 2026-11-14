@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -29,6 +30,7 @@ func setupReviewServiceTest(t *testing.T) (interfaces.ReviewService, interfaces.
 		&types.ReviewCard{},
 		&types.ReviewCardSource{},
 		&types.ReviewLog{},
+		&types.ReviewSession{},
 	))
 	repo := repository.NewReviewRepository(db)
 	return NewReviewService(repo), repo, types.WithExecutionTenant(context.Background(), 1)
@@ -238,4 +240,198 @@ func TestReviewServiceStats(t *testing.T) {
 	assert.Equal(t, int64(1), stats.Reviewed30d)
 	assert.Equal(t, int64(1), stats.Remembered30d)
 	assert.InDelta(t, 1.0, stats.Retention30d, 0.001)
+}
+
+func TestReviewServiceGroupTreeCountsSubtreeCards(t *testing.T) {
+	svc, _, ctx := setupReviewServiceTest(t)
+	parent, err := svc.CreateGroup(ctx, &types.CreateReviewGroupRequest{Name: "父"})
+	require.NoError(t, err)
+	child, err := svc.CreateGroup(ctx, &types.CreateReviewGroupRequest{Name: "子", ParentID: parent.ID})
+	require.NoError(t, err)
+	_, err = svc.CreateCard(ctx, &types.CreateReviewCardRequest{
+		GroupID:  child.ID,
+		Question: "子树计数",
+		Answer:   "答案",
+		Sources: []types.ReviewCardSourceInput{{
+			KnowledgeID: "k-count",
+			ChunkID:     "c-count",
+		}},
+	})
+	require.NoError(t, err)
+
+	tree, err := svc.ListGroupTree(ctx)
+	require.NoError(t, err)
+	var find func(nodes []*types.ReviewGroupNode, id string) *types.ReviewGroupNode
+	find = func(nodes []*types.ReviewGroupNode, id string) *types.ReviewGroupNode {
+		for _, node := range nodes {
+			if node.Group.ID == id {
+				return node
+			}
+			if nested := find(node.Children, id); nested != nil {
+				return nested
+			}
+		}
+		return nil
+	}
+	parentNode := find(tree, parent.ID)
+	childNode := find(tree, child.ID)
+	require.NotNil(t, parentNode)
+	require.NotNil(t, childNode)
+	assert.Equal(t, 1, parentNode.CardCount)
+	assert.Equal(t, 1, childNode.CardCount)
+}
+
+func TestReviewServiceDailySessionCompletesAndResumes(t *testing.T) {
+	svc, _, ctx := setupReviewServiceTest(t)
+	first := createTestCard(t, svc, ctx, "会话卡一")
+	second := createTestCard(t, svc, ctx, "会话卡二")
+
+	state, err := svc.StartSession(ctx, &types.StartReviewSessionRequest{Mode: types.ReviewSessionModeDaily})
+	require.NoError(t, err)
+	require.NotNil(t, state.Session)
+	assert.Equal(t, types.ReviewSessionStatusActive, state.Session.Status)
+	assert.Equal(t, 2, state.Session.PlannedCount)
+	assert.Len(t, state.Cards, 2)
+
+	active, err := svc.GetActiveSession(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, active)
+	assert.Equal(t, state.Session.ID, active.Session.ID)
+
+	_, err = svc.SubmitReview(ctx, &types.SubmitReviewRequest{
+		CardID:          first.ID,
+		SessionID:       state.Session.ID,
+		Rating:          types.ReviewRatingRemembered,
+		ClientRequestID: "session-1",
+	})
+	require.NoError(t, err)
+
+	active, err = svc.GetActiveSession(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, active)
+	assert.Len(t, active.Cards, 1)
+
+	_, err = svc.SubmitReview(ctx, &types.SubmitReviewRequest{
+		CardID:          first.ID,
+		SessionID:       state.Session.ID,
+		Rating:          types.ReviewRatingFuzzy,
+		ClientRequestID: "session-duplicate",
+	})
+	require.Error(t, err, "one card may be rated only once per session")
+
+	_, err = svc.SubmitReview(ctx, &types.SubmitReviewRequest{
+		CardID:          second.ID,
+		SessionID:       state.Session.ID,
+		Rating:          types.ReviewRatingRemembered,
+		ClientRequestID: "session-2",
+	})
+	require.NoError(t, err)
+
+	active, err = svc.GetActiveSession(ctx)
+	require.NoError(t, err)
+	assert.Nil(t, active)
+
+	completed, err := svc.GetSession(ctx, state.Session.ID)
+	require.NoError(t, err)
+	assert.Equal(t, types.ReviewSessionStatusCompleted, completed.Session.Status)
+	assert.Equal(t, 2, completed.Session.CompletedCount)
+	assert.Equal(t, 2, completed.Session.RememberedCount)
+	assert.Equal(t, 0, completed.Session.FuzzyCount)
+	assert.Len(t, completed.Logs, 2)
+}
+
+func TestReviewServiceManualSessionUsesSelectedCardsOnly(t *testing.T) {
+	svc, _, ctx := setupReviewServiceTest(t)
+	selected := createTestCard(t, svc, ctx, "自选一")
+	other := createTestCard(t, svc, ctx, "自选二")
+	createTestCard(t, svc, ctx, "不选")
+
+	state, err := svc.StartSession(ctx, &types.StartReviewSessionRequest{
+		Mode:    types.ReviewSessionModeManual,
+		CardIDs: []string{selected.ID, other.ID},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, types.ReviewSessionModeManual, state.Session.Mode)
+	assert.Equal(t, 2, state.Session.PlannedCount)
+	assert.Len(t, state.Cards, 2)
+
+	_, err = svc.SubmitReview(ctx, &types.SubmitReviewRequest{
+		CardID:          selected.ID,
+		SessionID:       state.Session.ID,
+		Rating:          types.ReviewRatingRemembered,
+		ClientRequestID: "manual-1",
+	})
+	require.NoError(t, err)
+	_, err = svc.SubmitReview(ctx, &types.SubmitReviewRequest{
+		CardID:          other.ID,
+		SessionID:       state.Session.ID,
+		Rating:          types.ReviewRatingForgot,
+		ClientRequestID: "manual-2",
+	})
+	require.NoError(t, err)
+
+	manual, err := svc.GetSession(ctx, state.Session.ID)
+	require.NoError(t, err)
+	assert.Equal(t, types.ReviewSessionStatusCompleted, manual.Session.Status)
+	assert.Equal(t, 1, manual.Session.ForgotCount)
+}
+
+func TestReviewServiceManualSessionRejectsFutureOrSuspendedCards(t *testing.T) {
+	svc, _, ctx := setupReviewServiceTest(t)
+	card := createTestCard(t, svc, ctx, "暂停卡")
+	require.NoError(t, svc.SetCardStatus(ctx, card.ID, types.ReviewStatusSuspended))
+
+	_, err := svc.StartSession(ctx, &types.StartReviewSessionRequest{
+		Mode:    types.ReviewSessionModeManual,
+		CardIDs: []string{card.ID},
+	})
+	require.Error(t, err, "suspended cards cannot enter a manual session")
+}
+
+func TestReviewServiceCardPerformanceAndWarning(t *testing.T) {
+	svc, _, ctx := setupReviewServiceTest(t)
+	card := createTestCard(t, svc, ctx, "表现卡")
+	for i, rating := range []string{
+		types.ReviewRatingForgot,
+		types.ReviewRatingForgot,
+		types.ReviewRatingRemembered,
+	} {
+		_, err := svc.SubmitReview(ctx, &types.SubmitReviewRequest{
+			CardID:          card.ID,
+			Rating:          rating,
+			ClientRequestID: fmt.Sprintf("performance-%d", i),
+		})
+		require.NoError(t, err)
+	}
+	performance, err := svc.GetCardPerformance(ctx, card.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 3, performance.Counts.Total)
+	assert.Equal(t, 2, performance.Counts.Forgot)
+	assert.Equal(t, 1, performance.Counts.Remembered)
+	assert.Equal(t, 0, performance.ForgetStreak)
+	assert.Equal(t, "none", performance.Warning)
+
+	watchCard := createTestCard(t, svc, ctx, "连续忘记卡")
+	for i, rating := range []string{types.ReviewRatingForgot, types.ReviewRatingForgot} {
+		_, err = svc.SubmitReview(ctx, &types.SubmitReviewRequest{
+			CardID:          watchCard.ID,
+			Rating:          rating,
+			ClientRequestID: fmt.Sprintf("watch-%d", i),
+		})
+		require.NoError(t, err)
+	}
+	performance, err = svc.GetCardPerformance(ctx, watchCard.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 2, performance.ForgetStreak)
+	assert.Equal(t, "watch", performance.Warning)
+
+	_, err = svc.SubmitReview(ctx, &types.SubmitReviewRequest{
+		CardID:          card.ID,
+		Rating:          types.ReviewRatingForgot,
+		ClientRequestID: "performance-4",
+	})
+	require.NoError(t, err)
+	performance, err = svc.GetCardPerformance(ctx, card.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "high", performance.Warning)
 }

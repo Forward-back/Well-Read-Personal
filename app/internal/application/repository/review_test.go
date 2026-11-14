@@ -27,6 +27,7 @@ func setupReviewTestDB(t *testing.T) *gorm.DB {
 		&types.ReviewCard{},
 		&types.ReviewCardSource{},
 		&types.ReviewLog{},
+		&types.ReviewSession{},
 	))
 	return db
 }
@@ -184,4 +185,27 @@ func TestReviewRepositoryDeleteGroupCanDeleteCards(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, got)
 	_ = group
+}
+
+func TestReviewRepositoryExpireSessions(t *testing.T) {
+	db := setupReviewTestDB(t)
+	repo := NewReviewRepository(db)
+	ctx := reviewContext(1)
+	now := time.Now()
+	session := &types.ReviewSession{
+		ID:             uuid.NewString(),
+		TenantID:       1,
+		Mode:           types.ReviewSessionModeDaily,
+		Status:         types.ReviewSessionStatusActive,
+		PlannedCount:   1,
+		ReviewDay:      now.Add(-48 * time.Hour),
+		StartedAt:      now.Add(-48 * time.Hour),
+		PlannedCardIDs: types.JSON(`["k-1"]`),
+	}
+	require.NoError(t, repo.CreateSession(ctx, session))
+	require.NoError(t, repo.ExpireSessions(ctx, 1, now))
+	got, err := repo.GetSession(ctx, 1, session.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, types.ReviewSessionStatusExpired, got.Status)
 }

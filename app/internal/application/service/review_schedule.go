@@ -2,9 +2,17 @@ package service
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"gaze/internal/types"
+)
+
+const (
+	ReviewInitialStability = 10.0
+	ReviewResetStability   = 5.0
+	ReviewTargetRetention  = 0.9
+	ReviewMaxIntervalDays  = 180
 )
 
 // ReviewDayStart returns the start of the review day containing now. The day
@@ -23,33 +31,58 @@ func ReviewDayEnd(now time.Time) time.Time {
 	return ReviewDayStart(now).AddDate(0, 0, 1)
 }
 
-// ApplyReviewRating advances the simplified SM-2 schedule. It is pure so the
-// three-rating rules can be tested without a database.
-func ApplyReviewRating(level int, rating string, now time.Time) (int, time.Time, int, error) {
+// ReviewIntervalDays applies the Ebbinghaus-style exponential forgetting curve:
+// retention R(t) = e^(-t/S). The next review is scheduled when predicted
+// retention reaches the target (0.9 by default), bounded to 1–180 days.
+func ReviewIntervalDays(stability float64) int {
+	if stability <= 0 {
+		stability = ReviewInitialStability
+	}
+	days := int(math.Round(-stability * math.Log(ReviewTargetRetention)))
+	if days < 1 {
+		days = 1
+	}
+	if days > ReviewMaxIntervalDays {
+		days = ReviewMaxIntervalDays
+	}
+	return days
+}
+
+// ApplyReviewSchedule updates one card's stability and next due date. The
+// three ratings intentionally stay simple: remembered grows stability, fuzzy
+// grows it slowly, forgot resets it to a short interval.
+func ApplyReviewSchedule(
+	stability float64, level int, rating string, now time.Time,
+) (float64, int, time.Time, int, error) {
+	if stability <= 0 {
+		stability = ReviewInitialStability
+	}
 	if level < 0 {
 		level = 0
 	}
 	if level >= len(types.ReviewScheduleIntervals) {
 		level = len(types.ReviewScheduleIntervals) - 1
 	}
-	dayStart := ReviewDayStart(now)
+	nextLevel := level
 	switch rating {
 	case types.ReviewRatingRemembered:
-		next := level + 1
-		if next >= len(types.ReviewScheduleIntervals) {
-			next = len(types.ReviewScheduleIntervals) - 1
+		stability *= 3
+		nextLevel = level + 1
+		if nextLevel >= len(types.ReviewScheduleIntervals) {
+			nextLevel = len(types.ReviewScheduleIntervals) - 1
 		}
-		interval := types.ReviewScheduleIntervals[next]
-		return next, dayStart.AddDate(0, 0, interval), interval, nil
 	case types.ReviewRatingFuzzy:
-		interval := (types.ReviewScheduleIntervals[level] + 1) / 2
-		if interval < 1 {
-			interval = 1
-		}
-		return level, dayStart.AddDate(0, 0, interval), interval, nil
+		stability *= 1.5
 	case types.ReviewRatingForgot:
-		return 0, dayStart.AddDate(0, 0, 1), 1, nil
+		stability = ReviewResetStability
+		nextLevel = 0
 	default:
-		return level, now, 0, fmt.Errorf("unsupported review rating %q", rating)
+		return stability, level, now, 0, fmt.Errorf("unsupported review rating %q", rating)
 	}
+	if stability < 1 {
+		stability = 1
+	}
+	interval := ReviewIntervalDays(stability)
+	due := ReviewDayStart(now).AddDate(0, 0, interval)
+	return stability, nextLevel, due, interval, nil
 }

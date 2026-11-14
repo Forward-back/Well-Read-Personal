@@ -31,6 +31,14 @@ const (
 	ReviewRatingForgot     = "forgot"
 	ReviewRatingFuzzy      = "fuzzy"
 	ReviewRatingRemembered = "remembered"
+
+	ReviewSessionModeDaily  = "daily"
+	ReviewSessionModeManual = "manual"
+
+	ReviewSessionStatusActive    = "active"
+	ReviewSessionStatusCompleted = "completed"
+	ReviewSessionStatusAbandoned = "abandoned"
+	ReviewSessionStatusExpired   = "expired"
 )
 
 // ReviewScheduleIntervals maps level L0-L6 to the next interval in days.
@@ -64,6 +72,8 @@ type ReviewCard struct {
 	Tags           JSON           `json:"tags"            gorm:"type:jsonb;not null"`
 	Status         string         `json:"status"          gorm:"type:varchar(20);not null;default:'active'"`
 	ReviewLevel    int            `json:"review_level"    gorm:"not null;default:0"`
+	Stability      float64        `json:"stability"      gorm:"not null;default:10"`
+	ForgetStreak   int            `json:"forget_streak"  gorm:"not null;default:0"`
 	DueAt          time.Time      `json:"due_at"          gorm:"not null"`
 	Lapses         int            `json:"lapses"          gorm:"not null;default:0"`
 	ReviewCount    int            `json:"review_count"    gorm:"not null;default:0"`
@@ -111,6 +121,9 @@ type ReviewLog struct {
 	LevelBefore     int       `json:"level_before"      gorm:"not null"`
 	LevelAfter      int       `json:"level_after"       gorm:"not null"`
 	IntervalDays    int       `json:"interval_days"     gorm:"not null"`
+	SessionID       string    `json:"session_id"        gorm:"type:varchar(64);not null;default:'';index"`
+	StabilityBefore float64   `json:"stability_before"  gorm:"not null;default:0"`
+	StabilityAfter  float64   `json:"stability_after"   gorm:"not null;default:0"`
 	ReviewedAt      time.Time `json:"reviewed_at"       gorm:"not null"`
 	ClientRequestID string    `json:"client_request_id" gorm:"type:varchar(64);not null;uniqueIndex:uk_review_logs_request,priority:2"`
 	CreatedAt       time.Time `json:"created_at"`
@@ -118,10 +131,65 @@ type ReviewLog struct {
 
 func (ReviewLog) TableName() string { return "review_logs" }
 
+// ReviewSession is one bounded review run. PlannedCardIDs preserves the order
+// and composition so an interrupted session can resume or be reported exactly.
+type ReviewSession struct {
+	ID              string     `json:"id"                  gorm:"type:varchar(64);primaryKey"`
+	TenantID        uint64     `json:"tenant_id"           gorm:"not null;index"`
+	Mode            string     `json:"mode"                gorm:"type:varchar(20);not null"`
+	Status          string     `json:"status"              gorm:"type:varchar(20);not null;default:'active'"`
+	GroupID         string     `json:"group_id"            gorm:"type:varchar(64);not null;default:''"`
+	PlannedCardIDs  JSON       `json:"planned_card_ids"    gorm:"type:jsonb;not null"`
+	PlannedCount    int        `json:"planned_count"       gorm:"not null;default:0"`
+	CompletedCount  int        `json:"completed_count"     gorm:"not null;default:0"`
+	RememberedCount int        `json:"remembered_count"    gorm:"not null;default:0"`
+	FuzzyCount      int        `json:"fuzzy_count"         gorm:"not null;default:0"`
+	ForgotCount     int        `json:"forgot_count"        gorm:"not null;default:0"`
+	ReviewDay       time.Time  `json:"review_day"          gorm:"not null"`
+	StartedAt       time.Time  `json:"started_at"          gorm:"not null"`
+	CompletedAt     *time.Time `json:"completed_at"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+}
+
+func (ReviewSession) TableName() string { return "review_sessions" }
+
+type StartReviewSessionRequest struct {
+	Mode    string   `json:"mode"`
+	GroupID string   `json:"group_id"`
+	CardIDs []string `json:"card_ids"`
+	Limit   int      `json:"limit"`
+}
+
+type ReviewSessionState struct {
+	Session *ReviewSession `json:"session"`
+	Cards   []*ReviewCard  `json:"cards"`
+	Logs    []*ReviewLog   `json:"logs"`
+}
+
+type ReviewRatingCounts struct {
+	Remembered int `json:"remembered"`
+	Fuzzy      int `json:"fuzzy"`
+	Forgot     int `json:"forgot"`
+	Total      int `json:"total"`
+}
+
+type ReviewCardPerformance struct {
+	Card             *ReviewCard        `json:"card"`
+	Counts           ReviewRatingCounts `json:"counts"`
+	RecentCounts     ReviewRatingCounts `json:"recent_counts"`
+	RecentForgetRate float64            `json:"recent_forget_rate"`
+	ForgetStreak     int                `json:"forget_streak"`
+	Warning          string             `json:"warning"`
+	WarningReason    string             `json:"warning_reason"`
+	Logs             []*ReviewLog       `json:"logs"`
+}
+
 // ReviewGroupNode is the tree projection returned by the group list.
 type ReviewGroupNode struct {
-	Group    *ReviewGroup       `json:"group"`
-	Children []*ReviewGroupNode `json:"children"`
+	Group     *ReviewGroup       `json:"group"`
+	Children  []*ReviewGroupNode `json:"children"`
+	CardCount int                `json:"card_count"`
 }
 
 // ReviewCardSourceInput is the save-time source shape.
@@ -193,6 +261,7 @@ type ReviewQueue struct {
 
 type SubmitReviewRequest struct {
 	CardID          string `json:"card_id"`
+	SessionID       string `json:"session_id"`
 	Rating          string `json:"rating"`
 	ClientRequestID string `json:"client_request_id"`
 }
@@ -214,10 +283,48 @@ type RebindReviewCardSourceRequest struct {
 }
 
 type ReviewStats struct {
-	TotalCards    int64   `json:"total_cards"`
-	Reviewed30d   int64   `json:"reviewed_30d"`
-	Remembered30d int64   `json:"remembered_30d"`
-	Retention30d  float64 `json:"retention_30d"`
+	TotalCards    int64              `json:"total_cards"`
+	Reviewed30d   int64              `json:"reviewed_30d"`
+	Remembered30d int64              `json:"remembered_30d"`
+	Retention30d  float64            `json:"retention_30d"`
+	WeakTopics    []*ReviewWeakTopic `json:"weak_topics"`
+}
+
+type ReviewWeakTopic struct {
+	GroupID   string  `json:"group_id"`
+	GroupName string  `json:"group_name"`
+	Reviewed  int64   `json:"reviewed"`
+	Retention float64 `json:"retention"`
+}
+
+type GenerateReviewCardsRequest struct {
+	KnowledgeBaseID string   `json:"knowledge_base_id"`
+	KnowledgeIDs    []string `json:"knowledge_ids"`
+	GroupID         string   `json:"group_id"`
+	Count           int      `json:"count"`
+}
+
+type GeneratedReviewCard struct {
+	Question          string                  `json:"question"`
+	Answer            string                  `json:"answer"`
+	Explanation       string                  `json:"explanation"`
+	SourceKnowledgeID string                  `json:"source_knowledge_id"`
+	SourceChunkID     string                  `json:"source_chunk_id"`
+	SourceTitle       string                  `json:"source_title"`
+	SourceExcerpt     string                  `json:"source_excerpt"`
+	Duplicate         bool                    `json:"duplicate"`
+	ExistingCardID    string                  `json:"existing_card_id"`
+	Sources           []ReviewCardSourceInput `json:"sources"`
+}
+
+type ReviewGenerationPreview struct {
+	Cards   []*GeneratedReviewCard `json:"cards"`
+	ModelID string                 `json:"model_id"`
+}
+
+type ImportReviewCardsRequest struct {
+	GroupID string                    `json:"group_id"`
+	Cards   []CreateReviewCardRequest `json:"cards"`
 }
 
 type ReviewExport struct {

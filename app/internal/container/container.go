@@ -259,7 +259,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewSessionService))
 	must(container.Provide(service.NewTenantSkillService))
 	must(container.Provide(service.NewReadingRunService))
-	must(container.Provide(service.NewReviewService))
+	must(container.Provide(service.NewReviewServiceWithGeneration))
 	// The member-facing half of env vars is its own service because its
 	// authority is different in kind: it derives the identity from the context
 	// and touches only that identity's rows.

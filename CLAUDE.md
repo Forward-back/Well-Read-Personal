@@ -40,6 +40,7 @@ WellRead Personal 是单 owner、本地部署的个人知识库系统，根目�
 - **文档来源**：产品/需求文档只从 app 业务侧与当前产品文档获取；`rag/test/`、`data/rag/Data` 是独立测试数据，不能当作业务需求或演示数据。
 - **只推个人仓库**：origin = `git@github.com:Forward-back/Well-Read-Personal.git`；不要添加或推送其他上游；提交前确认不含 `.env`、密钥、`data/rag/`、`backups/`。
 - **高风险动作先确认**：删除/移动大量文件、重置数据库、重建数据卷、轮换凭据、修改部署与 CI，先向用户说明影响。
+- **UI 组件**：新复习 V2 及后续迁移页面参考 `shadcn.com.cn` 的组件组合方式，用 `shadcn-vue` + Tailwind 实现；不直接复制 React 组件源码；语义色映射现有 TDesign CSS 变量并保持当前配色；旧页面继续 TDesign，禁止同页混用。完整规则见[界面规范](docs/02-需求与设计/界面规范.md) §6 与 [ADR 0003](docs/06-架构决策/0003-UI组件渐进迁移到shadcn-vue.md)。
 
 ### 3.1 功能取舍与交付原则
 

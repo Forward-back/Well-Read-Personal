@@ -380,8 +380,10 @@ func (r *reviewRepository) CountCompletedToday(
 	err := r.db.WithContext(ctx).
 		Table("review_logs").
 		Joins("JOIN review_cards ON review_cards.id = review_logs.card_id AND review_cards.deleted_at IS NULL").
+		Joins("LEFT JOIN review_sessions ON review_sessions.id = review_logs.session_id").
 		Where("review_logs.tenant_id = ? AND review_logs.reviewed_at >= ? AND review_logs.reviewed_at < ?",
 			tenantID, from, to).
+		Where("review_logs.session_id = '' OR review_sessions.mode = ?", types.ReviewSessionModeDaily).
 		Distinct("review_logs.card_id").
 		Count(&count).Error
 	return count, err
@@ -389,6 +391,18 @@ func (r *reviewRepository) CountCompletedToday(
 
 func (r *reviewRepository) ApplyReview(
 	ctx context.Context, card *types.ReviewCard, log *types.ReviewLog,
+) (bool, error) {
+	return r.applyReview(ctx, card, log, nil)
+}
+
+func (r *reviewRepository) ApplyReviewSession(
+	ctx context.Context, card *types.ReviewCard, log *types.ReviewLog, session *types.ReviewSession,
+) (bool, error) {
+	return r.applyReview(ctx, card, log, session)
+}
+
+func (r *reviewRepository) applyReview(
+	ctx context.Context, card *types.ReviewCard, log *types.ReviewLog, session *types.ReviewSession,
 ) (bool, error) {
 	applied := false
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -403,11 +417,13 @@ func (r *reviewRepository) ApplyReview(
 			return nil
 		}
 		applied = true
-		return tx.Model(&types.ReviewCard{}).
+		if err := tx.Model(&types.ReviewCard{}).
 			Where("tenant_id = ? AND id = ? AND status = ? AND deleted_at IS NULL",
 				card.TenantID, card.ID, types.ReviewStatusActive).
 			Updates(map[string]any{
 				"review_level":     card.ReviewLevel,
+				"stability":        card.Stability,
+				"forget_streak":    card.ForgetStreak,
 				"due_at":           card.DueAt,
 				"lapses":           card.Lapses,
 				"review_count":     card.ReviewCount,
@@ -415,7 +431,46 @@ func (r *reviewRepository) ApplyReview(
 				"status":           card.Status,
 				"source_updated":   card.SourceUpdated,
 				"updated_at":       time.Now(),
-			}).Error
+			}).Error; err != nil {
+			return err
+		}
+		if session == nil {
+			return nil
+		}
+		completed := session.CompletedCount+1 >= session.PlannedCount
+		var completedAt any
+		if completed {
+			now := time.Now()
+			completedAt = &now
+		}
+		if err := tx.Model(&types.ReviewSession{}).
+			Where("tenant_id = ? AND id = ? AND status = ?",
+				session.TenantID, session.ID, types.ReviewSessionStatusActive).
+			Updates(map[string]any{
+				"completed_count":  gorm.Expr("completed_count + 1"),
+				"remembered_count": gorm.Expr("remembered_count + CASE WHEN ? THEN 1 ELSE 0 END", log.Rating == types.ReviewRatingRemembered),
+				"fuzzy_count":      gorm.Expr("fuzzy_count + CASE WHEN ? THEN 1 ELSE 0 END", log.Rating == types.ReviewRatingFuzzy),
+				"forgot_count":     gorm.Expr("forgot_count + CASE WHEN ? THEN 1 ELSE 0 END", log.Rating == types.ReviewRatingForgot),
+				"status":           gorm.Expr("CASE WHEN completed_count + 1 >= planned_count THEN ? ELSE status END", types.ReviewSessionStatusCompleted),
+				"completed_at":     gorm.Expr("CASE WHEN completed_count + 1 >= planned_count THEN ? ELSE completed_at END", completedAt),
+				"updated_at":       time.Now(),
+			}).Error; err != nil {
+			return err
+		}
+		session.CompletedCount++
+		switch log.Rating {
+		case types.ReviewRatingRemembered:
+			session.RememberedCount++
+		case types.ReviewRatingFuzzy:
+			session.FuzzyCount++
+		case types.ReviewRatingForgot:
+			session.ForgotCount++
+		}
+		if completed {
+			session.Status = types.ReviewSessionStatusCompleted
+			session.CompletedAt = completedAt.(*time.Time)
+		}
+		return nil
 	})
 	if err != nil {
 		return false, err
@@ -510,6 +565,143 @@ func (r *reviewRepository) ListAllLogs(
 	err := r.db.WithContext(ctx).
 		Where("tenant_id = ?", tenantID).
 		Order("reviewed_at ASC").
+		Find(&logs).Error
+	return logs, err
+}
+
+func (r *reviewRepository) CreateSession(ctx context.Context, session *types.ReviewSession) error {
+	return r.db.WithContext(ctx).Create(session).Error
+}
+
+func (r *reviewRepository) GetSession(
+	ctx context.Context, tenantID uint64, id string,
+) (*types.ReviewSession, error) {
+	var session types.ReviewSession
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND id = ?", tenantID, id).
+		First(&session).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &session, nil
+}
+
+func (r *reviewRepository) GetActiveSession(
+	ctx context.Context, tenantID uint64,
+) (*types.ReviewSession, error) {
+	var session types.ReviewSession
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND status = ?", tenantID, types.ReviewSessionStatusActive).
+		Order("started_at DESC").
+		First(&session).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &session, nil
+}
+
+func (r *reviewRepository) UpdateSession(ctx context.Context, session *types.ReviewSession) error {
+	return r.db.WithContext(ctx).
+		Model(&types.ReviewSession{}).
+		Where("tenant_id = ? AND id = ?", session.TenantID, session.ID).
+		Updates(map[string]any{
+			"status":           session.Status,
+			"completed_count":  session.CompletedCount,
+			"remembered_count": session.RememberedCount,
+			"fuzzy_count":      session.FuzzyCount,
+			"forgot_count":     session.ForgotCount,
+			"completed_at":     session.CompletedAt,
+			"updated_at":       time.Now(),
+		}).Error
+}
+
+func (r *reviewRepository) ExpireSessions(
+	ctx context.Context, tenantID uint64, before time.Time,
+) error {
+	now := time.Now()
+	return r.db.WithContext(ctx).
+		Model(&types.ReviewSession{}).
+		Where("tenant_id = ? AND status = ? AND review_day < ?",
+			tenantID, types.ReviewSessionStatusActive, before).
+		Updates(map[string]any{
+			"status":       types.ReviewSessionStatusExpired,
+			"completed_at": now,
+			"updated_at":   now,
+		}).Error
+}
+
+func (r *reviewRepository) ListSessions(
+	ctx context.Context, tenantID uint64, limit int,
+) ([]*types.ReviewSession, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var sessions []*types.ReviewSession
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ?", tenantID).
+		Order("started_at DESC").
+		Limit(limit).
+		Find(&sessions).Error
+	return sessions, err
+}
+
+func (r *reviewRepository) ListLogsBySession(
+	ctx context.Context, tenantID uint64, sessionID string,
+) ([]*types.ReviewLog, error) {
+	var logs []*types.ReviewLog
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND session_id = ?", tenantID, sessionID).
+		Order("reviewed_at ASC").
+		Find(&logs).Error
+	return logs, err
+}
+
+func (r *reviewRepository) FindLogBySessionCard(
+	ctx context.Context, tenantID uint64, sessionID, cardID string,
+) (*types.ReviewLog, error) {
+	var log types.ReviewLog
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND session_id = ? AND card_id = ?", tenantID, sessionID, cardID).
+		First(&log).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &log, nil
+}
+
+func (r *reviewRepository) ListCardsByIDs(
+	ctx context.Context, tenantID uint64, ids []string,
+) ([]*types.ReviewCard, error) {
+	if len(ids) == 0 {
+		return []*types.ReviewCard{}, nil
+	}
+	var cards []*types.ReviewCard
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND id IN ?", tenantID, ids).
+		Find(&cards).Error
+	return cards, err
+}
+
+func (r *reviewRepository) ListLogsByCard(
+	ctx context.Context, tenantID uint64, cardID string, limit int,
+) ([]*types.ReviewLog, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	var logs []*types.ReviewLog
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND card_id = ?", tenantID, cardID).
+		Order("reviewed_at DESC").
+		Limit(limit).
 		Find(&logs).Error
 	return logs, err
 }

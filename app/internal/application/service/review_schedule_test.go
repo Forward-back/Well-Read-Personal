@@ -21,34 +21,48 @@ func TestReviewDayStartRollsBeforeFourAM(t *testing.T) {
 	assert.Equal(t, time.Date(2026, 11, 14, 4, 0, 0, 0, loc), start)
 }
 
-func TestApplyReviewRatingRememberedAdvancesOneLevel(t *testing.T) {
+func TestApplyReviewScheduleRememberedGrowsStability(t *testing.T) {
 	now := time.Date(2026, 11, 14, 10, 0, 0, 0, time.FixedZone("CST", 8*60*60))
-	level, due, interval, err := ApplyReviewRating(0, types.ReviewRatingRemembered, now)
+	stability, level, due, interval, err := ApplyReviewSchedule(
+		ReviewInitialStability, 0, types.ReviewRatingRemembered, now,
+	)
 	require.NoError(t, err)
+	assert.Equal(t, 30.0, stability)
 	assert.Equal(t, 1, level)
 	assert.Equal(t, 3, interval)
 	assert.Equal(t, time.Date(2026, 11, 17, 4, 0, 0, 0, now.Location()), due)
 }
 
-func TestApplyReviewRatingFuzzyUsesHalfInterval(t *testing.T) {
+func TestApplyReviewScheduleFuzzyGrowsSlowly(t *testing.T) {
 	now := time.Date(2026, 11, 14, 10, 0, 0, 0, time.FixedZone("CST", 8*60*60))
-	level, due, interval, err := ApplyReviewRating(2, types.ReviewRatingFuzzy, now)
+	stability, level, due, interval, err := ApplyReviewSchedule(
+		28.48, 2, types.ReviewRatingFuzzy, now,
+	)
 	require.NoError(t, err)
+	assert.InDelta(t, 42.72, stability, 0.001)
 	assert.Equal(t, 2, level)
-	assert.Equal(t, 4, interval, "7-day interval rounds up to 4")
-	assert.Equal(t, time.Date(2026, 11, 18, 4, 0, 0, 0, now.Location()), due)
+	assert.Equal(t, 5, interval)
+	assert.Equal(t, time.Date(2026, 11, 19, 4, 0, 0, 0, now.Location()), due)
 }
 
-func TestApplyReviewRatingForgotResetsLevel(t *testing.T) {
+func TestApplyReviewScheduleForgotResetsStability(t *testing.T) {
 	now := time.Date(2026, 11, 14, 10, 0, 0, 0, time.FixedZone("CST", 8*60*60))
-	level, due, interval, err := ApplyReviewRating(5, types.ReviewRatingForgot, now)
+	stability, level, due, interval, err := ApplyReviewSchedule(
+		284.75, 5, types.ReviewRatingForgot, now,
+	)
 	require.NoError(t, err)
+	assert.Equal(t, ReviewResetStability, stability)
 	assert.Equal(t, 0, level)
 	assert.Equal(t, 1, interval)
 	assert.Equal(t, time.Date(2026, 11, 15, 4, 0, 0, 0, now.Location()), due)
 }
 
-func TestApplyReviewRatingRejectsUnknownRating(t *testing.T) {
-	_, _, _, err := ApplyReviewRating(0, "unknown", time.Now())
+func TestReviewIntervalDaysCapsAtMaximum(t *testing.T) {
+	assert.Equal(t, ReviewMaxIntervalDays, ReviewIntervalDays(100000))
+	assert.Equal(t, 1, ReviewIntervalDays(0))
+}
+
+func TestApplyReviewScheduleRejectsUnknownRating(t *testing.T) {
+	_, _, _, _, err := ApplyReviewSchedule(10, 0, "unknown", time.Now())
 	require.Error(t, err)
 }

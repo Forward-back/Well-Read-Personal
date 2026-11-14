@@ -21,6 +21,7 @@ func RegisterReviewRoutes(r *gin.RouterGroup, h *handler.ReviewHandler) {
 		review.DELETE("/groups/:id", h.DeleteGroup)
 
 		review.GET("/cards", h.ListCards)
+		review.GET("/cards/:id/performance", h.GetCardPerformance)
 		review.POST("/cards/merge", h.MergeCards)
 		review.POST("/cards", h.CreateCard)
 		review.GET("/cards/:id", h.GetCard)
@@ -33,8 +34,15 @@ func RegisterReviewRoutes(r *gin.RouterGroup, h *handler.ReviewHandler) {
 		review.PUT("/cards/:id/sources/:source_id", h.RebindSource)
 
 		review.GET("/queue", h.TodayQueue)
+		review.POST("/sessions", h.StartSession)
+		review.GET("/sessions", h.ListSessions)
+		review.GET("/sessions/active", h.GetActiveSession)
+		review.GET("/sessions/:id", h.GetSession)
+		review.POST("/sessions/:id/abandon", h.AbandonSession)
 		review.POST("/reviews", h.SubmitReview)
 		review.GET("/stats", h.Stats)
+		review.POST("/generations/preview", h.PreviewGeneration)
+		review.POST("/generations/import", h.ImportGeneratedCards)
 		review.GET("/export", h.Export)
 	}
 }

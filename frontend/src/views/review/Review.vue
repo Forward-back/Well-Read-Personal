@@ -5,7 +5,7 @@
         <h1 class="review-title">{{ t('review.title') }}</h1>
         <p class="review-subtitle">{{ t('review.subtitle') }}</p>
       </div>
-      <div class="review-header-actions">
+      <div v-if="!reviewing" class="review-header-actions">
         <t-button variant="outline" :loading="loading" @click="refreshAll">
           <template #icon><t-icon name="refresh" /></template>
           {{ t('review.refresh') }}
@@ -14,7 +14,11 @@
           <template #icon><t-icon name="download" /></template>
           {{ t('review.export') }}
         </t-button>
-        <t-button theme="primary" @click="openCreateGroup">
+        <t-button variant="outline" @click="openGeneration">
+          <template #icon><t-icon name="file-add" /></template>
+          {{ t('review.generate') }}
+        </t-button>
+        <t-button theme="primary" @click="openCreateGroup()">
           <template #icon><t-icon name="add" /></template>
           {{ t('review.newGroup') }}
         </t-button>
@@ -24,21 +28,28 @@
     <div class="review-layout">
       <aside class="review-sidebar">
         <div class="review-sidebar-head">
-          <span>{{ t('review.groups') }}</span>
+          <span>{{ selectedGroup ? t('review.currentGroup') : t('review.groups') }}</span>
           <span v-if="selectedGroup" class="review-sidebar-current">{{ selectedGroup.name }}</span>
         </div>
         <button type="button" class="review-group-row" :class="{ active: selectedGroupId === '' }"
           @click="selectGroup('')">
           <span class="review-group-name">{{ t('review.allGroups') }}</span>
-          <span class="review-group-count">{{ cards.length ? t('review.cardCount', { count: cards.length }) : '' }}</span>
+          <span class="review-group-count">{{ stats?.total_cards ?? cards.length }}</span>
         </button>
         <button v-for="item in flatGroups" :key="item.group.id" type="button" class="review-group-row"
-          :class="{ active: selectedGroupId === item.group.id }" @click="selectGroup(item.group.id)">
+          :class="{ active: selectedGroupId === item.group.id }" @click="selectGroup(item.group.id)"
+          @contextmenu.prevent="openGroupMenu($event, item.group)">
           <span class="review-group-name" :style="{ paddingLeft: `${item.depth * 14}px` }">
             <t-icon :name="item.group.is_default ? 'home' : 'folder'" size="14px" />
             {{ item.group.name }}
           </span>
+          <span class="review-group-tail">
+            <span class="review-group-count">{{ item.card_count }}</span>
+            <span class="review-group-more" :title="t('review.groupMoreActions')"
+              @click.stop="openGroupMenu($event, item.group)">···</span>
+          </span>
         </button>
+        <div class="review-group-blank" @contextmenu.prevent="openBlankGroupMenu($event)"></div>
         <div v-if="selectedGroup && !selectedGroup.is_default" class="review-group-actions">
           <t-button variant="text" size="small" @click="openRenameGroup">{{ t('review.renameGroup') }}</t-button>
           <t-button variant="text" size="small" theme="danger" @click="confirmDeleteGroup">
@@ -48,25 +59,30 @@
       </aside>
 
       <main class="review-main">
-        <div class="review-stats">
-          <div class="review-stat">
+        <div v-if="!reviewing" class="review-stats">
+          <div class="review-stat-card">
             <span class="review-stat-label">{{ t('review.today') }}</span>
-            <strong>{{ queue?.due.length ?? 0 }} {{ t('review.due') }}</strong>
-            <span>{{ queue?.new.length ?? 0 }} {{ t('review.newCards') }}</span>
+            <div class="review-stat-value">
+              <strong>{{ queue?.due.length ?? 0 }}</strong><span>{{ t('review.due') }}</span>
+              <strong>{{ queue?.new.length ?? 0 }}</strong><span>{{ t('review.newCards') }}</span>
+            </div>
           </div>
-          <div class="review-stat">
-            <span class="review-stat-label">{{ t('review.completed') }}</span>
-            <strong>{{ queue?.completed_today ?? 0 }}</strong>
-            <span>/ {{ queue?.limit ?? 30 }}</span>
+          <div class="review-stat-card">
+            <span class="review-stat-label">{{ t('review.todayProgress') }}</span>
+            <div class="review-stat-value">
+              <strong>{{ queue?.completed_today ?? 0 }}</strong><span>/ {{ queue?.limit ?? 30 }}</span>
+            </div>
           </div>
-          <div class="review-stat">
-            <span class="review-stat-label">{{ t('review.totalCards') }}</span>
-            <strong>{{ stats?.total_cards ?? cards.length }}</strong>
-            <span>{{ t('review.retention30d') }} {{ Math.round((stats?.retention_30d ?? 0) * 100) }}%</span>
+          <div class="review-stat-card">
+            <span class="review-stat-label">{{ t('review.longTerm') }}</span>
+            <div class="review-stat-value">
+              <strong>{{ stats?.total_cards ?? cards.length }}</strong><span>{{ t('review.totalCards') }}</span>
+              <strong>{{ Math.round((stats?.retention_30d ?? 0) * 100) }}%</strong><span>{{ t('review.retention30d') }}</span>
+            </div>
           </div>
-          <div class="review-stat review-stat--actions">
-            <t-button theme="primary" :disabled="!queueHasCards" @click="startReview">
-              {{ t('review.start') }}
+          <div class="review-stat-actions">
+            <t-button theme="primary" :disabled="!queueHasCards && !activeSession" @click="startReview">
+              {{ activeSession ? t('review.resumeSession') : t('review.start') }}
             </t-button>
             <span class="review-stat-hint">{{ t('review.startHint') }}</span>
           </div>
@@ -75,7 +91,7 @@
         <section v-if="reviewing" class="review-run">
           <div class="review-run-head">
             <span>{{ t('review.reviewing') }}</span>
-            <span>{{ t('review.progress', { current: reviewIndex + 1, total: reviewCards.length }) }}</span>
+            <span>{{ t('review.progress', { current: sessionDone + 1, total: sessionTotal || reviewCards.length }) }}</span>
             <t-button variant="text" size="small" @click="exitReview">{{ t('review.exit') }}</t-button>
           </div>
           <div v-if="currentCard" class="review-card">
@@ -92,8 +108,8 @@
                 <div class="review-answer-text">{{ currentCard.explanation }}</div>
               </div>
               <div v-if="currentDetail?.sources?.length" class="review-source">
-                <div class="review-answer-label">{{ currentDetail.sources[0].knowledge_id ? t('review.cards') : t('review.sourceUnavailable') }}</div>
-                <div class="review-source-text">{{ currentDetail.sources[0].excerpt || currentDetail.sources[0].path || currentDetail.sources[0].knowledge_id }}</div>
+                <div class="review-answer-label">{{ currentDetail.sources[0].knowledge_id ? t('review.sourceExcerpt') : t('review.sourceUnavailable') }}</div>
+                <div class="review-source-text">{{ currentSourceExcerpt }}</div>
               </div>
             </div>
             <div class="review-card-actions">
@@ -123,14 +139,23 @@
         </section>
 
         <section v-else class="review-home">
-          <div v-if="queueHasCards" class="review-callout">
-            <div>
-              <strong>{{ t('review.today') }}</strong>
-              <p>{{ t('review.startHint') }}</p>
+          <div v-if="stats?.weak_topics?.length" class="review-weak">
+            <div class="review-list-head">
+              <span>{{ t('review.weakTopics') }}</span>
             </div>
-            <t-button theme="primary" @click="startReview">{{ t('review.start') }}</t-button>
+            <div v-for="topic in stats.weak_topics" :key="topic.group_id" class="review-weak-row">
+              <span>{{ topic.group_name || topic.group_id }}</span>
+              <span>{{ Math.round(topic.retention * 100) }}% · {{ topic.reviewed }} {{ t('review.reviews') }}</span>
+            </div>
           </div>
-          <div v-else class="review-empty review-empty--compact">
+          <div v-if="activeSession" class="review-resume-bar">
+            <span>{{ t('review.activeSession', { completed: activeSession.session.completed_count, total: activeSession.session.planned_count }) }}</span>
+            <div>
+              <t-button theme="primary" size="small" @click="resumeSession">{{ t('review.resumeSession') }}</t-button>
+              <t-button variant="text" size="small" theme="danger" @click="abandonCurrentSession">{{ t('review.abandonSession') }}</t-button>
+            </div>
+          </div>
+          <div v-if="!queueHasCards" class="review-empty review-empty--compact">
             <h3>{{ t('review.noDue') }}</h3>
             <p>{{ t('review.queueEmpty') }}</p>
           </div>
@@ -140,6 +165,9 @@
               :placeholder="t('review.searchPlaceholder')" @enter="loadCards" @clear="loadCards" />
             <t-select v-model="statusFilter" class="review-list-status" clearable
               :placeholder="t('review.allStatuses')" :options="statusOptions" @change="loadCards" />
+            <t-button v-if="selectedCardIDs.length" variant="outline" @click="startSelectedReview">
+              {{ t('review.startSelected') }} ({{ selectedCardIDs.length }})
+            </t-button>
             <t-button v-if="selectedCardIDs.length > 1" variant="outline" @click="confirmMergeCards">
               {{ t('review.mergeCards') }} ({{ selectedCardIDs.length }})
             </t-button>
@@ -148,15 +176,22 @@
             <span>{{ t('review.cards') }}</span>
             <span>{{ t('review.cardCount', { count: cards.length }) }}</span>
           </div>
+          <div v-if="undoCardID" class="review-undo">
+            <span>{{ t('review.deletedHint') }}</span>
+            <t-button variant="text" size="small" @click="undoDelete">{{ t('review.undo') }}</t-button>
+          </div>
           <div v-if="cards.length" class="review-card-list">
             <article v-for="card in cards" :key="card.id" class="review-card-row">
               <t-checkbox size="small" :checked="selectedCardIDs.includes(card.id)"
                 @change="(checked: boolean) => toggleCardSelection(card.id, checked)" />
-              <div class="review-card-row-main">
+              <div class="review-card-row-main" @click="openPerformance(card)">
                 <div class="review-card-row-question">{{ card.question }}</div>
                 <div class="review-card-row-meta">
                   <t-tag size="small" :theme="statusTheme(card.status)" variant="light">
                     {{ t(`review.status.${card.status}`) }}
+                  </t-tag>
+                  <t-tag v-if="card.forget_streak >= 2 || card.lapses >= 3" size="small" theme="danger" variant="light">
+                    {{ t('review.warningBadge') }}
                   </t-tag>
                   <span>L{{ card.review_level }}</span>
                   <span v-if="card.review_count">×{{ card.review_count }}</span>
@@ -164,18 +199,25 @@
                 </div>
               </div>
               <div class="review-card-row-actions">
-                <t-button v-if="card.status === 'active'" variant="text" size="small" @click="toggleSuspend(card)">
-                  {{ t('review.suspend') }}
-                </t-button>
-                <t-button v-if="card.status === 'suspended'" variant="text" size="small" @click="toggleSuspend(card)">
-                  {{ t('review.resume') }}
-                </t-button>
-                <t-button v-if="card.status === 'orphaned'" variant="text" size="small" @click="openRebind(card)">
-                  {{ t('review.rebindSource') }}
-                </t-button>
-                <t-button variant="text" size="small" theme="danger" @click="confirmDeleteCard(card)">
-                  {{ t('review.deleteCard') }}
-                </t-button>
+                <t-dropdown trigger="click" :min-column-width="140" attach="body">
+                  <t-button variant="text" shape="square" :title="t('review.moreActions')">
+                    <t-icon name="ellipsis" />
+                  </t-button>
+                  <t-dropdown-menu>
+                    <t-dropdown-item v-if="card.status === 'active'" @click="toggleSuspend(card)">
+                      {{ t('review.suspend') }}
+                    </t-dropdown-item>
+                    <t-dropdown-item v-if="card.status === 'suspended'" @click="toggleSuspend(card)">
+                      {{ t('review.resume') }}
+                    </t-dropdown-item>
+                    <t-dropdown-item v-if="card.status === 'orphaned'" @click="openRebind(card)">
+                      {{ t('review.rebindSource') }}
+                    </t-dropdown-item>
+                    <t-dropdown-item @click="confirmDeleteCard(card)">
+                      {{ t('review.deleteCard') }}
+                    </t-dropdown-item>
+                  </t-dropdown-menu>
+                </t-dropdown>
               </div>
             </article>
           </div>
@@ -186,16 +228,70 @@
       </main>
     </div>
 
+    <div v-if="groupMenuVisible" class="review-context-menu" :style="{ left: `${groupMenuX}px`, top: `${groupMenuY}px` }" @click.stop>
+      <button type="button" @click="menuCreateGroup">{{ groupMenuGroup ? t('review.newChildGroup') : t('review.newGroup') }}</button>
+      <template v-if="groupMenuGroup">
+        <button type="button" @click="menuRenameGroup">{{ t('review.renameGroup') }}</button>
+        <button type="button" class="is-danger" @click="menuDeleteGroup">{{ t('review.deleteGroup') }}</button>
+      </template>
+    </div>
+
+    <t-dialog v-model:visible="groupDeleteVisible" :header="t('review.deleteGroup')" :footer="false" width="420px">
+      <div class="review-dialog-body">
+        <p>{{ t('review.groupDeleteConfirm', { name: groupDeleteTarget?.name || '' }) }}</p>
+        <t-checkbox v-model="groupDeleteCards">{{ t('review.groupDeleteWithCards') }}</t-checkbox>
+        <div class="review-dialog-footer">
+          <t-button variant="outline" @click="groupDeleteVisible = false">{{ t('review.cancel') }}</t-button>
+          <t-button theme="danger" @click="doDeleteGroup">{{ t('review.confirm') }}</t-button>
+        </div>
+      </div>
+    </t-dialog>
+
+    <t-drawer v-model:visible="performanceVisible" :header="t('review.performanceTitle')" size="520px" :footer="false">
+      <div v-if="performanceLoading" class="review-empty">{{ t('common.loading') }}</div>
+      <div v-else-if="performance" class="review-performance">
+        <div class="review-performance-head">
+          <div>
+            <div class="review-performance-question">{{ performance.card.question }}</div>
+            <div class="review-performance-meta">
+              <t-tag v-if="performance.warning !== 'none'" size="small" theme="warning">{{ t('review.warningBadge') }}</t-tag>
+              <span>{{ performance.warning_reason }}</span>
+            </div>
+          </div>
+          <t-button variant="text" @click="performanceVisible = false">{{ t('review.cancel') }}</t-button>
+        </div>
+        <div class="review-performance-stats">
+          <div><strong>{{ performance.counts.remembered }}</strong><span>{{ t('review.remembered') }}</span></div>
+          <div><strong>{{ performance.counts.fuzzy }}</strong><span>{{ t('review.fuzzy') }}</span></div>
+          <div><strong>{{ performance.counts.forgot }}</strong><span>{{ t('review.forgot') }}</span></div>
+          <div><strong>{{ performance.counts.total }}</strong><span>{{ t('review.reviews') }}</span></div>
+        </div>
+        <div class="review-performance-meta">
+          <span>{{ t('review.stability') }}：{{ Math.round(performance.card.stability) }} 天</span>
+          <span>{{ t('review.nextDue') }}：{{ new Date(performance.card.due_at).toLocaleDateString() }}</span>
+          <span>{{ t('review.forgetStreak') }}：{{ performance.forget_streak }}</span>
+        </div>
+        <div class="review-list-head"><span>{{ t('review.history') }}</span><span>{{ performance.logs.length }}</span></div>
+        <div v-if="performance.logs.length" class="review-history">
+          <div v-for="log in performance.logs" :key="log.id" class="review-history-row">
+            <t-tag size="small" :theme="log.rating === 'remembered' ? 'success' : log.rating === 'forgot' ? 'danger' : 'warning'">
+              {{ t(`review.${log.rating === 'remembered' ? 'remembered' : log.rating === 'forgot' ? 'forgot' : 'fuzzy'}`) }}
+            </t-tag>
+            <span>{{ new Date(log.reviewed_at).toLocaleString() }}</span>
+            <span>{{ log.interval_days }} 天</span>
+          </div>
+        </div>
+        <div v-else class="review-empty review-empty--compact">{{ t('review.noHistory') }}</div>
+      </div>
+    </t-drawer>
+
     <t-dialog v-model:visible="groupDialogVisible" :header="groupDialogMode === 'create' ? t('review.newGroup') : t('review.renameGroup')"
       :footer="false" width="420px" destroy-on-close>
       <div class="review-dialog-body">
         <label class="review-dialog-label">{{ t('review.groupName') }}</label>
         <t-input v-model="groupForm.name" :placeholder="t('review.groupNamePlaceholder')" :maxlength="200" @enter="saveGroup" />
-        <p v-if="groupDialogMode === 'create' && selectedGroup && !selectedGroup.is_default" class="review-dialog-hint">
-          {{ t('review.groupParent') }}：{{ selectedGroup.name }}
-        </p>
-        <p v-else-if="groupDialogMode === 'create'" class="review-dialog-hint">
-          {{ t('review.groupParent') }}：{{ t('review.rootGroup') }}
+        <p v-if="groupDialogMode === 'create'" class="review-dialog-hint">
+          {{ t('review.groupParent') }}：{{ flatGroups.find(item => item.group.id === groupParentID)?.group.name || t('review.rootGroup') }}
         </p>
         <div class="review-dialog-footer">
           <t-button variant="outline" @click="groupDialogVisible = false">{{ t('review.cancel') }}</t-button>
@@ -219,6 +315,50 @@
         </div>
       </div>
     </t-dialog>
+
+    <t-dialog v-model:visible="generateVisible" :header="t('review.generateTitle')" :footer="false" width="760px"
+      destroy-on-close>
+      <div class="review-dialog-body">
+        <div class="review-generate-controls">
+          <div class="review-save-field">
+            <label>{{ t('review.knowledgeBase') }}</label>
+            <t-select v-model="generationKB" :options="kbOptions" filterable :loading="!kbOptions.length" />
+          </div>
+          <div class="review-save-field">
+            <label>{{ t('review.cardCountLabel') }}</label>
+            <t-select v-model="generationCount" :options="countOptions" />
+          </div>
+          <div class="review-save-field">
+            <label>{{ t('review.groupName') }}</label>
+            <t-select v-model="generationGroup" :options="groupOptions" />
+          </div>
+        </div>
+        <t-button theme="primary" :loading="generating" :disabled="!generationKB" @click="generatePreview">
+          {{ t('review.generatePreview') }}
+        </t-button>
+        <div v-if="generationPreview?.cards?.length" class="review-save-candidates">
+          <div v-for="(card, index) in generationPreview.cards" :key="index" class="review-save-candidate">
+            <t-checkbox :checked="selectedGenerated.includes(index)"
+              @change="(checked: boolean) => toggleGenerated(index, checked)" />
+            <div class="review-generated-body">
+              <div class="review-save-question">{{ card.question }}</div>
+              <div class="review-save-answer">{{ card.answer }}</div>
+              <div class="review-generated-meta">
+                <t-tag v-if="card.duplicate" theme="warning" size="small">{{ t('review.duplicate') }}</t-tag>
+                <span>{{ card.source_title }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-else-if="generationPreview" class="review-save-empty">{{ t('review.noGeneratedCards') }}</div>
+        <div class="review-dialog-footer">
+          <t-button variant="outline" @click="generateVisible = false">{{ t('review.cancel') }}</t-button>
+          <t-button theme="primary" :loading="importing" :disabled="!selectedGenerated.length" @click="importSelectedGenerated">
+            {{ t('review.importSelected') }} ({{ selectedGenerated.length }})
+          </t-button>
+        </div>
+      </div>
+    </t-dialog>
   </div>
 </template>
 
@@ -226,19 +366,32 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import { useI18n } from 'vue-i18n'
+import { listKnowledgeBases } from '@/api/knowledge-base'
+import { cleanReviewExcerpt } from '@/utils/reviewExcerpt'
 import {
   createReviewGroup,
   deleteReviewCard,
   deleteReviewGroup,
+  abandonReviewSession,
+  getActiveReviewSession,
   getReviewCard,
+  getReviewCardPerformance,
   exportReviewData,
   getReviewQueue,
   getReviewStats,
+  importReviewCards,
+  previewReviewGeneration,
+  startReviewSession,
+  type GeneratedReviewCard,
+  type ReviewCardPerformance,
+  type ReviewGenerationPreview,
+  type ReviewSessionState,
   type ReviewStats,
   listReviewCards,
   listReviewGroups,
   mergeReviewCards,
   rebindReviewSource,
+  restoreReviewCard,
   setReviewCardStatus,
   submitReview,
   updateReviewGroup,
@@ -254,6 +407,7 @@ const { t } = useI18n()
 interface FlatGroup {
   group: ReviewGroup
   depth: number
+  card_count: number
 }
 
 const groups = ref<ReviewGroupNode[]>([])
@@ -277,12 +431,39 @@ const reviewCards = ref<ReviewCard[]>([])
 const reviewIndex = ref(0)
 const showingAnswer = ref(false)
 const sessionDone = ref(0)
+const sessionID = ref('')
+const sessionTotal = ref(0)
+const activeSession = ref<ReviewSessionState | null>(null)
+const performanceVisible = ref(false)
+const performanceLoading = ref(false)
+const performance = ref<ReviewCardPerformance | null>(null)
 const currentDetail = ref<ReviewCardDetail | null>(null)
+const undoCardID = ref('')
+let undoTimer: ReturnType<typeof setTimeout> | undefined
+const currentSourceExcerpt = computed(() => {
+  const source = currentDetail.value?.sources?.[0]
+  if (!source) return ''
+  return cleanReviewExcerpt(source.excerpt || source.path || source.knowledge_id)
+})
 const rebindVisible = ref(false)
 const rebindSaving = ref(false)
 const rebindSourceID = ref('')
 const rebindCardID = ref('')
 const rebindForm = reactive({ knowledgeID: '', chunkID: '', excerpt: '' })
+const generateVisible = ref(false)
+const generating = ref(false)
+const importing = ref(false)
+const generationKB = ref('')
+const generationCount = ref(5)
+const generationGroup = ref('')
+const generationPreview = ref<ReviewGenerationPreview | null>(null)
+const selectedGenerated = ref<number[]>([])
+const kbOptions = ref<Array<{ label: string; value: string }>>([])
+const groupOptions = computed(() => flatGroups.value.map(item => ({
+  label: `${'　'.repeat(item.depth)}${item.group.name}`,
+  value: item.group.id,
+})))
+const countOptions = [5, 10, 20].map(value => ({ label: String(value), value }))
 
 const selectedGroup = computed(() => flatGroups.value.find(item => item.group.id === selectedGroupId.value)?.group ?? null)
 const queueHasCards = computed(() => Boolean(queue.value && (queue.value.due.length + queue.value.new.length) > 0))
@@ -295,7 +476,7 @@ const statusOptions = computed(() => [
 
 function flattenGroups(nodes: ReviewGroupNode[], depth = 0): FlatGroup[] {
   return nodes.flatMap(node => [
-    { group: node.group, depth },
+    { group: node.group, depth, card_count: node.card_count || 0 },
     ...flattenGroups(node.children || [], depth + 1),
   ])
 }
@@ -333,11 +514,105 @@ async function loadStats() {
   stats.value = response.data || null
 }
 
+async function loadKnowledgeBasesForGeneration() {
+  if (kbOptions.value.length) return
+  try {
+    const response: any = await listKnowledgeBases()
+    const list = response.data?.data || response.data || []
+    kbOptions.value = (Array.isArray(list) ? list : []).map((kb: any) => ({
+      value: kb.id,
+      label: kb.name || kb.id,
+    }))
+  } catch {
+    kbOptions.value = []
+  }
+}
+
+function defaultGroupID() {
+  return selectedGroupId.value || flatGroups.value.find(item => item.group.is_default)?.group.id || ''
+}
+
+function openGeneration() {
+  generationPreview.value = null
+  selectedGenerated.value = []
+  generationGroup.value = defaultGroupID()
+  generateVisible.value = true
+  void loadKnowledgeBasesForGeneration()
+}
+
+async function generatePreview() {
+  if (!generationKB.value) {
+    MessagePlugin.warning(t('review.selectKnowledgeBase'))
+    return
+  }
+  generating.value = true
+  try {
+    const response = await previewReviewGeneration({
+      knowledge_base_id: generationKB.value,
+      group_id: generationGroup.value,
+      count: generationCount.value,
+    })
+    generationPreview.value = response.data || null
+    selectedGenerated.value = (generationPreview.value?.cards || [])
+      .map((card, index) => (card.duplicate ? -1 : index))
+      .filter(index => index >= 0)
+  } catch (error: any) {
+    MessagePlugin.error(error?.message || t('review.generateFailed'))
+  } finally {
+    generating.value = false
+  }
+}
+
+function toggleGenerated(index: number, checked: boolean) {
+  if (checked) {
+    if (!selectedGenerated.value.includes(index)) selectedGenerated.value.push(index)
+  } else {
+    selectedGenerated.value = selectedGenerated.value.filter(item => item !== index)
+  }
+}
+
+async function importSelectedGenerated() {
+  if (!generationPreview.value || !selectedGenerated.value.length) {
+    MessagePlugin.warning(t('review.selectGeneratedCards'))
+    return
+  }
+  importing.value = true
+  try {
+    const cards = selectedGenerated.value
+      .map(index => generationPreview.value?.cards[index])
+      .filter((card): card is GeneratedReviewCard => Boolean(card))
+      .map(card => ({
+        group_id: generationGroup.value,
+        question: card.question,
+        answer: card.answer,
+        explanation: card.explanation,
+        sources: card.sources,
+      }))
+    const response = await importReviewCards({ group_id: generationGroup.value, cards })
+    MessagePlugin.success(t('review.importedCount', { count: response.data?.imported ?? cards.length }))
+    generateVisible.value = false
+    await Promise.all([loadCards(), loadQueue(), loadStats()])
+  } catch (error: any) {
+    MessagePlugin.error(error?.message || t('review.importFailed'))
+  } finally {
+    importing.value = false
+  }
+}
+
+async function loadActiveSession() {
+  try {
+    const response = await getActiveReviewSession()
+    activeSession.value = response.data || null
+  } catch {
+    activeSession.value = null
+  }
+}
+
 async function refreshAll() {
   loading.value = true
   try {
     await loadGroups()
-    await Promise.all([loadCards(), loadQueue(), loadStats()])
+    await Promise.all([loadCards(), loadQueue(), loadStats(), loadActiveSession()])
   } catch (error: any) {
     MessagePlugin.error(error?.message || t('review.loadFailed'))
   } finally {
@@ -398,10 +673,63 @@ async function handleExport() {
   }
 }
 
-function openCreateGroup() {
+const groupMenuVisible = ref(false)
+const groupMenuX = ref(0)
+const groupMenuY = ref(0)
+const groupMenuGroup = ref<ReviewGroup | null>(null)
+const groupMenuParentID = ref('')
+const groupParentID = ref('')
+const groupDeleteVisible = ref(false)
+const groupDeleteTarget = ref<ReviewGroup | null>(null)
+const groupDeleteCards = ref(false)
+
+function openCreateGroup(parentID = '') {
   groupDialogMode.value = 'create'
+  groupParentID.value = parentID
   groupForm.name = ''
   groupDialogVisible.value = true
+}
+
+function openGroupMenu(event: MouseEvent, group: ReviewGroup) {
+  event.preventDefault()
+  groupMenuGroup.value = group
+  groupMenuParentID.value = group.id
+  groupMenuX.value = event.clientX
+  groupMenuY.value = event.clientY
+  groupMenuVisible.value = true
+}
+
+function openBlankGroupMenu(event: MouseEvent) {
+  event.preventDefault()
+  groupMenuGroup.value = null
+  groupMenuParentID.value = ''
+  groupMenuX.value = event.clientX
+  groupMenuY.value = event.clientY
+  groupMenuVisible.value = true
+}
+
+function closeGroupMenu() {
+  groupMenuVisible.value = false
+}
+
+function menuCreateGroup() {
+  const parentID = groupMenuParentID.value
+  closeGroupMenu()
+  openCreateGroup(parentID)
+}
+
+function menuRenameGroup() {
+  if (!groupMenuGroup.value) return
+  selectedGroupId.value = groupMenuGroup.value.id
+  closeGroupMenu()
+  openRenameGroup()
+}
+
+function menuDeleteGroup() {
+  if (!groupMenuGroup.value) return
+  selectedGroupId.value = groupMenuGroup.value.id
+  closeGroupMenu()
+  confirmDeleteGroup()
 }
 
 function openRenameGroup() {
@@ -420,7 +748,7 @@ async function saveGroup() {
   groupSaving.value = true
   try {
     if (groupDialogMode.value === 'create') {
-      const parentID = selectedGroup.value && !selectedGroup.value.is_default ? selectedGroup.value.id : undefined
+      const parentID = groupParentID.value || undefined
       await createReviewGroup({ name, parent_id: parentID })
       MessagePlugin.success(t('review.groupCreated'))
     } else if (selectedGroup.value) {
@@ -438,23 +766,23 @@ async function saveGroup() {
 
 function confirmDeleteGroup() {
   if (!selectedGroup.value) return
-  const group = selectedGroup.value
-  const dialog = DialogPlugin.confirm({
-    header: t('review.deleteGroup'),
-    body: t('review.groupDeleteConfirm', { name: group.name }),
-    cancelBtn: t('review.cancel'),
-    onConfirm: async () => {
-      dialog.hide()
-      try {
-        await deleteReviewGroup(group.id)
-        MessagePlugin.success(t('review.groupDeleted'))
-        selectedGroupId.value = ''
-        await refreshAll()
-      } catch (error: any) {
-        MessagePlugin.error(error?.message || t('review.groupFailed'))
-      }
-    },
-  })
+  groupDeleteTarget.value = selectedGroup.value
+  groupDeleteCards.value = false
+  groupDeleteVisible.value = true
+}
+
+async function doDeleteGroup() {
+  const group = groupDeleteTarget.value
+  if (!group) return
+  try {
+    await deleteReviewGroup(group.id, groupDeleteCards.value)
+    MessagePlugin.success(t('review.groupDeleted'))
+    groupDeleteVisible.value = false
+    selectedGroupId.value = ''
+    await refreshAll()
+  } catch (error: any) {
+    MessagePlugin.error(error?.message || t('review.groupFailed'))
+  }
 }
 
 async function loadCurrentDetail() {
@@ -468,20 +796,91 @@ async function loadCurrentDetail() {
   }
 }
 
-function startReview() {
-  if (!queue.value) return
-  const cardsToReview = [...queue.value.due, ...queue.value.new]
-  if (!cardsToReview.length) {
-    MessagePlugin.info(t('review.noDue'))
-    return
-  }
-  reviewCards.value = cardsToReview
+function applySession(state: ReviewSessionState | null | undefined) {
+  if (!state) return
+  activeSession.value = state
+  sessionID.value = state.session.id
+  sessionTotal.value = state.session.planned_count
+  reviewCards.value = state.cards
   reviewIndex.value = 0
-  sessionDone.value = 0
+  sessionDone.value = state.session.completed_count
   showingAnswer.value = false
   finished.value = false
   reviewing.value = true
   void loadCurrentDetail()
+}
+
+function resumeSession() {
+  applySession(activeSession.value)
+}
+
+async function startReview() {
+  if (reviewing.value) return
+  if (activeSession.value) {
+    resumeSession()
+    return
+  }
+  try {
+    const response = await startReviewSession({
+      mode: 'daily',
+      group_id: selectedGroupId.value || undefined,
+      limit: 30,
+    })
+    applySession(response.data)
+  } catch (error: any) {
+    MessagePlugin.error(error?.message || t('review.loadFailed'))
+  }
+}
+
+async function startSelectedReview() {
+  if (!selectedCardIDs.value.length) return
+  try {
+    const response = await startReviewSession({
+      mode: 'manual',
+      group_id: selectedGroupId.value || undefined,
+      card_ids: selectedCardIDs.value,
+    })
+    selectedCardIDs.value = []
+    applySession(response.data)
+  } catch (error: any) {
+    MessagePlugin.error(error?.message || t('review.loadFailed'))
+  }
+}
+
+async function abandonCurrentSession() {
+  if (!sessionID.value) return
+  const dialog = DialogPlugin.confirm({
+    header: t('review.abandonSession'),
+    body: t('review.abandonSessionConfirm'),
+    cancelBtn: t('review.cancel'),
+    onConfirm: async () => {
+      dialog.hide()
+      try {
+        await abandonReviewSession(sessionID.value)
+        activeSession.value = null
+        sessionID.value = ''
+        MessagePlugin.success(t('review.sessionAbandoned'))
+        await refreshAll()
+      } catch (error: any) {
+        MessagePlugin.error(error?.message || t('review.actionFailed'))
+      }
+    },
+  })
+}
+
+async function openPerformance(card: ReviewCard) {
+  performanceVisible.value = true
+  performanceLoading.value = true
+  performance.value = null
+  try {
+    const response = await getReviewCardPerformance(card.id)
+    performance.value = response.data || null
+  } catch (error: any) {
+    MessagePlugin.error(error?.message || t('review.loadFailed'))
+    performanceVisible.value = false
+  } finally {
+    performanceLoading.value = false
+  }
 }
 
 function nextCard() {
@@ -503,6 +902,7 @@ async function rate(rating: 'forgot' | 'fuzzy' | 'remembered') {
   try {
     await submitReview({
       card_id: currentCard.value.id,
+      session_id: sessionID.value || undefined,
       rating,
       client_request_id: crypto.randomUUID(),
     })
@@ -614,6 +1014,20 @@ function confirmDeleteCard(card: ReviewCard) {
   })
 }
 
+async function undoDelete() {
+  const cardID = undoCardID.value
+  if (!cardID) return
+  if (undoTimer) clearTimeout(undoTimer)
+  undoCardID.value = ''
+  try {
+    await restoreReviewCard(cardID)
+    MessagePlugin.success(t('review.restored'))
+    await Promise.all([loadCards(), loadQueue()])
+  } catch (error: any) {
+    MessagePlugin.error(error?.message || t('review.actionFailed'))
+  }
+}
+
 function statusTheme(status: ReviewCard['status']) {
   if (status === 'active') return 'success'
   if (status === 'suspended') return 'warning'
@@ -623,11 +1037,14 @@ function statusTheme(status: ReviewCard['status']) {
 
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
+  window.addEventListener('click', closeGroupMenu)
   void refreshAll()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('click', closeGroupMenu)
+  if (undoTimer) clearTimeout(undoTimer)
 })
 </script>
 
@@ -723,6 +1140,51 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.review-group-tail {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.review-group-more {
+  opacity: 0;
+  color: var(--td-text-color-placeholder);
+  cursor: pointer;
+}
+.review-group-row:hover .review-group-more,
+.review-group-row.active .review-group-more {
+  opacity: 1;
+}
+.review-group-blank {
+  flex: 1;
+  min-height: 80px;
+}
+.review-context-menu {
+  position: fixed;
+  z-index: 3000;
+  min-width: 150px;
+  padding: 6px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+  background: var(--td-bg-color-container);
+  box-shadow: var(--td-shadow-2);
+}
+.review-context-menu button {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--td-text-color-primary);
+  text-align: left;
+  cursor: pointer;
+}
+.review-context-menu button:hover {
+  background: var(--td-bg-color-container-hover);
+}
+.review-context-menu button.is-danger {
+  color: var(--td-error-color);
+}
 .review-group-count {
   flex: 0 0 auto;
   color: var(--td-text-color-placeholder);
@@ -741,32 +1203,129 @@ onBeforeUnmount(() => {
 }
 .review-stats {
   display: flex;
-  align-items: center;
-  gap: 28px;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 12px;
   padding-bottom: 18px;
   border-bottom: 1px solid var(--td-component-stroke);
   margin-bottom: 18px;
 }
-.review-stat {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  flex-wrap: wrap;
-  font-size: 13px;
-  color: var(--td-text-color-secondary);
+.review-stat-card {
+  flex: 1 1 180px;
+  min-width: 150px;
+  padding: 12px 14px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 10px;
+  background: var(--td-bg-color-container);
 }
-.review-stat strong {
-  color: var(--td-text-color-primary);
-  font-size: 18px;
-}
-.review-stat--actions {
-  margin-left: auto;
-  flex-wrap: nowrap;
-}
-.review-stat-hint {
-  max-width: 220px;
+.review-stat-label {
+  display: block;
+  margin-bottom: 6px;
   color: var(--td-text-color-placeholder);
   font-size: 12px;
+}
+.review-stat-value {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  color: var(--td-text-color-secondary);
+  font-size: 12px;
+}
+.review-stat-value strong {
+  color: var(--td-text-color-primary);
+  font-size: 20px;
+}
+.review-stat-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+.review-stat-hint {
+  max-width: 180px;
+  color: var(--td-text-color-placeholder);
+  font-size: 12px;
+}
+.review-resume-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--td-brand-color-3);
+  border-radius: 10px;
+  background: var(--td-brand-color-1);
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.review-performance {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.review-performance-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.review-performance-question {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.review-performance-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  color: var(--td-text-color-secondary);
+  font-size: 12px;
+}
+.review-performance-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.review-performance-stats > div {
+  padding: 10px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+  text-align: center;
+}
+.review-performance-stats strong {
+  display: block;
+  font-size: 20px;
+  color: var(--td-text-color-primary);
+}
+.review-performance-stats span {
+  color: var(--td-text-color-placeholder);
+  font-size: 12px;
+}
+.review-history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.review-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--td-text-color-secondary);
+  font-size: 12px;
+}
+.review-undo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--td-warning-color-3);
+  border-radius: 8px;
+  background: var(--td-warning-color-1);
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+  margin-bottom: 10px;
 }
 .review-callout {
   display: flex;
@@ -875,6 +1434,39 @@ onBeforeUnmount(() => {
   margin: 0 0 16px;
   color: var(--td-text-color-secondary);
 }
+.review-generate-controls {
+  display: grid;
+  grid-template-columns: 2fr 1fr 2fr;
+  gap: 12px;
+}
+.review-generated-body {
+  flex: 1;
+  min-width: 0;
+}
+.review-generated-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--td-text-color-placeholder);
+  font-size: 12px;
+}
+.review-weak {
+  padding: 14px 16px;
+  border: 1px solid var(--td-error-color-3);
+  border-radius: 10px;
+  background: var(--td-error-color-1);
+  margin-bottom: 18px;
+}
+.review-weak-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+}
 .review-list-tools {
   display: flex;
   align-items: center;
@@ -910,7 +1502,9 @@ onBeforeUnmount(() => {
   border-radius: 10px;
 }
 .review-card-row-main {
+  flex: 1;
   min-width: 0;
+  text-align: left;
 }
 .review-card-row-question {
   overflow: hidden;
@@ -964,6 +1558,9 @@ onBeforeUnmount(() => {
   .review-stats {
     flex-wrap: wrap;
     gap: 14px;
+  }
+  .review-generate-controls {
+    grid-template-columns: 1fr;
   }
   .review-stat--actions {
     margin-left: 0;

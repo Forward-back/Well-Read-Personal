@@ -40,12 +40,27 @@ type ReviewRepository interface {
 
 	ListDueCards(ctx context.Context, tenantID uint64, groupIDs []string, now time.Time, limit int) ([]*types.ReviewCard, error)
 	ListNewCards(ctx context.Context, tenantID uint64, groupIDs []string, limit int) ([]*types.ReviewCard, error)
+	ListCardsByIDs(ctx context.Context, tenantID uint64, ids []string) ([]*types.ReviewCard, error)
 	CountCompletedToday(ctx context.Context, tenantID uint64, from, to time.Time) (int64, error)
+
+	// Sessions
+	CreateSession(ctx context.Context, session *types.ReviewSession) error
+	GetSession(ctx context.Context, tenantID uint64, id string) (*types.ReviewSession, error)
+	GetActiveSession(ctx context.Context, tenantID uint64) (*types.ReviewSession, error)
+	UpdateSession(ctx context.Context, session *types.ReviewSession) error
+	ExpireSessions(ctx context.Context, tenantID uint64, before time.Time) error
+	ListSessions(ctx context.Context, tenantID uint64, limit int) ([]*types.ReviewSession, error)
+	ListLogsBySession(ctx context.Context, tenantID uint64, sessionID string) ([]*types.ReviewLog, error)
+	ListLogsByCard(ctx context.Context, tenantID uint64, cardID string, limit int) ([]*types.ReviewLog, error)
+	FindLogBySessionCard(ctx context.Context, tenantID uint64, sessionID, cardID string) (*types.ReviewLog, error)
 
 	// ApplyReview inserts one idempotent review log and updates the card in one
 	// transaction. It returns false when the client request ID was already used
 	// (the card must not be updated a second time).
 	ApplyReview(ctx context.Context, card *types.ReviewCard, log *types.ReviewLog) (bool, error)
+	// ApplyReviewSession additionally updates the session counters and closes
+	// the session when its planned cards are complete.
+	ApplyReviewSession(ctx context.Context, card *types.ReviewCard, log *types.ReviewLog, session *types.ReviewSession) (bool, error)
 }
 
 // ReviewService is the card-group and spaced-repetition domain service.
@@ -67,10 +82,18 @@ type ReviewService interface {
 	RestoreCard(ctx context.Context, id string) error
 
 	TodayQueue(ctx context.Context, groupID string, limit int) (*types.ReviewQueue, error)
+	StartSession(ctx context.Context, req *types.StartReviewSessionRequest) (*types.ReviewSessionState, error)
+	GetActiveSession(ctx context.Context) (*types.ReviewSessionState, error)
+	GetSession(ctx context.Context, id string) (*types.ReviewSessionState, error)
+	AbandonSession(ctx context.Context, id string) error
+	ListSessions(ctx context.Context, limit int) ([]*types.ReviewSession, error)
+	GetCardPerformance(ctx context.Context, cardID string) (*types.ReviewCardPerformance, error)
 	SubmitReview(ctx context.Context, req *types.SubmitReviewRequest) (*types.ReviewCard, error)
 	MarkSourceUnavailable(ctx context.Context, cardID, sourceID string) error
 	RebindSource(ctx context.Context, cardID, sourceID string, req *types.RebindReviewCardSourceRequest) error
 	MergeCards(ctx context.Context, req *types.MergeReviewCardsRequest) error
 	Stats(ctx context.Context) (*types.ReviewStats, error)
 	Export(ctx context.Context) (*types.ReviewExport, error)
+	PreviewGeneration(ctx context.Context, req *types.GenerateReviewCardsRequest) (*types.ReviewGenerationPreview, error)
+	ImportGeneratedCards(ctx context.Context, req *types.ImportReviewCardsRequest) (int, error)
 }

@@ -14,11 +14,28 @@ import (
 )
 
 type reviewService struct {
-	repo interfaces.ReviewRepository
+	repo          interfaces.ReviewRepository
+	chunkRepo     interfaces.ChunkRepository
+	knowledgeRepo interfaces.KnowledgeRepository
+	modelService  interfaces.ModelService
 }
 
 func NewReviewService(repo interfaces.ReviewRepository) interfaces.ReviewService {
 	return &reviewService{repo: repo}
+}
+
+func NewReviewServiceWithGeneration(
+	repo interfaces.ReviewRepository,
+	chunkRepo interfaces.ChunkRepository,
+	knowledgeRepo interfaces.KnowledgeRepository,
+	modelService interfaces.ModelService,
+) interfaces.ReviewService {
+	return &reviewService{
+		repo:          repo,
+		chunkRepo:     chunkRepo,
+		knowledgeRepo: knowledgeRepo,
+		modelService:  modelService,
+	}
 }
 
 func (s *reviewService) EnsureDefaultGroup(ctx context.Context) (*types.ReviewGroup, error) {
@@ -48,6 +65,28 @@ func (s *reviewService) ListGroupTree(ctx context.Context) ([]*types.ReviewGroup
 			}
 		}
 		roots = append(roots, node)
+	}
+	cards, err := s.repo.ListAllCards(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	direct := make(map[string]int, len(groups))
+	for _, card := range cards {
+		if card != nil && card.GroupID != "" {
+			direct[card.GroupID]++
+		}
+	}
+	var fill func(node *types.ReviewGroupNode) int
+	fill = func(node *types.ReviewGroupNode) int {
+		count := direct[node.Group.ID]
+		for _, child := range node.Children {
+			count += fill(child)
+		}
+		node.CardCount = count
+		return count
+	}
+	for _, root := range roots {
+		fill(root)
 	}
 	return roots, nil
 }
@@ -239,6 +278,7 @@ func (s *reviewService) CreateCard(
 		Explanation:  strings.TrimSpace(req.Explanation),
 		Tags:         reviewTagsJSON(req.Tags),
 		Status:       types.ReviewStatusActive,
+		Stability:    ReviewInitialStability,
 		DueAt:        time.Now(),
 		QuestionHash: hash,
 	}
@@ -471,14 +511,24 @@ func (s *reviewService) SubmitReview(
 	}
 	now := time.Now()
 	levelBefore := card.ReviewLevel
-	newLevel, dueAt, intervalDays, err := ApplyReviewRating(levelBefore, req.Rating, now)
+	stabilityBefore := card.Stability
+	if stabilityBefore <= 0 {
+		stabilityBefore = ReviewInitialStability
+	}
+	newStability, newLevel, dueAt, intervalDays, err := ApplyReviewSchedule(
+		stabilityBefore, levelBefore, req.Rating, now,
+	)
 	if err != nil {
 		return nil, werrors.NewValidationError(err.Error())
 	}
 	if req.Rating == types.ReviewRatingForgot {
 		card.Lapses++
+		card.ForgetStreak++
+	} else {
+		card.ForgetStreak = 0
 	}
 	card.ReviewLevel = newLevel
+	card.Stability = newStability
 	card.DueAt = dueAt
 	card.ReviewCount++
 	card.LastReviewedAt = &now
@@ -489,18 +539,48 @@ func (s *reviewService) SubmitReview(
 	if clientRequestID == "" {
 		clientRequestID = uuid.NewString()
 	}
+	sessionID := strings.TrimSpace(req.SessionID)
+	var session *types.ReviewSession
+	if sessionID != "" {
+		session, err = s.repo.GetSession(ctx, tenantID, sessionID)
+		if err != nil {
+			return nil, err
+		}
+		if session == nil {
+			return nil, werrors.NewNotFoundError("复习会话不存在")
+		}
+		if session.Status != types.ReviewSessionStatusActive {
+			return nil, werrors.NewConflictError("复习会话已结束")
+		}
+		if !reviewSessionContains(session, card.ID) {
+			return nil, werrors.NewValidationError("卡片不属于本次复习会话")
+		}
+		if existing, err := s.repo.FindLogBySessionCard(ctx, tenantID, sessionID, card.ID); err != nil {
+			return nil, err
+		} else if existing != nil {
+			return nil, werrors.NewConflictError("该卡片本轮已评分")
+		}
+	}
 	log := &types.ReviewLog{
 		ID:              uuid.NewString(),
 		TenantID:        tenantID,
 		CardID:          card.ID,
+		SessionID:       sessionID,
 		Rating:          req.Rating,
 		LevelBefore:     levelBefore,
 		LevelAfter:      newLevel,
 		IntervalDays:    intervalDays,
+		StabilityBefore: stabilityBefore,
+		StabilityAfter:  newStability,
 		ReviewedAt:      now,
 		ClientRequestID: clientRequestID,
 	}
-	applied, err := s.repo.ApplyReview(ctx, card, log)
+	var applied bool
+	if session != nil {
+		applied, err = s.repo.ApplyReviewSession(ctx, card, log, session)
+	} else {
+		applied, err = s.repo.ApplyReview(ctx, card, log)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -570,7 +650,7 @@ func (s *reviewService) RebindSource(
 	source.StartLine = req.StartLine
 	source.EndLine = req.EndLine
 	source.ContentHash = strings.TrimSpace(req.ContentHash)
-	source.Excerpt = strings.TrimSpace(req.Excerpt)
+	source.Excerpt = types.CleanReviewExcerpt(req.Excerpt)
 	if err := s.repo.UpdateSource(ctx, tenantID, source); err != nil {
 		return err
 	}
@@ -641,6 +721,53 @@ func (s *reviewService) Stats(ctx context.Context) (*types.ReviewStats, error) {
 	if stats.Reviewed30d > 0 {
 		stats.Retention30d = float64(stats.Remembered30d) / float64(stats.Reviewed30d)
 	}
+	groups, err := s.repo.ListGroups(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	groupNames := make(map[string]string, len(groups))
+	for _, group := range groups {
+		groupNames[group.ID] = group.Name
+	}
+	cardGroups := make(map[string]string, len(cards))
+	for _, card := range cards {
+		cardGroups[card.ID] = card.GroupID
+	}
+	type bucket struct{ reviewed, remembered int64 }
+	buckets := make(map[string]*bucket)
+	for _, log := range logs {
+		if log.ReviewedAt.Before(cutoff) {
+			continue
+		}
+		groupID := cardGroups[log.CardID]
+		if groupID == "" {
+			continue
+		}
+		item := buckets[groupID]
+		if item == nil {
+			item = &bucket{}
+			buckets[groupID] = item
+		}
+		item.reviewed++
+		if log.Rating == types.ReviewRatingRemembered {
+			item.remembered++
+		}
+	}
+	for groupID, item := range buckets {
+		if item.reviewed < 5 {
+			continue
+		}
+		retention := float64(item.remembered) / float64(item.reviewed)
+		if retention >= 0.6 {
+			continue
+		}
+		stats.WeakTopics = append(stats.WeakTopics, &types.ReviewWeakTopic{
+			GroupID:   groupID,
+			GroupName: groupNames[groupID],
+			Reviewed:  item.reviewed,
+			Retention: retention,
+		})
+	}
 	return stats, nil
 }
 
@@ -665,6 +792,9 @@ func (s *reviewService) Export(ctx context.Context) (*types.ReviewExport, error)
 	if err != nil {
 		return nil, err
 	}
+	for _, source := range sources {
+		source.Excerpt = types.CleanReviewExcerpt(source.Excerpt)
+	}
 	return &types.ReviewExport{
 		ExportedAt: time.Now(),
 		Groups:     groups,
@@ -672,6 +802,15 @@ func (s *reviewService) Export(ctx context.Context) (*types.ReviewExport, error)
 		Sources:    sources,
 		Logs:       logs,
 	}, nil
+}
+
+func reviewSessionContains(session *types.ReviewSession, cardID string) bool {
+	for _, id := range reviewSessionCardIDs(session) {
+		if id == cardID {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *reviewService) groupSubtree(
@@ -726,7 +865,7 @@ func buildReviewSources(
 			StartLine:   input.StartLine,
 			EndLine:     input.EndLine,
 			ContentHash: strings.TrimSpace(input.ContentHash),
-			Excerpt:     strings.TrimSpace(input.Excerpt),
+			Excerpt:     types.CleanReviewExcerpt(input.Excerpt),
 			IsPrimary:   input.IsPrimary,
 			Status:      types.ReviewSourceStatusActive,
 		}
@@ -796,4 +935,68 @@ func reviewTagsJSON(tags []string) types.JSON {
 	}
 	encoded, _ := json.Marshal(cleaned)
 	return types.JSON(encoded)
+}
+
+func (s *reviewService) GetCardPerformance(
+	ctx context.Context, cardID string,
+) (*types.ReviewCardPerformance, error) {
+	tenantID := types.MustTenantIDFromContext(ctx)
+	card, err := s.repo.GetCard(ctx, tenantID, cardID)
+	if err != nil {
+		return nil, err
+	}
+	if card == nil {
+		return nil, werrors.NewNotFoundError("复习卡不存在")
+	}
+	logs, err := s.repo.ListLogsByCard(ctx, tenantID, cardID, 100)
+	if err != nil {
+		return nil, err
+	}
+	performance := &types.ReviewCardPerformance{
+		Card:         card,
+		ForgetStreak: card.ForgetStreak,
+		Logs:         logs,
+		Warning:      "none",
+	}
+	recentLogs := logs
+	if len(recentLogs) > 5 {
+		recentLogs = recentLogs[:5]
+	}
+	for _, log := range logs {
+		performance.Counts.Total++
+		switch log.Rating {
+		case types.ReviewRatingRemembered:
+			performance.Counts.Remembered++
+		case types.ReviewRatingFuzzy:
+			performance.Counts.Fuzzy++
+		case types.ReviewRatingForgot:
+			performance.Counts.Forgot++
+		}
+	}
+	for _, log := range recentLogs {
+		performance.RecentCounts.Total++
+		switch log.Rating {
+		case types.ReviewRatingRemembered:
+			performance.RecentCounts.Remembered++
+		case types.ReviewRatingFuzzy:
+			performance.RecentCounts.Fuzzy++
+		case types.ReviewRatingForgot:
+			performance.RecentCounts.Forgot++
+		}
+	}
+	if performance.RecentCounts.Total > 0 {
+		performance.RecentForgetRate = float64(performance.RecentCounts.Forgot) / float64(performance.RecentCounts.Total)
+	}
+	switch {
+	case card.Status == types.ReviewStatusSuspended || card.Lapses >= 3:
+		performance.Warning = "high"
+		performance.WarningReason = "累计忘记次数过多，已暂停或接近暂停"
+	case card.ForgetStreak >= 2:
+		performance.Warning = "watch"
+		performance.WarningReason = "连续两次忘记，建议回原文复习"
+	case performance.RecentCounts.Total >= 5 && performance.RecentForgetRate >= 0.4:
+		performance.Warning = "watch"
+		performance.WarningReason = "最近五次评分中忘记占比达到 40%"
+	}
+	return performance, nil
 }

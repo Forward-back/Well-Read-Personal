@@ -6,6 +6,7 @@ import { createRequire } from 'node:module'
 import { defineConfig, searchForWorkspaceRoot } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
+import tailwindcss from '@tailwindcss/vite'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const require = createRequire(import.meta.url)
@@ -78,6 +79,7 @@ export default defineConfig({
   plugins: [
     vue(),
     vueJsx(),
+    tailwindcss(),
   ],
   resolve: {
     alias: {

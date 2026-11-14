@@ -263,3 +263,90 @@ func (h *ReviewHandler) Export(c *gin.Context) {
 	c.Header("Content-Disposition", "attachment; filename=wellread-review-export.json")
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
 }
+
+func (h *ReviewHandler) PreviewGeneration(c *gin.Context) {
+	var req types.GenerateReviewCardsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	preview, err := h.service.PreviewGeneration(c.Request.Context(), &req)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": preview})
+}
+
+func (h *ReviewHandler) ImportGeneratedCards(c *gin.Context) {
+	var req types.ImportReviewCardsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	count, err := h.service.ImportGeneratedCards(c.Request.Context(), &req)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"imported": count}})
+}
+
+func (h *ReviewHandler) StartSession(c *gin.Context) {
+	var req types.StartReviewSessionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	state, err := h.service.StartSession(c.Request.Context(), &req)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": state})
+}
+
+func (h *ReviewHandler) GetActiveSession(c *gin.Context) {
+	state, err := h.service.GetActiveSession(c.Request.Context())
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": state})
+}
+
+func (h *ReviewHandler) GetSession(c *gin.Context) {
+	state, err := h.service.GetSession(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": state})
+}
+
+func (h *ReviewHandler) AbandonSession(c *gin.Context) {
+	if err := h.service.AbandonSession(c.Request.Context(), c.Param("id")); err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func (h *ReviewHandler) ListSessions(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	sessions, err := h.service.ListSessions(c.Request.Context(), limit)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": sessions})
+}
+
+func (h *ReviewHandler) GetCardPerformance(c *gin.Context) {
+	performance, err := h.service.GetCardPerformance(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": performance})
+}
