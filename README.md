@@ -14,7 +14,7 @@
 |---|---|---|
 | 知识生产 | 上传/网页/手工/代码项目、解析、分块、文件夹、标签、版本、归档与回收站 | 自己的资料可维护、可追溯 |
 | 知识消费 | 混合检索、带引用问答、精读工作台、报告导出 | 找得到、答得准、读得深 |
-| 学习闭环 | 学习/复习回答模板、自测题保存、持久复习卡、三档间隔重复 | 学过的东西能记住 |
+| 学习闭环 | 学习/复习回答模板、自测题保存、持久复习卡、自适应间隔重复与复习会话 | 学过的东西能记住 |
 | 个人化 | 个人技能、全局系统提示词、模型/解析/存储设置 | 按自己的习惯使用 |
 | 外部接入 | 单只读 API Key、17 个只读 MCP 工具、CLI | 接入外部 AI 客户端 |
 | 运维 | 健康检查、运行时队列、增量迁移、本地数据备份 | 能部署、能排障 |
@@ -39,7 +39,7 @@ flowchart LR
 | 目录 | 生态位 | 职责 |
 |---|---|---|
 | `app/` | Go 后端 | API、认证、知识库/文档、会话、精读、技能、设置、docreader、CLI、Go SDK、Swagger |
-| `frontend/` | Vue 3 + Vite + TDesign | 问答、知识库、精读、技能、设置；`design/` 为设计源 |
+| `frontend/` | Vue 3 + Vite + TDesign | 问答、知识库、精读、复习、技能、设置；复习页按批次迁移 shadcn-vue；`design/` 为设计源 |
 | `rag/` | Flask 侧车 | App 分块的嵌入/索引、混合检索、重排、生成 |
 | `mcp/` | MCP 接入层 | 单只读 Key 暴露 17 个只读工具 |
 | `deployments/` | 部署 | 六服务 compose、hotreload overlay、systemd、env example |
@@ -51,7 +51,7 @@ flowchart LR
 ```bash
 cp deployments/.env.example deployments/.env
 # 必填：DB_PASSWORD、JWT_SECRET、SYSTEM_AES_KEY、OWNER_EMAIL、OWNER_PASSWORD、模型密钥
-mkdir -p data/rag/{Data,models}
+mkdir -p data/rag/models    # 仅在本地 BGE 后端时需要放入模型
 docker compose -f deployments/docker-compose.yml up -d --build
 ```
 
@@ -101,7 +101,7 @@ Windows 本机后端可能因 duckdb/gjieba CGO 失败；完整测试以 Linux �
 | [技能与问答注入](docs/02-需求与设计/技能与问答注入.md) | 技能目录与注入规则 |
 | [界面规范](docs/02-需求与设计/界面规范.md) | 导航、设置分区、交互约定 |
 | [个人版账号与访问](docs/02-需求与设计/个人版账号与访问.md) | owner、登录、单只读 Key |
-| [架构决策](docs/06-架构决策/) | 卡片身份、吸收与卡组等长期决策 |
+| [架构决策](docs/06-架构决策/) | 迁移基线、UI 组件迁移、复习调度与卡片身份等长期决策 |
 | [当前进度](docs/03-进度与交接/当前进度.md) | 阶段、待办、验证基线、风险 |
 | [演示指南](docs/05-演示与试用/演示指南.md) / [常见问题](docs/05-演示与试用/常见问题.md) | 演示流程与排障 |
 | [部署手册](deployments/README.md) | compose、环境变量、备份升级 |

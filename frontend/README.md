@@ -6,15 +6,15 @@ WellRead 个人版的 Vue 3 单页应用：问答、知识库、精读、复习�
 
 - Vue 3 + TypeScript + Vite 7
 - TDesign Vue Next（存量页面）
-- shadcn-vue + Tailwind CSS（复习 V2 起渐进迁移）
-- ECharts（统计页图表）
+- shadcn-vue + Tailwind CSS（已安装；复习页迁移待开始）
+- ECharts（统计页计划接入，当前未安装）
 - Pinia（状态）、Vue Router（路由）
 - vue-i18n（多语言）
 - Markdown/Mermaid/KaTeX、Office 预览、xlsx 导入等展示能力
 
 ## UI 组件（复习 V2）
 
-复习 V2 起，新页面组件参考 `shadcn.com.cn` 的组合方式，用 `shadcn-vue` 实现；旧页面继续 TDesign，不允许同页混用。
+复习 V2 起，新页面组件参考 `shadcn.com.cn` 的组合方式，用 `shadcn-vue` 实现；旧页面继续 TDesign，不允许同页混用。当前 Tailwind、shadcn-vue 与基础组件已安装，`views/review/Review.vue` 仍是 TDesign 实现，页面替换与统计页尚未开始。
 
 ```bash
 npm install -D tailwindcss @tailwindcss/vite
@@ -34,18 +34,20 @@ npx shadcn-vue@latest add button dialog dropdown-menu context-menu tabs sheet ca
 | 路径 | 作用 |
 |---|---|
 | `src/api/` | 按业务域拆分的后端 API 封装 |
-| `src/components/` | 通用组件（菜单、聊天、设置、模型选择等） |
+| `src/components/` | 通用组件（菜单、聊天、设置、模型选择等）；`ui/` 为 shadcn-vue 源码 |
 | `src/composables/` | 可复用组合式逻辑 |
 | `src/config/` | 部署能力、上下文引导等前端配置 |
 | `src/directives/` | 全局指令 |
 | `src/hooks/` | 页面级 hooks |
 | `src/i18n/` | 语言包与文案扫描脚本 |
+| `src/lib/` | `cn()` 等 shadcn 工具函数 |
 | `src/router/` | 路由表与登录守卫 |
 | `src/stores/` | Pinia 状态（auth、ui、menu、chat 资源等） |
 | `src/styles/` | 全局样式与主题扩展 |
 | `src/types/` | 前后端共享类型/视图类型 |
-| `src/utils/` | 请求、格式化、Markdown、引用等工具 |
-| `src/views/` | 页面：auth/chat/creatChat/knowledge/reading/skills/settings/platform |
+| `src/utils/` | 请求、格式化、Markdown、引用、复习摘录清洗等工具 |
+| `src/views/` | 页面：auth/chat/creatChat/knowledge/reading/review/skills/settings/platform |
+| `src/assets/` | 字体、图片、主题；`tailwind.css` 为 shadcn token 入口 |
 | `public/` | 静态资源；登录页架构图在 `public/diagrams/` |
 | `design/` | 设计源（图标、字体），不进入生产构建 |
 | `scripts/` | 前端专项脚本（构建、图标矢量化、PR 校验） |

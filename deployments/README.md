@@ -12,7 +12,7 @@ flowchart LR
     APP --> DR[Gaze-docreader<br/>:50051 内部]
     APP --> YL[Gaze-ylsw<br/>:5000 内网]
     YL --> MYSQL[(外部 MySQL<br/>YLSW_Service_Table)]
-    YL --> EXT[(data/rag<br/>Data/models/index)]
+    YL --> EXT[(data/rag<br/>models/index)]
     APP --> FILES[(data-files volume)]
     APP --> TMP[(docreader-tmp volume)]
 ```
@@ -50,8 +50,8 @@ flowchart LR
 cd WellRead
 cp deployments/.env.example deployments/.env
 # 编辑 deployments/.env，至少填写 DB/YLSW/模型密钥与 OWNER_EMAIL/OWNER_PASSWORD
-mkdir -p data/rag/{Data,models}
-# 放入 RAG 语料与 BGE 模型
+mkdir -p data/rag/models
+# 仅在本地 BGE 后端时需要放入 bge-m3 / bge-reranker-v2-m3
 
 docker compose -f deployments/docker-compose.yml up -d --build
 ```
@@ -93,7 +93,7 @@ app 使用 compose 内 PostgreSQL；ylsw 使用外部 MySQL。两者不是同一
 |---|---|
 | `DB_DRIVER` | 默认 `postgres` |
 | `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` | app PostgreSQL |
-| `YLSW_MYSQL_HOST` / `PORT` / `USER` / `PASSWORD` | 外部业务 MySQL（RAG 分块/Text2SQL） |
+| `YLSW_MYSQL_HOST` / `PORT` / `USER` / `PASSWORD` | 外部业务 MySQL（RAG 文档/分块与索引元数据） |
 | `YLSW_MYSQL_DATABASE` | RAG 库，默认 `YLSW_Service_Table` |
 
 `YLSW_MYSQL_HOST` 默认 `host.docker.internal`，compose 已配置 `extra_hosts` 映射到宿主。
@@ -125,7 +125,7 @@ app 使用 compose 内 PostgreSQL；ylsw 使用外部 MySQL。两者不是同一
 | `YLSW_DEEPSEEK_*` / `YLSW_QWEN_*` | RAG 生成/多模态 |
 | `YLSW_API_TIMEOUT` / `YLSW_API_MAX_RETRIES` | RAG 外部 API |
 
-RAG 语料、模型、FAISS 索引不在镜像内。compose 固定：
+RAG 模型与 FAISS 索引不在镜像内。compose 固定：
 
 ```text
 ../data/rag → /app/external
@@ -227,7 +227,7 @@ docker compose -f deployments/docker-compose.yml down -v
 
 - `app_postgres-data`：业务库。
 - `app_data-files`：上传文件。
-- 外部 RAG 目录：`Data`、`models`、`faiss_index.bin`。
+- 外部 RAG 目录：`models`、`faiss_index.bin`。
 - 外部 MySQL：RAG 库 `YLSW_Service_Table`。
 
 升级顺序：
@@ -251,7 +251,7 @@ app 启动会按 `AUTO_MIGRATE` 执行迁移；迁移前先备份 PostgreSQL。
 | postgres 启动失败 | 旧数据卷版本/密码不匹配；不要直接删卷，先备份 |
 | 端口被占用 | 改 `FRONTEND_PORT`/`APP_PORT`，或清理旧容器；ylsw 不占宿主端口 |
 | 上传大文件失败 | `MAX_FILE_SIZE_MB`、nginx `client_max_body_size`、后端限制 |
-| RAG 检索为空 | `data/rag/Data` 是否有语料；是否通过 `/ingest` 推送；索引是否生成 |
+| RAG 检索为空 | 文档是否通过 `/ingest` 推送；`data/rag` 挂载与索引是否正常 |
 | 修改后仍是旧代码 | 未 build 或未 force-recreate |
 
 ## 11. 安全边界
@@ -265,6 +265,6 @@ app 启动会按 `AUTO_MIGRATE` 执行迁移；迁移前先备份 PostgreSQL。
 ## 12. 相关文档
 
 - 根项目说明：`../README.md`
-- RAG 部署与运维：`../rag/docs/配置与运维.md`、`../rag/docs/服务器部署.md`
+- RAG 部署与运维：`../rag/docs/部署与运维.md`
 - 前端构建与使用：`../frontend/README.md`
 - 后端开发：`../app/README.md`
