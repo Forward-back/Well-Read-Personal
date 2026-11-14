@@ -13,6 +13,7 @@ import (
 	"gaze/internal/application/repository"
 	"gaze/internal/application/service/retriever"
 	"gaze/internal/datasource"
+	"gaze/internal/engine"
 	apperrors "gaze/internal/errors"
 	"gaze/internal/logger"
 	"gaze/internal/storageallowlist"
@@ -48,6 +49,7 @@ type knowledgeBaseService struct {
 	syncLogRepo     interfaces.SyncLogRepository
 	dsScheduler     *datasource.Scheduler
 	resourceCatalog interfaces.ResourceCatalog
+	ragEngine       engine.RAGEngine
 }
 
 // NewKnowledgeBaseService creates a new knowledge base service
@@ -68,6 +70,7 @@ func NewKnowledgeBaseService(repo interfaces.KnowledgeBaseRepository,
 	syncLogRepo interfaces.SyncLogRepository,
 	dsScheduler *datasource.Scheduler,
 	resourceCatalog interfaces.ResourceCatalog,
+	ragEngine engine.RAGEngine,
 ) interfaces.KnowledgeBaseService {
 	return &knowledgeBaseService{
 		repo:            repo,
@@ -87,6 +90,7 @@ func NewKnowledgeBaseService(repo interfaces.KnowledgeBaseRepository,
 		syncLogRepo:     syncLogRepo,
 		dsScheduler:     dsScheduler,
 		resourceCatalog: resourceCatalog,
+		ragEngine:       ragEngine,
 	}
 }
 
@@ -764,6 +768,25 @@ func (s *knowledgeBaseService) DeleteKnowledgeBase(ctx context.Context, id strin
 	return nil
 }
 
+// deleteKnowledgeFromEngine removes the per-document engine rows after the
+// app-side knowledge rows are gone. Best-effort: engine downtime must not block
+// KB deletion; the daily reconcile removes leftovers later.
+func (s *knowledgeBaseService) deleteKnowledgeFromEngine(ctx context.Context, knowledgeIDs []string) {
+	if s.ragEngine == nil || len(knowledgeIDs) == 0 {
+		return
+	}
+	deleteCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Minute)
+	defer cancel()
+	for _, knowledgeID := range knowledgeIDs {
+		if knowledgeID == "" {
+			continue
+		}
+		if err := s.ragEngine.DeleteDocument(deleteCtx, knowledgeID); err != nil {
+			logger.Warnf(ctx, "Failed to delete knowledge %s from RAG engine: %v", knowledgeID, err)
+		}
+	}
+}
+
 // ProcessKBDelete handles async knowledge base deletion task
 // This method performs heavy cleanup operations: deleting embeddings, chunks, files, and graph data
 func (s *knowledgeBaseService) ProcessKBDelete(ctx context.Context, t *asynq.Task) error {
@@ -925,6 +948,11 @@ func (s *knowledgeBaseService) ProcessKBDelete(ctx context.Context, t *asynq.Tas
 			})
 			return err
 		}
+
+		// The KB row was already soft-deleted, so this is the last point where
+		// the per-document IDs are known. Remove them from YLSW now instead of
+		// waiting for the daily reconcile; failures stay best-effort.
+		s.deleteKnowledgeFromEngine(ctx, knowledgeIDs)
 	}
 
 	logger.Infof(ctx, "KB delete task completed successfully, knowledge base ID: %s", kbID)

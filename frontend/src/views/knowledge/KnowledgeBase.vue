@@ -44,6 +44,7 @@ import {
   downKnowledgeDetails,
   listKnowledgeFiles,
   updateKnowledgeLifecycle,
+  triggerEngineSync,
   type KnowledgeFolderTree,
 } from "@/api/knowledge-base/index";
 import { waitForKnowledgeDeletion } from '@/utils/knowledgeDeletion';
@@ -87,6 +88,7 @@ const { t } = useI18n();
 const kbId = computed(() => (route.params as any).kbId as string || '');
 const kbInfo = ref<any>(null);
 const codeSourceVisible = ref(false);
+const engineSyncing = ref(false);
 const uploadSourceRef = ref<InstanceType<typeof KbUploadSourceDropdown> | null>(null);
 const uploading = ref(false);
 const kbLoading = ref(false);
@@ -2070,6 +2072,32 @@ function handleCodeSourceSynced() {
   if (kbId.value) void loadKnowledgeFiles(kbId.value)
 }
 
+const handleTriggerEngineSync = () => {
+  if (!kbId.value || engineSyncing.value) return;
+  const dialog = DialogPlugin.confirm({
+    header: t('knowledgeBase.engineSync.title'),
+    body: t('knowledgeBase.engineSync.confirm'),
+    cancelBtn: t('common.cancel'),
+    onConfirm: async () => {
+      dialog.hide();
+      engineSyncing.value = true;
+      try {
+        const res = await triggerEngineSync(kbId.value);
+        const queued = res?.data?.queued ?? 0;
+        if (queued > 0) {
+          MessagePlugin.success(t('knowledgeBase.engineSync.queued', { count: queued }));
+        } else {
+          MessagePlugin.info(t('knowledgeBase.engineSync.none'));
+        }
+      } catch (error: any) {
+        MessagePlugin.error(error?.message || t('knowledgeBase.engineSync.failed'));
+      } finally {
+        engineSyncing.value = false;
+      }
+    },
+  });
+};
+
 const handleOpenKBSettings = () => {
   if (!kbId.value) {
     MessagePlugin.warning(t('knowledgeEditor.messages.missingId'));
@@ -2775,6 +2803,12 @@ async function createNewSession(value: string): Promise<void> {
               <t-tooltip v-if="canManage && kbId" content="添加代码项目" placement="top">
                 <button type="button" class="kb-settings-button" @click="codeSourceVisible = true">
                   <t-icon name="code" size="16px" />
+                </button>
+              </t-tooltip>
+              <t-tooltip v-if="canManage && kbId" :content="$t('knowledgeBase.engineSync.title')" placement="top">
+                <button type="button" class="kb-settings-button" :disabled="engineSyncing"
+                  @click="handleTriggerEngineSync">
+                  <t-icon name="refresh" size="16px" />
                 </button>
               </t-tooltip>
               <t-tooltip v-if="canManage" :content="$t('knowledgeBase.settings')" placement="top">

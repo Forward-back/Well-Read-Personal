@@ -5256,6 +5256,13 @@ export default {
     name: '名称',
     description: '描述',
     settings: '设置',
+    engineSync: {
+      title: '重推检索索引',
+      confirm: '将把知识库内待同步或同步失败的文档重新推送到检索服务；已同步文档不会重复处理。',
+      queued: '已提交 {count} 篇文档重推',
+      none: '没有待重推的文档',
+      failed: '重推失败，请稍后再试',
+    },
     tagUpdateSuccess: '标签更新成功',
     tagEditDialogHeading: '编辑标签',
     tagEditSearch: '搜索标签...',

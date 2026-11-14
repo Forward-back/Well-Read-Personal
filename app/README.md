@@ -38,7 +38,7 @@ app/
 │   └── types/               # 领域类型与接口
 ├── cli/                     # WellRead CLI（独立 Go module）
 ├── client/                  # Go SDK
-├── migrations/              # PostgreSQL / SQLite 单基线迁移
+├── migrations/              # PostgreSQL / SQLite 冻结基线 + 增量迁移
 ├── docreader/               # 文档解析 gRPC 服务
 ├── config/                  # 业务配置与提示词
 ├── docker/                  # app/docreader 镜像
@@ -94,9 +94,9 @@ go test ./internal/... ./docs/... -count=1
 
 ## 7. 数据库与迁移
 
-- PostgreSQL 迁移：`migrations/versioned/` 的单个 `000000_init` 基线。
-- SQLite 迁移：`migrations/sqlite/000000_init`，业务表/列与 PostgreSQL 对齐（`embeddings` 为 PostgreSQL 专用）。
-- 个人版要求全新数据库，不提供企业库原地升级。
+- PostgreSQL 迁移：`migrations/versioned/` 的 `000000_init` 为冻结基线，后续按顺序新增 `000001_*` 等增量迁移。
+- SQLite 迁移：`migrations/sqlite/` 同样保留冻结基线与增量迁移，业务表/列与 PostgreSQL 对齐（`embeddings` 为 PostgreSQL 专用）。
+- 个人版不提供企业库原地升级；已有个人版数据库按增量迁移原地升级，升级前备份。
 - 命令：`scripts/migrate.sh up|down|version|force`；`AUTO_MIGRATE=true` 时启动自动迁移。
 
 ## 8. API 与 Swagger

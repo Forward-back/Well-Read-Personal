@@ -26,6 +26,13 @@ import (
 	"github.com/hibiken/asynq"
 )
 
+// EngineSyncTrigger is the narrow surface the KB handler needs for the manual
+// re-push action; keeping it local avoids coupling the handler to the concrete
+// service package and makes the handler testable.
+type EngineSyncTrigger interface {
+	TriggerKBSync(ctx context.Context, kbID string, knowledgeIDs []string) (int, error)
+}
+
 // KnowledgeBaseHandler defines the HTTP handler for knowledge base operations
 type KnowledgeBaseHandler struct {
 	service            interfaces.KnowledgeBaseService
@@ -43,6 +50,8 @@ type KnowledgeBaseHandler struct {
 	storageResolver interfaces.StorageBackendResolver
 	// ragEngine backs the retrieval-test endpoint with the YLSW engine (§2.15).
 	ragEngine engine.RAGEngine
+	// engineSync backs the manual "re-push pending/failed documents" action.
+	engineSync EngineSyncTrigger
 }
 
 // NewKnowledgeBaseHandler creates a new knowledge base handler instance
@@ -56,6 +65,7 @@ func NewKnowledgeBaseHandler(
 	fileService interfaces.FileService,
 	storageResolver interfaces.StorageBackendResolver,
 	ragEngine engine.RAGEngine,
+	engineSync EngineSyncTrigger,
 ) *KnowledgeBaseHandler {
 	return &KnowledgeBaseHandler{
 		service:            service,
@@ -67,6 +77,7 @@ func NewKnowledgeBaseHandler(
 		fileService:        fileService,
 		storageResolver:    storageResolver,
 		ragEngine:          ragEngine,
+		engineSync:         engineSync,
 	}
 }
 
@@ -754,6 +765,32 @@ func (h *KnowledgeBaseHandler) UpdateKnowledgeBase(c *gin.Context) {
 		"success": true,
 		"data":    buildKBResponse(kb, h.resolveKBStoreView(ctx, kb, callerTenantID), nil),
 	})
+}
+
+// TriggerEngineSync godoc
+// @Summary      重推知识库检索索引
+// @Description  把知识库内待同步或同步失败的文档重新推送到 YLSW；已同步文档不重复处理
+// @Tags         知识库
+// @Produce      json
+// @Param        id   path      string  true  "知识库ID"
+// @Success      200  {object}  map[string]interface{}  "已入队数量"
+// @Failure      404  {object}  errors.AppError         "知识库不存在"
+// @Security     Bearer
+// @Security     ApiKeyAuth
+// @Router       /knowledge-bases/{id}/engine-sync [post]
+func (h *KnowledgeBaseHandler) TriggerEngineSync(c *gin.Context) {
+	ctx := c.Request.Context()
+	kbID := c.Param("id")
+	if h.engineSync == nil {
+		c.Error(apperrors.NewInternalServerError("引擎同步服务未配置"))
+		return
+	}
+	count, err := h.engineSync.TriggerKBSync(ctx, kbID, nil)
+	if err != nil {
+		c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"queued": count}})
 }
 
 // DeleteKnowledgeBase godoc

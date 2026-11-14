@@ -1643,10 +1643,11 @@ def _lifecycle_fields(meta: dict) -> dict:
 def _ingest_markdown(kb_id: str, doc_uid: str, file_name: str,
                      file_type: str, markdown: str, meta: dict,
                      app_chunks: list = None) -> dict:
-    """App 分块直接索引：删旧重建 → 写 chunks → 嵌入 → FAISS 追加 → 内存重载。
+    """App 分块直接索引：事务内替换旧文档 → 写 chunks → 提交 → 嵌入 → 状态。
 
-    RAG 不再解析或切分文档，app_chunks 是唯一内容来源；每块保留 App chunk id
-    作为 source_chunk_id，供问答引用回查。
+    旧文档与新文档必须在同一事务内替换，避免旧行已提交删除、新行写入失败
+    导致文档消失。嵌入失败时保留新分块但把文档标为 failed，由 App 再次推送
+    重试，不能把没有向量的文档标成 success。
     """
     from ingest.pipeline import DB as IngestDB, call_bge_embedding
 
@@ -1665,58 +1666,69 @@ def _ingest_markdown(kb_id: str, doc_uid: str, file_name: str,
             return default
 
     db = IngestDB()
+    committed = False
+    doc_id = None
+    log_id = None
+    chunk_ids = []
     try:
-        with db.conn.cursor() as cur:
-            cur.execute("SELECT id FROM documents WHERE source_doc_id=%s", (doc_uid,))
-            old = cur.fetchone()
-        if old:
-            with db.conn.cursor() as cur:
-                cur.execute("DELETE FROM documents WHERE id=%s", (old[0],))
-            db.commit()
-            logger.info(f"[ingest] 文档 {doc_uid} 已存在(doc_id={old[0]})，删旧重建")
-
         life = _lifecycle_fields(meta)
-        doc_id = db.insert_document(
-            file_name=file_name, file_type=file_type,
-            file_size=len(markdown.encode("utf-8")), file_path="",
-            doc_number=meta.get("doc_number", ""), org_name=meta.get("org_name", ""),
-            doc_date_str=meta.get("doc_date", ""),
-            doc_title=meta.get("doc_title") or file_name,
-            doc_type=meta.get("doc_type", ""), product_name=meta.get("product_name", ""),
-            source_doc_id=doc_uid, knowledge_base_id=kb_id,
-            lifecycle_status=life["lifecycle_status"],
-            effective_date=life["effective_date"], expiry_date=life["expiry_date"],
-            superseded_by=life["superseded_by"],
-            custom_metadata=meta.get("custom_metadata"),
-        )
-        log_id = db.insert_parse_log(doc_id, "indexing", "running")
+        # 同一 source_doc_id 的替换串行化，避免并发 /ingest 互相覆盖；
+        # 事务内先删旧行再插入新行，失败时回滚保留旧版本。
+        with _ingest_lock:
+            with db.conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id FROM documents WHERE source_doc_id=%s FOR UPDATE",
+                    (doc_uid,),
+                )
+                old = cur.fetchone()
+            if old:
+                with db.conn.cursor() as cur:
+                    cur.execute("DELETE FROM documents WHERE id=%s", (old[0],))
+                logger.info(f"[ingest] 文档 {doc_uid} 已存在(doc_id={old[0]})，事务内替换")
 
-        chunk_ids = []
-        for i, chunk in enumerate(ordered):
-            chunk_type = str(chunk.get("chunk_type") or "text").strip().lower()
-            chunk_ids.append(db.insert_chunk(
-                document_id=doc_id,
-                chunk_index=_as_int(chunk.get("chunk_index"), i),
-                chunk_text=str(chunk["content"]),
-                chunk_level="child",
-                keywords="",
-                pos_start=_as_int(chunk.get("start_at")),
-                pos_end=_as_int(chunk.get("end_at")),
-                org_name=meta.get("org_name", ""),
-                doc_type=meta.get("doc_type", ""),
-                product_name=meta.get("product_name", ""),
-                knowledge_base_id=kb_id,
+            doc_id = db.insert_document(
+                file_name=file_name, file_type=file_type,
+                file_size=len(markdown.encode("utf-8")), file_path="",
+                doc_number=meta.get("doc_number", ""), org_name=meta.get("org_name", ""),
+                doc_date_str=meta.get("doc_date", ""),
+                doc_title=meta.get("doc_title") or file_name,
+                doc_type=meta.get("doc_type", ""), product_name=meta.get("product_name", ""),
+                source_doc_id=doc_uid, knowledge_base_id=kb_id,
                 lifecycle_status=life["lifecycle_status"],
-                effective_date=life["effective_date"],
-                expiry_date=life["expiry_date"],
-                source_chunk_id=str(chunk.get("id") or ""),
-                chunk_type=chunk_type,
-                image_url=str(chunk.get("image_url") or ""),
-                image_caption=str(chunk.get("image_caption") or ""),
-                image_ocr=str(chunk.get("image_ocr") or ""),
-                parent_source_chunk_id=str(chunk.get("parent_chunk_id") or ""),
-            ))
-        db.commit()
+                effective_date=life["effective_date"], expiry_date=life["expiry_date"],
+                superseded_by=life["superseded_by"],
+                custom_metadata=meta.get("custom_metadata"),
+                commit=False,
+            )
+            log_id = db.insert_parse_log(doc_id, "indexing", "running", commit=False)
+
+            for i, chunk in enumerate(ordered):
+                chunk_type = str(chunk.get("chunk_type") or "text").strip().lower()
+                chunk_ids.append(db.insert_chunk(
+                    document_id=doc_id,
+                    chunk_index=_as_int(chunk.get("chunk_index"), i),
+                    chunk_text=str(chunk["content"]),
+                    chunk_level="child",
+                    keywords="",
+                    pos_start=_as_int(chunk.get("start_at")),
+                    pos_end=_as_int(chunk.get("end_at")),
+                    org_name=meta.get("org_name", ""),
+                    doc_type=meta.get("doc_type", ""),
+                    product_name=meta.get("product_name", ""),
+                    knowledge_base_id=kb_id,
+                    lifecycle_status=life["lifecycle_status"],
+                    effective_date=life["effective_date"],
+                    expiry_date=life["expiry_date"],
+                    source_chunk_id=str(chunk.get("id") or ""),
+                    chunk_type=chunk_type,
+                    image_url=str(chunk.get("image_url") or ""),
+                    image_caption=str(chunk.get("image_caption") or ""),
+                    image_ocr=str(chunk.get("image_ocr") or ""),
+                    parent_source_chunk_id=str(chunk.get("parent_chunk_id") or ""),
+                    commit=False,
+                ))
+            db.commit()
+            committed = True
         logger.info(f"[ingest] doc_id={doc_id} 写入 {len(chunk_ids)} chunks")
 
         embedded = 0
@@ -1732,8 +1744,11 @@ def _ingest_markdown(kb_id: str, doc_uid: str, file_name: str,
                 embedded = len(chunk_ids)
             else:
                 logger.warning(
-                    f"[ingest] doc_id={doc_id} 嵌入失败（{len(texts)} 块留 pending）"
+                    f"[ingest] doc_id={doc_id} 嵌入失败（{len(texts)} 块），标记 failed"
                 )
+                db.update_document_status(doc_id, "failed", error="嵌入失败：向量未写入")
+                db.update_parse_log(log_id, "failed", "embedding failed")
+                raise RuntimeError("嵌入失败：向量未写入，文档标记为 failed 等待重推")
 
         db.update_document_status(doc_id, "success", chunk_count=len(chunk_ids))
         db.update_parse_log(log_id, "success", f"{len(chunk_ids)} chunks")
@@ -1747,6 +1762,12 @@ def _ingest_markdown(kb_id: str, doc_uid: str, file_name: str,
             "chunks": len(chunk_ids), "embedded": embedded,
         }
     except Exception:
+        if committed:
+            try:
+                with _ingest_lock:
+                    _reload_memory_state()
+            except Exception as reload_err:
+                logger.warning(f"[ingest] 失败后重建内存索引失败: {reload_err}")
         db.rollback()
         raise
     finally:

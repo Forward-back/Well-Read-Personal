@@ -601,3 +601,10 @@ export function syncCodeSource(kbId: string, body: CodeSourceRequest) {
     data?: CodeSourceSyncResult
   }>
 }
+
+export function triggerEngineSync(kbId: string) {
+  return post(`/api/v1/knowledge-bases/${kbId}/engine-sync`) as unknown as Promise<{
+    success: boolean
+    data?: { queued: number }
+  }>
+}

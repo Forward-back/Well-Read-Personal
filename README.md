@@ -16,7 +16,7 @@
 | 知识消费 | 混合检索、带引用问答、精读工作台、报告导出 | 找得到、答得准、读得深 |
 | 个人化 | 个人技能、全局系统提示词、模型/解析/存储设置 | 按自己的习惯使用 |
 | 外部接入 | 单只读 API Key、17 个只读 MCP 工具、CLI | 接入外部 AI 客户端 |
-| 运维 | 健康检查、运行时队列、单基线迁移、本地数据备份 | 能部署、能排障 |
+| 运维 | 健康检查、运行时队列、增量迁移、本地数据备份 | 能部署、能排障 |
 
 ```mermaid
 flowchart LR
@@ -64,7 +64,7 @@ docker compose -f deployments/docker-compose.yml up -d --build
 
 ## 5. 工程约定
 
-- 单基线迁移：`app/migrations/versioned/000000_init.up.sql` 与 `app/migrations/sqlite/000000_init.up.sql`。
+- 迁移策略：`000000_init` 为冻结基线，新表/列按顺序新增 `000001_*` 等增量迁移；PostgreSQL 与 SQLite 各一份。
 - RAG 只做索引与检索：`/ingest` 必须携带 App 生成的 chunks，不再自行解析/分块。
 - MCP 只读：17 个工具；写工具、模型工具、租户与共享空间工具已删除。
 - 前端五项导航与五分区设置；没有能力契约或角色 if-else。

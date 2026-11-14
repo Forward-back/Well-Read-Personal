@@ -91,6 +91,7 @@ func RegisterKnowledgeBaseRoutes(r *gin.RouterGroup, handler *handler.KnowledgeB
 		kb.POST("/:id/hybrid-search", handler.HybridSearch)
 		kb.GET("/:id/hybrid-search", handler.HybridSearch)
 		kbManagement.POST("/:id/code-source", handler.SyncCodeSource)
+		kbManagement.POST("/:id/engine-sync", handler.TriggerEngineSync)
 		kbManagement.POST("/copy", handler.CopyKnowledgeBase)
 		kbManagement.POST("/:id/duplicate", handler.DuplicateKnowledgeBase)
 		kb.With(apiKeyRetrieve(apiKeyManageKnowledgeBases(apiKeyFullAccess()))).

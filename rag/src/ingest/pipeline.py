@@ -90,7 +90,8 @@ class DB:
                         source_doc_id: str = "", knowledge_base_id: str = "",
                         lifecycle_status: str = "effective",
                         effective_date: str = "", expiry_date: str = "",
-                        superseded_by: str = "", custom_metadata: dict | None = None) -> int:
+                        superseded_by: str = "", custom_metadata: dict | None = None,
+                        commit: bool = True) -> int:
         sql = """
             INSERT INTO documents (file_name, file_type, file_size, file_path,
                                    file_hash, doc_number, org_name, doc_date, doc_title,
@@ -126,7 +127,8 @@ class DB:
                 superseded_by or None,
                 json.dumps(custom_metadata, ensure_ascii=False) if custom_metadata else None,
             ))
-            self.conn.commit()
+            if commit:
+                self.conn.commit()
             return cur.lastrowid
 
     def update_document_status(self, doc_id: int, status: str, error: str = None,
@@ -151,7 +153,8 @@ class DB:
                      effective_date: str = "", expiry_date: str = "",
                      source_chunk_id: str = "", chunk_type: str = "text",
                      image_url: str = "", image_caption: str = "",
-                     image_ocr: str = "", parent_source_chunk_id: str = "") -> int:
+                     image_ocr: str = "", parent_source_chunk_id: str = "",
+                     commit: bool = True) -> int:
         sql = """
             INSERT INTO chunks (document_id, chunk_index, chunk_text, chunk_level,
                                 parent_chunk_id, keywords, position_start, position_end,
@@ -180,6 +183,8 @@ class DB:
                 image_url or None, image_caption or None, image_ocr or None,
                 parent_source_chunk_id or None,
             ))
+            if commit:
+                self.conn.commit()
             return cur.lastrowid
 
     def commit(self):
@@ -245,14 +250,16 @@ class DB:
             self.conn.commit()
 
     def insert_parse_log(self, document_id: int, stage: str,
-                         status: str = "running", message: str = ""):
+                         status: str = "running", message: str = "",
+                         commit: bool = True):
         sql = """
             INSERT INTO parse_log (document_id, stage, status, message)
             VALUES (%s, %s, %s, %s)
         """
         with self.conn.cursor() as cur:
             cur.execute(sql, (document_id, stage, status, message))
-            self.conn.commit()
+            if commit:
+                self.conn.commit()
             return cur.lastrowid
 
     def update_parse_log(self, log_id: int, status: str, message: str = ""):

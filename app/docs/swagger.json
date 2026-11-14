@@ -2740,6 +2740,50 @@
                 }
             }
         },
+        "/knowledge-bases/{id}/engine-sync": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "把知识库内待同步或同步失败的文档重新推送到 YLSW；已同步文档不重复处理",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "知识库"
+                ],
+                "summary": "重推知识库检索索引",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "已入队数量",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "知识库不存在",
+                        "schema": {
+                            "$ref": "#/definitions/gaze_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
         "/knowledge-bases/{id}/hybrid-search": {
             "get": {
                 "security": [
@@ -3029,6 +3073,84 @@
                     },
                     "403": {
                         "description": "权限不足",
+                        "schema": {
+                            "$ref": "#/definitions/gaze_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledge-bases/{id}/knowledge/archive": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "每个 Markdown 条目创建一条知识，压缩包内相对路径图片一并抽取并进入多模态流水线",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "知识管理"
+                ],
+                "summary": "从 zip 导入 Markdown 文档",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "zip 压缩包",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "元数据JSON",
+                        "name": "metadata",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "启用多模态处理",
+                        "name": "enable_multimodel",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "分类ID列表，逗号分隔",
+                        "name": "tag_ids",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "处理配置JSON（KnowledgeProcessOverrides）",
+                        "name": "process_config",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "导入结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/gaze_internal_errors.AppError"
                         }
@@ -11458,6 +11580,9 @@
                 "model_id": {
                     "type": "string"
                 },
+                "retrieval_mode": {
+                    "type": "string"
+                },
                 "skill_names": {
                     "type": "array",
                     "items": {
@@ -11796,6 +11921,10 @@
                 },
                 "description": {
                     "description": "Description",
+                    "type": "string"
+                },
+                "direct_model_id": {
+                    "description": "DirectModelID is the workspace model for the direct (non-RAG) chat mode.\nEmpty means direct mode is not configured.",
                     "type": "string"
                 },
                 "engine_sync_config": {
@@ -12255,6 +12384,10 @@
                     "description": "Deprecated: Use WebSearchProviderEntity.Parameters.APIKey instead.",
                     "type": "string"
                 },
+                "api_key_configured": {
+                    "description": "APIKeyConfigured is response-only: true when a key is stored. Never set on\nwrite paths; omitempty keeps it out of persisted tenant JSON.",
+                    "type": "boolean"
+                },
                 "blacklist": {
                     "description": "黑名单规则列表",
                     "type": "array",
@@ -12262,8 +12395,20 @@
                         "type": "string"
                     }
                 },
+                "clear_api_key": {
+                    "description": "ClearAPIKey is request-only: true removes the stored tenant KV key even\nthough empty api_key means \"keep the current key\" on normal saves.",
+                    "type": "boolean"
+                },
                 "compression_method": {
                     "description": "压缩方法：none, summary, extract, rag",
+                    "type": "string"
+                },
+                "direct_fallback_available": {
+                    "description": "DirectFallbackAvailable is response-only: true when direct mode can reuse\nthe configured direct model's key for DeepSeek search. Never set on\nwrite paths.",
+                    "type": "boolean"
+                },
+                "direct_fallback_provider": {
+                    "description": "DirectFallbackProvider is response-only: provider id of the direct model\nwhose key would be reused (e.g. \"deepseek\"). Never persisted.",
                     "type": "string"
                 },
                 "document_fragments": {
@@ -13536,6 +13681,10 @@
                 },
                 "query": {
                     "description": "Query text for knowledge base search",
+                    "type": "string"
+                },
+                "retrieval_mode": {
+                    "description": "rag | direct; empty = rag",
                     "type": "string"
                 },
                 "skill_id": {
