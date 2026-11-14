@@ -9,7 +9,7 @@ WellRead Personal 是单 owner、本地部署的个人知识库系统，根目�
 | 目录 | 职责 |
 |---|---|
 | `app/` | Go 后端、docreader、CLI、Go SDK、Swagger、迁移 |
-| `frontend/` | Vue 3 SPA；五项目导航与五分区设置 |
+| `frontend/` | Vue 3 SPA；六项目导航与五分区设置 |
 | `rag/` | Flask 检索/生成侧车；语料/模型/索引在 `data/rag/`（gitignore） |
 | `mcp/` | MCP 外部接入层；17 个只读工具 |
 | `deployments/` | 六服务 compose、hotreload overlay、systemd、env example |

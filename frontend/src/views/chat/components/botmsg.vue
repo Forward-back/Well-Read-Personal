@@ -57,6 +57,10 @@
                     :title="$t('agent.addToKnowledgeBase')">
                     <t-icon name="bookmark-add" />
                 </t-button>
+                <t-button v-if="reviewCandidates.length" size="small" variant="outline" shape="round"
+                    @click.stop="openReviewSave" :title="$t('review.saveFromAnswer')">
+                    <t-icon name="star" />
+                </t-button>
                 <!-- Fallback 提示图标 -->
                 <t-tooltip v-if="session.is_fallback" :content="$t('chat.fallbackHint')" placement="top">
                     <t-button size="small" variant="outline" shape="round" class="fallback-icon-btn">
@@ -76,6 +80,8 @@
                 $t('common.loading') }}</span></div>
         </div>
         <picturePreview :reviewImg="reviewImg" :reviewUrl="reviewUrl" @closePreImg="closePreImg"></picturePreview>
+        <ReviewCardSaveDialog v-model:visible="reviewSaveVisible" :candidates="reviewCandidates"
+            :references="session?.knowledge_references || []" />
         <Teleport to="body">
             <ChatCitationFloat :float="citationFloat" :on-enter="cancelCitationClose"
                 :on-leave="scheduleCitationClose" />
@@ -93,6 +99,8 @@ import TraceSourceIcon from './TraceSourceIcon.vue';
 import ChatRequestInfoButton from '@/components/ChatRequestInfoButton.vue';
 import ChatCitationFloat from '@/components/ChatCitationFloat.vue';
 import picturePreview from '@/components/picture-preview.vue';
+import ReviewCardSaveDialog from './ReviewCardSaveDialog.vue';
+import { extractReviewSelfTests } from '@/utils/reviewSelfTest';
 import { isCollectingSkillArtifacts } from '@/utils/skillArtifacts';
 import { persistedAssistantId } from '@/utils/steerStreamFork';
 import { sanitizeMarkdownHTML, safeMarkdownToHTML, createSafeImage, isValidImageURL, hydrateProtectedFileImages } from '@/utils/security';
@@ -182,6 +190,18 @@ const props = defineProps({
 });
 
 const showRequestInfo = computed(() => !!(props.session?.request_id || props.session?.id));
+const reviewSaveVisible = ref(false);
+const reviewCandidates = computed(() =>
+    extractReviewSelfTests(props.session?.content || props.content || ''),
+);
+
+function openReviewSave() {
+    if (!reviewCandidates.value.length) {
+        MessagePlugin.warning(t('review.noSelfTests'));
+        return;
+    }
+    reviewSaveVisible.value = true;
+}
 
 // -----------------------------------------------------------------------------
 // Skill artifact download (sandbox panel artifacts tab)

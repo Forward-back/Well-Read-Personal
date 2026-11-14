@@ -27,6 +27,7 @@ export const useMenuStore = defineStore('menuStore', () => {
     },
     { title: '', titleKey: 'menu.knowledgeBase', icon: 'menu-kb.png', path: 'knowledge-bases' },
     { title: '', titleKey: 'menu.reading', icon: 'menu-reading.png', path: 'reading' },
+    { title: '', titleKey: 'menu.review', icon: 'menu-review.svg', path: 'review' },
     { title: '', titleKey: 'menu.skills', icon: 'agent.svg', path: 'skills' },
     { title: '', titleKey: 'menu.settings', icon: 'menu-settings.svg', path: 'settings' }
   ])

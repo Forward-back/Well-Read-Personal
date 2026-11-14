@@ -130,6 +130,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewTenantSkillRepository))
 	must(container.Provide(repository.NewRetrievalAuditRepository))
 	must(container.Provide(repository.NewReadingRunRepository))
+	must(container.Provide(repository.NewReviewRepository))
 	must(container.Provide(repository.NewCustomAgentRepository))
 	must(container.Provide(service.NewWebSearchStateService))
 	must(container.Provide(repository.NewDataSourceRepository))
@@ -200,6 +201,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewGazePageService))
 	must(container.Provide(service.NewDocumentVersionService))
 	must(container.Provide(service.NewEngineSyncService))
+	must(container.Provide(func(svc *service.EngineSyncService) handler.EngineSyncTrigger { return svc }))
 	must(container.Provide(service.NewGazeIngestService, dig.Name("gazeIngest")))
 	// Web search service (needed by AgentService)
 	logger.Debugf(ctx, "[Container] Registering web search registry and providers...")
@@ -257,6 +259,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewSessionService))
 	must(container.Provide(service.NewTenantSkillService))
 	must(container.Provide(service.NewReadingRunService))
+	must(container.Provide(service.NewReviewService))
 	// The member-facing half of env vars is its own service because its
 	// authority is different in kind: it derives the identity from the context
 	// and touches only that identity's rows.
@@ -360,6 +363,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		return handler.NewSkillHandler(s, s)
 	}))
 	must(container.Provide(handler.NewReadingHandler))
+	must(container.Provide(handler.NewReviewHandler))
 
 	// Data source handler
 	must(container.Provide(handler.NewDataSourceHandler))

@@ -64,6 +64,7 @@ type RouterParams struct {
 	DataSourceCredentialsHandler *handler.DataSourceCredentialsHandler
 	GazePageHandler              *handler.GazePageHandler
 	ReadingHandler               *handler.ReadingHandler
+	ReviewHandler                *handler.ReviewHandler
 }
 
 // NewRouter 创建新的路由
@@ -182,6 +183,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterGazePageRoutes(v1, params.GazePageHandler, apiKeyGuards)
 		RegisterChunkerDebugRoutes(v1, apiKeyGuards)
 		RegisterReadingRoutes(v1, params.ReadingHandler, apiKeyGuards)
+		RegisterReviewRoutes(v1, params.ReviewHandler)
 
 		// Fail fast if any declared API-key policy points at a route
 		// template that does not actually exist (typo / path drift). A

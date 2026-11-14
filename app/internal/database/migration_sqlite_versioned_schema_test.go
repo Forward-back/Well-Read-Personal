@@ -75,6 +75,10 @@ var baselineSQLiteTables = []string{
 	"reading_terms",
 	"reading_contradictions",
 	"reading_report_drafts",
+	"review_groups",
+	"review_cards",
+	"review_card_sources",
+	"review_logs",
 }
 
 // baselineSQLiteColumns maps tables to columns the baseline must define
@@ -91,6 +95,9 @@ var baselineSQLiteColumns = map[string][]string{
 	"reading_report_drafts": {"version"},
 	"reading_questions":     {"kind", "gap_type"},
 	"knowledge_bases":       {"auto_tag_config"},
+	"review_cards":          {"review_level", "due_at", "question_hash", "deleted_at"},
+	"review_card_sources":   {"knowledge_id", "chunk_id", "content_hash", "status"},
+	"review_logs":           {"client_request_id", "level_before", "level_after"},
 }
 
 func TestSQLiteMigrationsCreateBaselineSchema(t *testing.T) {
@@ -102,7 +109,7 @@ func TestSQLiteMigrationsCreateBaselineSchema(t *testing.T) {
 
 	db := openSQLiteDB(t, dbPath)
 	version, dirty := sqliteMigrationState(t, db)
-	require.Equal(t, 0, version, "the personal-edition baseline is the single migration 000000_init")
+	require.Equal(t, 1, version, "the personal-edition schema is the frozen baseline plus review-card migration")
 	require.False(t, dirty)
 
 	for _, table := range baselineSQLiteTables {
