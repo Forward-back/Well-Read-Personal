@@ -92,7 +92,7 @@ type ReviewService interface {
 	MarkSourceUnavailable(ctx context.Context, cardID, sourceID string) error
 	RebindSource(ctx context.Context, cardID, sourceID string, req *types.RebindReviewCardSourceRequest) error
 	MergeCards(ctx context.Context, req *types.MergeReviewCardsRequest) error
-	Stats(ctx context.Context) (*types.ReviewStats, error)
+	Stats(ctx context.Context, days int) (*types.ReviewStats, error)
 	Export(ctx context.Context) (*types.ReviewExport, error)
 	PreviewGeneration(ctx context.Context, req *types.GenerateReviewCardsRequest) (*types.ReviewGenerationPreview, error)
 	ImportGeneratedCards(ctx context.Context, req *types.ImportReviewCardsRequest) (int, error)

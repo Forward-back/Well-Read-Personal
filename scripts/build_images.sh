@@ -196,7 +196,6 @@ build_frontend_image() {
         --build-arg VITE_FRONTEND_COMMIT="$COMMIT_ID" \
         ${NPM_REGISTRY:+--build-arg NPM_REGISTRY="$NPM_REGISTRY"} \
         ${NODE_MAX_OLD_SPACE_SIZE:+--build-arg NODE_MAX_OLD_SPACE_SIZE="$NODE_MAX_OLD_SPACE_SIZE"} \
-        --build-context contracts="$PROJECT_ROOT/app/contracts" \
         -f frontend/Dockerfile \
         -t gaze-ui:latest \
         frontend/

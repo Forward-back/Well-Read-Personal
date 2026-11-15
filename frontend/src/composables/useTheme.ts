@@ -65,6 +65,7 @@ function applyTheme(mode: ThemeMode) {
   if (lastEffective === effective) return
   lastEffective = effective
   document.documentElement.setAttribute('theme-mode', effective)
+  document.documentElement.classList.toggle('dark', effective === 'dark')
   syncWailsNativeChrome(effective)
 }
 

@@ -72,8 +72,61 @@ export interface ReviewWeakTopic {
   retention: number
 }
 
+export interface ReviewGroupStat {
+  group_id: string
+  group_name: string
+  reviewed: number
+  retention: number
+}
+
+export interface ReviewCardStat {
+  card_id: string
+  question: string
+  group_id: string
+  group_name: string
+  remembered: number
+  fuzzy: number
+  forgot: number
+  total: number
+  forget_rate: number
+  lapses: number
+  forget_streak: number
+}
+
+export interface ReviewDueForecast {
+  date: string
+  count: number
+}
+
+export interface ReviewRatingTrend {
+  date: string
+  remembered: number
+  fuzzy: number
+  forgot: number
+  total: number
+  retention: number
+}
+
+export interface ReviewForgettingPoint {
+  day: number
+  actual: number
+  theoretical: number
+  sample: number
+}
+
 export interface ReviewStats {
+  days: number
   total_cards: number
+  reviewed: number
+  remembered: number
+  retention: number
+  rating_distribution: ReviewRatingCounts
+  group_ranking: ReviewGroupStat[]
+  difficult_cards: ReviewCardStat[]
+  due_forecast: ReviewDueForecast[]
+  streak_days: number
+  rating_trend: ReviewRatingTrend[]
+  forgetting_curve: ReviewForgettingPoint[]
   reviewed_30d: number
   remembered_30d: number
   retention_30d: number
@@ -312,8 +365,8 @@ export function exportReviewData() {
   return get<{ success: boolean; data: unknown }>('/api/v1/review/export')
 }
 
-export function getReviewStats() {
-  return get<{ data: ReviewStats }>('/api/v1/review/stats')
+export function getReviewStats(days = 30) {
+  return get<{ data: ReviewStats }>(`/api/v1/review/stats?days=${days}`)
 }
 
 export interface GeneratedReviewCard {

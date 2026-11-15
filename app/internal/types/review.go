@@ -283,11 +283,64 @@ type RebindReviewCardSourceRequest struct {
 }
 
 type ReviewStats struct {
-	TotalCards    int64              `json:"total_cards"`
-	Reviewed30d   int64              `json:"reviewed_30d"`
-	Remembered30d int64              `json:"remembered_30d"`
-	Retention30d  float64            `json:"retention_30d"`
-	WeakTopics    []*ReviewWeakTopic `json:"weak_topics"`
+	Days               int                      `json:"days"`
+	TotalCards         int64                    `json:"total_cards"`
+	Reviewed           int64                    `json:"reviewed"`
+	Remembered         int64                    `json:"remembered"`
+	Retention          float64                  `json:"retention"`
+	RatingDistribution ReviewRatingCounts       `json:"rating_distribution"`
+	GroupRanking       []*ReviewGroupStat       `json:"group_ranking"`
+	DifficultCards     []*ReviewCardStat        `json:"difficult_cards"`
+	DueForecast        []*ReviewDueForecast     `json:"due_forecast"`
+	StreakDays         int                      `json:"streak_days"`
+	RatingTrend        []*ReviewRatingTrend     `json:"rating_trend"`
+	ForgettingCurve    []*ReviewForgettingPoint `json:"forgetting_curve"`
+	Reviewed30d        int64                    `json:"reviewed_30d"`
+	Remembered30d      int64                    `json:"remembered_30d"`
+	Retention30d       float64                  `json:"retention_30d"`
+	WeakTopics         []*ReviewWeakTopic       `json:"weak_topics"`
+}
+
+type ReviewGroupStat struct {
+	GroupID   string  `json:"group_id"`
+	GroupName string  `json:"group_name"`
+	Reviewed  int64   `json:"reviewed"`
+	Retention float64 `json:"retention"`
+}
+
+type ReviewCardStat struct {
+	CardID       string  `json:"card_id"`
+	Question     string  `json:"question"`
+	GroupID      string  `json:"group_id"`
+	GroupName    string  `json:"group_name"`
+	Remembered   int64   `json:"remembered"`
+	Fuzzy        int64   `json:"fuzzy"`
+	Forgot       int64   `json:"forgot"`
+	Total        int64   `json:"total"`
+	ForgetRate   float64 `json:"forget_rate"`
+	Lapses       int     `json:"lapses"`
+	ForgetStreak int     `json:"forget_streak"`
+}
+
+type ReviewDueForecast struct {
+	Date  string `json:"date"`
+	Count int64  `json:"count"`
+}
+
+type ReviewRatingTrend struct {
+	Date       string  `json:"date"`
+	Remembered int64   `json:"remembered"`
+	Fuzzy      int64   `json:"fuzzy"`
+	Forgot     int64   `json:"forgot"`
+	Total      int64   `json:"total"`
+	Retention  float64 `json:"retention"`
+}
+
+type ReviewForgettingPoint struct {
+	Day         int     `json:"day"`
+	Actual      float64 `json:"actual"`
+	Theoretical float64 `json:"theoretical"`
+	Sample      int64   `json:"sample"`
 }
 
 type ReviewWeakTopic struct {
@@ -333,6 +386,7 @@ type ReviewExport struct {
 	Cards      []*ReviewCard       `json:"cards"`
 	Sources    []*ReviewCardSource `json:"sources"`
 	Logs       []*ReviewLog        `json:"logs"`
+	Sessions   []*ReviewSession    `json:"sessions"`
 }
 
 // NormalizeReviewQuestion makes the hash insensitive to whitespace, case and

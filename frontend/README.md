@@ -6,15 +6,15 @@ WellRead 个人版的 Vue 3 单页应用：问答、知识库、精读、复习�
 
 - Vue 3 + TypeScript + Vite 7
 - TDesign Vue Next（存量页面）
-- shadcn-vue + Tailwind CSS（已安装；复习页迁移待开始）
-- ECharts（统计页计划接入，当前未安装）
+- shadcn-vue + Tailwind CSS（复习页已迁移，旧页面继续 TDesign）
+- ECharts（复习统计页）
 - Pinia（状态）、Vue Router（路由）
 - vue-i18n（多语言）
 - Markdown/Mermaid/KaTeX、Office 预览、xlsx 导入等展示能力
 
 ## UI 组件（复习 V2）
 
-复习 V2 起，新页面组件参考 `shadcn.com.cn` 的组合方式，用 `shadcn-vue` 实现；旧页面继续 TDesign，不允许同页混用。当前 Tailwind、shadcn-vue 与基础组件已安装，`views/review/Review.vue` 仍是 TDesign 实现，页面替换与统计页尚未开始。
+复习 V2 起，新页面组件参考 `shadcn.com.cn` 的组合方式，用 `shadcn-vue` 实现；旧页面继续 TDesign，不允许同页混用。复习页已迁移到 shadcn-vue，包含复习/卡片/统计三标签、卡组右键菜单、卡组表现抽屉与 ECharts 统计；其他页面保持 TDesign。
 
 ```bash
 npm install -D tailwindcss @tailwindcss/vite
@@ -26,7 +26,8 @@ npx shadcn-vue@latest add button dialog dropdown-menu context-menu tabs sheet ca
 - `components.json` 别名：`@/components`、`@/components/ui`、`@/lib/utils`。
 - 语义色 token 映射现有 TDesign CSS 变量，保持品牌绿与当前圆角；不采用 shadcn 默认色板。
 - 首版不全局引入 Tailwind Preflight，避免影响 TDesign 旧页面；组件基础重置局部化。
-- 统计图表用 ECharts，不用 shadcn-vue Chart。
+- 主题切换同步 `theme-mode` 与 `.dark` class，shadcn 组件跟随现有深浅色。
+- 统计图表用 ECharts，按路由异步加载；不用 shadcn-vue Chart。
 - 完整规则与组件范围见 `docs/02-需求与设计/界面规范.md` §6。
 
 ## 目录地图

@@ -246,7 +246,8 @@ func (h *ReviewHandler) RebindSource(c *gin.Context) {
 }
 
 func (h *ReviewHandler) Stats(c *gin.Context) {
-	data, err := h.service.Stats(c.Request.Context())
+	days, _ := strconv.Atoi(c.Query("days"))
+	data, err := h.service.Stats(c.Request.Context(), days)
 	if err != nil {
 		_ = c.Error(err)
 		return

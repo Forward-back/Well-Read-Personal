@@ -697,80 +697,6 @@ func (s *reviewService) MergeCards(ctx context.Context, req *types.MergeReviewCa
 	return nil
 }
 
-func (s *reviewService) Stats(ctx context.Context) (*types.ReviewStats, error) {
-	tenantID := types.MustTenantIDFromContext(ctx)
-	cards, err := s.repo.ListAllCards(ctx, tenantID)
-	if err != nil {
-		return nil, err
-	}
-	logs, err := s.repo.ListAllLogs(ctx, tenantID)
-	if err != nil {
-		return nil, err
-	}
-	cutoff := time.Now().AddDate(0, 0, -30)
-	stats := &types.ReviewStats{TotalCards: int64(len(cards))}
-	for _, log := range logs {
-		if log.ReviewedAt.Before(cutoff) {
-			continue
-		}
-		stats.Reviewed30d++
-		if log.Rating == types.ReviewRatingRemembered {
-			stats.Remembered30d++
-		}
-	}
-	if stats.Reviewed30d > 0 {
-		stats.Retention30d = float64(stats.Remembered30d) / float64(stats.Reviewed30d)
-	}
-	groups, err := s.repo.ListGroups(ctx, tenantID)
-	if err != nil {
-		return nil, err
-	}
-	groupNames := make(map[string]string, len(groups))
-	for _, group := range groups {
-		groupNames[group.ID] = group.Name
-	}
-	cardGroups := make(map[string]string, len(cards))
-	for _, card := range cards {
-		cardGroups[card.ID] = card.GroupID
-	}
-	type bucket struct{ reviewed, remembered int64 }
-	buckets := make(map[string]*bucket)
-	for _, log := range logs {
-		if log.ReviewedAt.Before(cutoff) {
-			continue
-		}
-		groupID := cardGroups[log.CardID]
-		if groupID == "" {
-			continue
-		}
-		item := buckets[groupID]
-		if item == nil {
-			item = &bucket{}
-			buckets[groupID] = item
-		}
-		item.reviewed++
-		if log.Rating == types.ReviewRatingRemembered {
-			item.remembered++
-		}
-	}
-	for groupID, item := range buckets {
-		if item.reviewed < 5 {
-			continue
-		}
-		retention := float64(item.remembered) / float64(item.reviewed)
-		if retention >= 0.6 {
-			continue
-		}
-		stats.WeakTopics = append(stats.WeakTopics, &types.ReviewWeakTopic{
-			GroupID:   groupID,
-			GroupName: groupNames[groupID],
-			Reviewed:  item.reviewed,
-			Retention: retention,
-		})
-	}
-	return stats, nil
-}
-
 func (s *reviewService) Export(ctx context.Context) (*types.ReviewExport, error) {
 	tenantID := types.MustTenantIDFromContext(ctx)
 	if _, err := s.repo.EnsureDefaultGroup(ctx, tenantID); err != nil {
@@ -792,6 +718,10 @@ func (s *reviewService) Export(ctx context.Context) (*types.ReviewExport, error)
 	if err != nil {
 		return nil, err
 	}
+	sessions, err := s.repo.ListSessions(ctx, tenantID, 10000)
+	if err != nil {
+		return nil, err
+	}
 	for _, source := range sources {
 		source.Excerpt = types.CleanReviewExcerpt(source.Excerpt)
 	}
@@ -801,6 +731,7 @@ func (s *reviewService) Export(ctx context.Context) (*types.ReviewExport, error)
 		Cards:      cards,
 		Sources:    sources,
 		Logs:       logs,
+		Sessions:   sessions,
 	}, nil
 }
 

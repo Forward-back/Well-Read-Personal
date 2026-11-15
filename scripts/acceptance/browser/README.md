@@ -2,6 +2,18 @@
 
 依赖本机 Chrome for Testing 与 `frontend/node_modules` 里的 `puppeteer-core`。脚本只读 `deployments/.env` 的 owner 账号；DeepSeek Key 从 `data/test-docs/deepseek.key`（gitignore）读取，不写日志。
 
+## 复习页验收
+
+```bash
+NODE_PATH=frontend/node_modules \
+CHROME_PATH="D:/chrome-for-test/chrome/win64-157.0.8103.38/chrome-win64/chrome.exe" \
+node scripts/acceptance/browser/review_v2_acceptance.js
+```
+
+`review_v2_acceptance.js` 覆盖：三标签、20 卡两轮、刷新恢复、易忘预警、第三次忘记自动暂停、来源失效转孤儿、跨日会话过期、7/30/90 统计、桌面/600px 布局与控制台检查。测试卡组与复习记录在结束时清理。
+
+## 其它脚本
+
 ```bash
 NODE_PATH=frontend/node_modules \
 CHROME_PATH="D:/chrome-for-test/chrome/win64-157.0.8103.38/chrome-win64/chrome.exe" \

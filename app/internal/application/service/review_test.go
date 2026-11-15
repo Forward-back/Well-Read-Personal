@@ -222,6 +222,7 @@ func TestReviewServiceExportIncludesGroupsCardsSourcesLogs(t *testing.T) {
 	assert.Len(t, data.Cards, 1)
 	assert.Len(t, data.Sources, 1)
 	assert.Len(t, data.Logs, 1)
+	assert.Empty(t, data.Sessions, "session list is included for V2 exports and empty when no session exists")
 }
 
 func TestReviewServiceStats(t *testing.T) {
@@ -234,12 +235,20 @@ func TestReviewServiceStats(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	stats, err := svc.Stats(ctx)
+	stats, err := svc.Stats(ctx, 30)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), stats.TotalCards)
 	assert.Equal(t, int64(1), stats.Reviewed30d)
 	assert.Equal(t, int64(1), stats.Remembered30d)
 	assert.InDelta(t, 1.0, stats.Retention30d, 0.001)
+	assert.Equal(t, int64(1), stats.Reviewed)
+	assert.InDelta(t, 1.0, stats.Retention, 0.001)
+	assert.Equal(t, 30, stats.Days)
+	assert.Len(t, stats.RatingTrend, 30)
+	assert.Len(t, stats.DueForecast, 7)
+	assert.Len(t, stats.GroupRanking, 1)
+	assert.Equal(t, 1, stats.RatingDistribution.Remembered)
+	assert.Equal(t, 1, stats.StreakDays)
 }
 
 func TestReviewServiceGroupTreeCountsSubtreeCards(t *testing.T) {
