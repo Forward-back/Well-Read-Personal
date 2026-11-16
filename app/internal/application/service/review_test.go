@@ -98,7 +98,7 @@ func TestReviewServiceSubmitReviewIsIdempotent(t *testing.T) {
 	assert.Equal(t, 1, again.ReviewCount, "retry with the same request ID must not advance the card")
 }
 
-func TestReviewServiceSuspendsAfterThreeForgets(t *testing.T) {
+func TestReviewServiceDoesNotAutoSuspendAfterThreeForgets(t *testing.T) {
 	svc, _, ctx := setupReviewServiceTest(t)
 	card := createTestCard(t, svc, ctx, "什么是链表？")
 
@@ -109,20 +109,27 @@ func TestReviewServiceSuspendsAfterThreeForgets(t *testing.T) {
 			ClientRequestID: requestID,
 		})
 		require.NoError(t, err)
-		if i < 2 {
-			assert.Equal(t, types.ReviewStatusActive, reviewed.Status)
-		} else {
-			assert.Equal(t, types.ReviewStatusSuspended, reviewed.Status)
-			assert.Equal(t, 3, reviewed.Lapses)
-		}
+		assert.Equal(t, types.ReviewStatusActive, reviewed.Status)
+		assert.Equal(t, i+1, reviewed.Lapses)
 	}
 
-	_, err := svc.SubmitReview(ctx, &types.SubmitReviewRequest{
+	reviewed, err := svc.SubmitReview(ctx, &types.SubmitReviewRequest{
 		CardID:          card.ID,
 		Rating:          types.ReviewRatingRemembered,
-		ClientRequestID: "after-suspend",
+		ClientRequestID: "after-three-forgets",
 	})
-	require.Error(t, err, "suspended cards must leave the queue")
+	require.NoError(t, err, "repeatedly forgotten cards stay reviewable in V3")
+	assert.Equal(t, types.ReviewStatusActive, reviewed.Status)
+	assert.Equal(t, 0, reviewed.ForgetStreak)
+	assert.Equal(t, 3, reviewed.Lapses)
+
+	require.NoError(t, svc.SetCardStatus(ctx, card.ID, types.ReviewStatusSuspended))
+	_, err = svc.SubmitReview(ctx, &types.SubmitReviewRequest{
+		CardID:          card.ID,
+		Rating:          types.ReviewRatingRemembered,
+		ClientRequestID: "while-suspended",
+	})
+	require.Error(t, err, "only an explicit pause removes a card from the queue")
 }
 
 func TestReviewServiceTodayQueueRespectsCompletedCap(t *testing.T) {
@@ -141,6 +148,7 @@ func TestReviewServiceTodayQueueRespectsCompletedCap(t *testing.T) {
 	queue, err := svc.TodayQueue(ctx, "", 2)
 	require.NoError(t, err)
 	assert.Equal(t, 1, queue.CompletedToday)
+	assert.Equal(t, 1, queue.StreakDays)
 	assert.LessOrEqual(t, len(queue.Due)+len(queue.New), 1)
 }
 
@@ -200,10 +208,16 @@ func TestReviewServiceRebindReactivateOrphan(t *testing.T) {
 		ChunkID:     "c-new",
 		Excerpt:     "新来源",
 	}))
+	rebound, err := svc.GetCard(ctx, card.ID)
+	require.NoError(t, err)
+	assert.Equal(t, types.ReviewStatusSuspended, rebound.Card.Status,
+		"rebinding keeps the card paused until the owner resumes it")
+	assert.Equal(t, "k-new", rebound.Sources[0].KnowledgeID)
+
+	require.NoError(t, svc.SetCardStatus(ctx, card.ID, types.ReviewStatusActive))
 	restored, err := svc.GetCard(ctx, card.ID)
 	require.NoError(t, err)
 	assert.Equal(t, types.ReviewStatusActive, restored.Card.Status)
-	assert.Equal(t, "k-new", restored.Sources[0].KnowledgeID)
 }
 
 func TestReviewServiceExportIncludesGroupsCardsSourcesLogs(t *testing.T) {
@@ -252,12 +266,12 @@ func TestReviewServiceStats(t *testing.T) {
 }
 
 func TestReviewServiceGroupTreeCountsSubtreeCards(t *testing.T) {
-	svc, _, ctx := setupReviewServiceTest(t)
+	svc, repo, ctx := setupReviewServiceTest(t)
 	parent, err := svc.CreateGroup(ctx, &types.CreateReviewGroupRequest{Name: "父"})
 	require.NoError(t, err)
 	child, err := svc.CreateGroup(ctx, &types.CreateReviewGroupRequest{Name: "子", ParentID: parent.ID})
 	require.NoError(t, err)
-	_, err = svc.CreateCard(ctx, &types.CreateReviewCardRequest{
+	card, err := svc.CreateCard(ctx, &types.CreateReviewCardRequest{
 		GroupID:  child.ID,
 		Question: "子树计数",
 		Answer:   "答案",
@@ -267,6 +281,21 @@ func TestReviewServiceGroupTreeCountsSubtreeCards(t *testing.T) {
 		}},
 	})
 	require.NoError(t, err)
+
+	stored, err := repo.GetCard(ctx, 1, card.ID)
+	require.NoError(t, err)
+	stored.ReviewCount = 1
+	stored.DueAt = time.Now().Add(-time.Hour)
+	applied, err := repo.ApplyReview(ctx, stored, &types.ReviewLog{
+		ID:              "log-due",
+		TenantID:        1,
+		CardID:          stored.ID,
+		Rating:          types.ReviewRatingRemembered,
+		ReviewedAt:      time.Now(),
+		ClientRequestID: "group-due",
+	})
+	require.NoError(t, err)
+	require.True(t, applied)
 
 	tree, err := svc.ListGroupTree(ctx)
 	require.NoError(t, err)
@@ -288,6 +317,8 @@ func TestReviewServiceGroupTreeCountsSubtreeCards(t *testing.T) {
 	require.NotNil(t, childNode)
 	assert.Equal(t, 1, parentNode.CardCount)
 	assert.Equal(t, 1, childNode.CardCount)
+	assert.Equal(t, 1, parentNode.DueCount)
+	assert.Equal(t, 1, childNode.DueCount)
 }
 
 func TestReviewServiceDailySessionCompletesAndResumes(t *testing.T) {
@@ -418,7 +449,8 @@ func TestReviewServiceCardPerformanceAndWarning(t *testing.T) {
 	assert.Equal(t, 2, performance.Counts.Forgot)
 	assert.Equal(t, 1, performance.Counts.Remembered)
 	assert.Equal(t, 0, performance.ForgetStreak)
-	assert.Equal(t, "none", performance.Warning)
+	assert.Equal(t, "watch", performance.Warning)
+	assert.Equal(t, types.ReviewCardLevelWarning, performance.Card.Vulnerability)
 
 	watchCard := createTestCard(t, svc, ctx, "连续忘记卡")
 	for i, rating := range []string{types.ReviewRatingForgot, types.ReviewRatingForgot} {
@@ -432,7 +464,8 @@ func TestReviewServiceCardPerformanceAndWarning(t *testing.T) {
 	performance, err = svc.GetCardPerformance(ctx, watchCard.ID)
 	require.NoError(t, err)
 	assert.Equal(t, 2, performance.ForgetStreak)
-	assert.Equal(t, "watch", performance.Warning)
+	assert.Equal(t, "high", performance.Warning)
+	assert.Equal(t, types.ReviewCardLevelSevere, performance.Card.Vulnerability)
 
 	_, err = svc.SubmitReview(ctx, &types.SubmitReviewRequest{
 		CardID:          card.ID,

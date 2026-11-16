@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"time"
 
@@ -14,10 +13,17 @@ import (
 )
 
 type reviewService struct {
-	repo          interfaces.ReviewRepository
-	chunkRepo     interfaces.ChunkRepository
-	knowledgeRepo interfaces.KnowledgeRepository
-	modelService  interfaces.ModelService
+	repo              interfaces.ReviewRepository
+	chunkRepo         interfaces.ChunkRepository
+	knowledgeRepo     interfaces.KnowledgeRepository
+	knowledgeResolver reviewKnowledgeResolver
+	modelService      interfaces.ModelService
+}
+
+// reviewKnowledgeResolver is the narrow slice of the knowledge repository the
+// vulnerability view needs: document titles for heatmap columns.
+type reviewKnowledgeResolver interface {
+	GetKnowledgeBatch(ctx context.Context, tenantID uint64, ids []string) ([]*types.Knowledge, error)
 }
 
 func NewReviewService(repo interfaces.ReviewRepository) interfaces.ReviewService {
@@ -30,12 +36,16 @@ func NewReviewServiceWithGeneration(
 	knowledgeRepo interfaces.KnowledgeRepository,
 	modelService interfaces.ModelService,
 ) interfaces.ReviewService {
-	return &reviewService{
+	service := &reviewService{
 		repo:          repo,
 		chunkRepo:     chunkRepo,
 		knowledgeRepo: knowledgeRepo,
 		modelService:  modelService,
 	}
+	if knowledgeRepo != nil {
+		service.knowledgeResolver = knowledgeRepo
+	}
+	return service
 }
 
 func (s *reviewService) EnsureDefaultGroup(ctx context.Context) (*types.ReviewGroup, error) {
@@ -70,20 +80,29 @@ func (s *reviewService) ListGroupTree(ctx context.Context) ([]*types.ReviewGroup
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now()
 	direct := make(map[string]int, len(groups))
+	directDue := make(map[string]int, len(groups))
 	for _, card := range cards {
 		if card != nil && card.GroupID != "" {
 			direct[card.GroupID]++
+			if card.Status == types.ReviewStatusActive && card.ReviewCount > 0 && !card.DueAt.After(now) {
+				directDue[card.GroupID]++
+			}
 		}
 	}
-	var fill func(node *types.ReviewGroupNode) int
-	fill = func(node *types.ReviewGroupNode) int {
+	var fill func(node *types.ReviewGroupNode) (int, int)
+	fill = func(node *types.ReviewGroupNode) (int, int) {
 		count := direct[node.Group.ID]
+		due := directDue[node.Group.ID]
 		for _, child := range node.Children {
-			count += fill(child)
+			childCount, childDue := fill(child)
+			count += childCount
+			due += childDue
 		}
 		node.CardCount = count
-		return count
+		node.DueCount = due
+		return count, due
 	}
 	for _, root := range roots {
 		fill(root)
@@ -252,6 +271,10 @@ func (s *reviewService) CreateCard(
 	if err != nil {
 		return nil, err
 	}
+	tags, err := normalizeReviewTags(req.Tags)
+	if err != nil {
+		return nil, err
+	}
 	hash := types.HashReviewQuestion(question)
 	existing, err := s.repo.FindCardByQuestionHash(ctx, tenantID, hash)
 	if err != nil {
@@ -276,7 +299,7 @@ func (s *reviewService) CreateCard(
 		Question:     question,
 		Answer:       answer,
 		Explanation:  strings.TrimSpace(req.Explanation),
-		Tags:         reviewTagsJSON(req.Tags),
+		Tags:         reviewTagsJSON(tags),
 		Status:       types.ReviewStatusActive,
 		Stability:    ReviewInitialStability,
 		DueAt:        time.Now(),
@@ -320,6 +343,13 @@ func (s *reviewService) GetCard(ctx context.Context, id string) (*types.ReviewCa
 	if detail == nil {
 		return nil, werrors.NewNotFoundError("复习卡不存在")
 	}
+	logs, err := s.repo.ListLogsByCardIDs(ctx, tenantID, []string{detail.Card.ID})
+	if err != nil {
+		return nil, err
+	}
+	attachReviewCardLevels(
+		[]*types.ReviewCard{detail.Card}, groupReviewLogsByCard(logs), time.Now(),
+	)
 	return detail, nil
 }
 
@@ -352,7 +382,23 @@ func (s *reviewService) ListCards(
 			filter.GroupIDs = []string{filter.GroupID}
 		}
 	}
-	return s.repo.ListCards(ctx, tenantID, filter)
+	cards, err := s.repo.ListCards(ctx, tenantID, filter)
+	if err != nil {
+		return nil, err
+	}
+	if len(cards) == 0 {
+		return cards, nil
+	}
+	ids := make([]string, 0, len(cards))
+	for _, card := range cards {
+		ids = append(ids, card.ID)
+	}
+	logs, err := s.repo.ListLogsByCardIDs(ctx, tenantID, ids)
+	if err != nil {
+		return nil, err
+	}
+	attachReviewCardLevels(cards, groupReviewLogsByCard(logs), time.Now())
+	return cards, nil
 }
 
 func (s *reviewService) UpdateCard(
@@ -395,7 +441,11 @@ func (s *reviewService) UpdateCard(
 		card.Explanation = strings.TrimSpace(*req.Explanation)
 	}
 	if req.Tags != nil {
-		card.Tags = reviewTagsJSON(req.Tags)
+		tags, err := normalizeReviewTags(req.Tags)
+		if err != nil {
+			return nil, err
+		}
+		card.Tags = reviewTagsJSON(tags)
 	}
 	if err := s.repo.UpdateCard(ctx, card); err != nil {
 		return nil, err
@@ -434,6 +484,9 @@ func (s *reviewService) SetCardStatus(ctx context.Context, id, status string) er
 	if card == nil {
 		return werrors.NewNotFoundError("复习卡不存在")
 	}
+	if card.Status == types.ReviewStatusOrphaned {
+		return werrors.NewConflictError("孤儿卡请先重绑来源")
+	}
 	return s.repo.SetCardStatus(ctx, tenantID, id, status)
 }
 
@@ -444,18 +497,25 @@ func (s *reviewService) DeleteCard(ctx context.Context, id string) error {
 
 func (s *reviewService) RestoreCard(ctx context.Context, id string) error {
 	tenantID := types.MustTenantIDFromContext(ctx)
-	return s.repo.RestoreCard(ctx, tenantID, id)
+	if err := s.repo.RestoreCard(ctx, tenantID, id); err != nil {
+		return err
+	}
+	active, err := s.repo.CountActiveKnowledgeSources(ctx, tenantID, id)
+	if err != nil {
+		return err
+	}
+	if active == 0 {
+		return s.repo.SetCardStatus(ctx, tenantID, id, types.ReviewStatusOrphaned)
+	}
+	return nil
 }
 
 func (s *reviewService) TodayQueue(
 	ctx context.Context, groupID string, limit int,
 ) (*types.ReviewQueue, error) {
 	tenantID := types.MustTenantIDFromContext(ctx)
-	if limit <= 0 {
-		limit = 30
-	}
-	if limit > 100 {
-		limit = 100
+	if limit <= 0 || limit > ReviewDailyTotalLimit {
+		limit = ReviewDailyTotalLimit
 	}
 	now := time.Now()
 	groupIDs, err := s.groupSubtree(ctx, tenantID, groupID)
@@ -467,11 +527,17 @@ func (s *reviewService) TodayQueue(
 		return nil, err
 	}
 	remaining := limit - int(completed)
+	logs, err := s.repo.ListAllLogs(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
 	queue := &types.ReviewQueue{
 		Due:            []*types.ReviewCard{},
 		New:            []*types.ReviewCard{},
 		CompletedToday: int(completed),
 		Limit:          limit,
+		NewLimit:       ReviewDailyNewCardLimit,
+		StreakDays:     reviewStreakDays(logs, ReviewDayStart(now)),
 	}
 	if remaining <= 0 {
 		return queue, nil
@@ -482,6 +548,9 @@ func (s *reviewService) TodayQueue(
 	}
 	queue.Due = due
 	newLimit := remaining - len(due)
+	if newLimit > ReviewDailyNewCardLimit {
+		newLimit = ReviewDailyNewCardLimit
+	}
 	if newLimit > 0 {
 		fresh, err := s.repo.ListNewCards(ctx, tenantID, groupIDs, newLimit)
 		if err != nil {
@@ -532,9 +601,8 @@ func (s *reviewService) SubmitReview(
 	card.DueAt = dueAt
 	card.ReviewCount++
 	card.LastReviewedAt = &now
-	if card.Lapses >= 3 {
-		card.Status = types.ReviewStatusSuspended
-	}
+	// V3 keeps repeatedly forgotten cards active so the vulnerability view
+	// stays honest. Suspension is only ever an explicit user action.
 	clientRequestID := strings.TrimSpace(req.ClientRequestID)
 	if clientRequestID == "" {
 		clientRequestID = uuid.NewString()
@@ -655,7 +723,9 @@ func (s *reviewService) RebindSource(
 		return err
 	}
 	if card.Status == types.ReviewStatusOrphaned {
-		return s.repo.SetCardStatus(ctx, tenantID, cardID, types.ReviewStatusActive)
+		// Rebound orphans stay paused until the owner explicitly resumes
+		// them, so a source fix never silently re-enters the queue.
+		return s.repo.SetCardStatus(ctx, tenantID, cardID, types.ReviewStatusSuspended)
 	}
 	return nil
 }
@@ -691,7 +761,7 @@ func (s *reviewService) MergeCards(ctx context.Context, req *types.MergeReviewCa
 	}
 	if target.Status == types.ReviewStatusOrphaned {
 		if active, err := s.repo.CountActiveKnowledgeSources(ctx, tenantID, targetID); err == nil && active > 0 {
-			return s.repo.SetCardStatus(ctx, tenantID, targetID, types.ReviewStatusActive)
+			return s.repo.SetCardStatus(ctx, tenantID, targetID, types.ReviewStatusSuspended)
 		}
 	}
 	return nil
@@ -853,21 +923,6 @@ func reviewSourceKey(source *types.ReviewCardSource) string {
 	}, "\x00")
 }
 
-func reviewTagsJSON(tags []string) types.JSON {
-	seen := make(map[string]bool, len(tags))
-	cleaned := make([]string, 0, len(tags))
-	for _, tag := range tags {
-		tag = strings.TrimSpace(tag)
-		if tag == "" || seen[tag] {
-			continue
-		}
-		seen[tag] = true
-		cleaned = append(cleaned, tag)
-	}
-	encoded, _ := json.Marshal(cleaned)
-	return types.JSON(encoded)
-}
-
 func (s *reviewService) GetCardPerformance(
 	ctx context.Context, cardID string,
 ) (*types.ReviewCardPerformance, error) {
@@ -883,6 +938,11 @@ func (s *reviewService) GetCardPerformance(
 	if err != nil {
 		return nil, err
 	}
+	chronological := make([]*types.ReviewLog, len(logs))
+	for i, log := range logs {
+		chronological[len(logs)-1-i] = log
+	}
+	card.Vulnerability = reviewCardLevel(card, chronological, time.Now())
 	performance := &types.ReviewCardPerformance{
 		Card:         card,
 		ForgetStreak: card.ForgetStreak,
@@ -896,6 +956,8 @@ func (s *reviewService) GetCardPerformance(
 	for _, log := range logs {
 		performance.Counts.Total++
 		switch log.Rating {
+		case types.ReviewRatingEasy:
+			performance.Counts.Easy++
 		case types.ReviewRatingRemembered:
 			performance.Counts.Remembered++
 		case types.ReviewRatingFuzzy:
@@ -907,6 +969,8 @@ func (s *reviewService) GetCardPerformance(
 	for _, log := range recentLogs {
 		performance.RecentCounts.Total++
 		switch log.Rating {
+		case types.ReviewRatingEasy:
+			performance.RecentCounts.Easy++
 		case types.ReviewRatingRemembered:
 			performance.RecentCounts.Remembered++
 		case types.ReviewRatingFuzzy:
@@ -918,16 +982,16 @@ func (s *reviewService) GetCardPerformance(
 	if performance.RecentCounts.Total > 0 {
 		performance.RecentForgetRate = float64(performance.RecentCounts.Forgot) / float64(performance.RecentCounts.Total)
 	}
-	switch {
-	case card.Status == types.ReviewStatusSuspended || card.Lapses >= 3:
+	switch card.Vulnerability {
+	case types.ReviewCardLevelSevere:
 		performance.Warning = "high"
-		performance.WarningReason = "累计忘记次数过多，已暂停或接近暂停"
-	case card.ForgetStreak >= 2:
+		performance.WarningReason = "这张卡近期反复忘记，建议重学并回原文巩固"
+	case types.ReviewCardLevelWarning:
 		performance.Warning = "watch"
-		performance.WarningReason = "连续两次忘记，建议回原文复习"
-	case performance.RecentCounts.Total >= 5 && performance.RecentForgetRate >= 0.4:
+		performance.WarningReason = "这张卡近期表现不稳，建议回原文复习"
+	case types.ReviewCardLevelObserve:
 		performance.Warning = "watch"
-		performance.WarningReason = "最近五次评分中忘记占比达到 40%"
+		performance.WarningReason = "这张卡最近想得慢或已逾期，暂时继续观察"
 	}
 	return performance, nil
 }

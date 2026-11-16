@@ -128,6 +128,8 @@ func TestReviewRepositoryDeleteAndRestoreCard(t *testing.T) {
 	group, err := repo.EnsureDefaultGroup(ctx, 1)
 	require.NoError(t, err)
 	card, sources := newRepositoryTestCard(group.ID)
+	card.Lapses = 3
+	card.ForgetStreak = 2
 	require.NoError(t, repo.CreateCard(ctx, card, sources))
 
 	require.NoError(t, repo.SoftDeleteCard(ctx, 1, card.ID))
@@ -139,8 +141,10 @@ func TestReviewRepositoryDeleteAndRestoreCard(t *testing.T) {
 	restored, err := repo.GetCard(ctx, 1, card.ID)
 	require.NoError(t, err)
 	require.NotNil(t, restored)
-	assert.Equal(t, types.ReviewStatusActive, restored.Status)
-	assert.Equal(t, 0, restored.Lapses)
+	assert.Equal(t, types.ReviewStatusSuspended, restored.Status,
+		"restored cards stay paused until explicitly resumed")
+	assert.Equal(t, 3, restored.Lapses, "restoring a deleted card keeps its schedule history")
+	assert.Equal(t, 2, restored.ForgetStreak)
 }
 
 func TestReviewRepositoryDeleteGroupMovesChildrenAndCards(t *testing.T) {

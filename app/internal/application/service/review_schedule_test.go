@@ -57,6 +57,25 @@ func TestApplyReviewScheduleForgotResetsStability(t *testing.T) {
 	assert.Equal(t, time.Date(2026, 11, 15, 4, 0, 0, 0, now.Location()), due)
 }
 
+func TestApplyReviewScheduleEasyGrowsFastest(t *testing.T) {
+	now := time.Date(2026, 11, 14, 10, 0, 0, 0, time.FixedZone("CST", 8*60*60))
+	stability, level, due, interval, err := ApplyReviewSchedule(
+		ReviewInitialStability, 0, types.ReviewRatingEasy, now,
+	)
+	require.NoError(t, err)
+	assert.Equal(t, 50.0, stability)
+	assert.Equal(t, 2, level)
+	assert.Equal(t, 5, interval)
+	assert.Equal(t, time.Date(2026, 11, 19, 4, 0, 0, 0, now.Location()), due)
+}
+
+func TestApplyReviewScheduleLevelCapsAtMaximum(t *testing.T) {
+	now := time.Now()
+	_, level, _, _, err := ApplyReviewSchedule(100000, 5, types.ReviewRatingEasy, now)
+	require.NoError(t, err)
+	assert.Equal(t, len(types.ReviewScheduleIntervals)-1, level)
+}
+
 func TestReviewIntervalDaysCapsAtMaximum(t *testing.T) {
 	assert.Equal(t, ReviewMaxIntervalDays, ReviewIntervalDays(100000))
 	assert.Equal(t, 1, ReviewIntervalDays(0))

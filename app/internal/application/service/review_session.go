@@ -24,10 +24,20 @@ func (s *reviewService) StartSession(
 	if err := s.repo.ExpireSessions(ctx, tenantID, dayStart); err != nil {
 		return nil, err
 	}
-	if active, err := s.repo.GetActiveSession(ctx, tenantID); err != nil {
+	active, err := s.repo.GetActiveSession(ctx, tenantID)
+	if err != nil {
 		return nil, err
-	} else if active != nil {
-		return s.sessionState(ctx, tenantID, active)
+	}
+	if active != nil {
+		if !req.ForceNew {
+			return nil, werrors.NewConflictError("已有进行中的复习会话")
+		}
+		completedAt := now
+		active.Status = types.ReviewSessionStatusAbandoned
+		active.CompletedAt = &completedAt
+		if err := s.repo.UpdateSession(ctx, active); err != nil {
+			return nil, err
+		}
 	}
 
 	mode := strings.TrimSpace(req.Mode)
@@ -39,11 +49,7 @@ func (s *reviewService) StartSession(
 	}
 	var cards []*types.ReviewCard
 	if mode == types.ReviewSessionModeDaily {
-		limit := req.Limit
-		if limit <= 0 {
-			limit = 30
-		}
-		queue, err := s.TodayQueue(ctx, req.GroupID, limit)
+		queue, err := s.TodayQueue(ctx, req.GroupID, req.Limit)
 		if err != nil {
 			return nil, err
 		}

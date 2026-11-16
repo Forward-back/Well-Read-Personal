@@ -31,6 +31,15 @@ const (
 	ReviewRatingForgot     = "forgot"
 	ReviewRatingFuzzy      = "fuzzy"
 	ReviewRatingRemembered = "remembered"
+	ReviewRatingEasy       = "easy"
+
+	// Card vulnerability levels. None means the card has never been reviewed
+	// and is not judged healthy.
+	ReviewCardLevelSevere  = "severe"
+	ReviewCardLevelWarning = "warning"
+	ReviewCardLevelObserve = "observe"
+	ReviewCardLevelHealthy = "healthy"
+	ReviewCardLevelNone    = "none"
 
 	ReviewSessionModeDaily  = "daily"
 	ReviewSessionModeManual = "manual"
@@ -62,27 +71,30 @@ func (ReviewGroup) TableName() string { return "review_groups" }
 // ReviewCard is one knowledge point. One card owns one schedule and one or
 // more sources; the source list is loaded separately.
 type ReviewCard struct {
-	ID             string         `json:"id"              gorm:"type:varchar(64);primaryKey"`
-	TenantID       uint64         `json:"tenant_id"       gorm:"not null;index"`
-	GroupID        string         `json:"group_id"        gorm:"type:varchar(64);not null;index"`
-	CardType       string         `json:"card_type"       gorm:"type:varchar(20);not null;default:'qa'"`
-	Question       string         `json:"question"        gorm:"type:text;not null"`
-	Answer         string         `json:"answer"          gorm:"type:text;not null"`
-	Explanation    string         `json:"explanation"     gorm:"type:text;not null;default:''"`
-	Tags           JSON           `json:"tags"            gorm:"type:jsonb;not null"`
-	Status         string         `json:"status"          gorm:"type:varchar(20);not null;default:'active'"`
-	ReviewLevel    int            `json:"review_level"    gorm:"not null;default:0"`
-	Stability      float64        `json:"stability"      gorm:"not null;default:10"`
-	ForgetStreak   int            `json:"forget_streak"  gorm:"not null;default:0"`
-	DueAt          time.Time      `json:"due_at"          gorm:"not null"`
-	Lapses         int            `json:"lapses"          gorm:"not null;default:0"`
-	ReviewCount    int            `json:"review_count"    gorm:"not null;default:0"`
-	QuestionHash   string         `json:"question_hash"   gorm:"type:varchar(64);not null"`
-	LastReviewedAt *time.Time     `json:"last_reviewed_at"`
-	SourceUpdated  bool           `json:"source_updated"  gorm:"not null;default:false"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
-	DeletedAt      gorm.DeletedAt `json:"-"               gorm:"index"`
+	ID             string     `json:"id"              gorm:"type:varchar(64);primaryKey"`
+	TenantID       uint64     `json:"tenant_id"       gorm:"not null;index"`
+	GroupID        string     `json:"group_id"        gorm:"type:varchar(64);not null;index"`
+	CardType       string     `json:"card_type"       gorm:"type:varchar(20);not null;default:'qa'"`
+	Question       string     `json:"question"        gorm:"type:text;not null"`
+	Answer         string     `json:"answer"          gorm:"type:text;not null"`
+	Explanation    string     `json:"explanation"     gorm:"type:text;not null;default:''"`
+	Tags           JSON       `json:"tags"            gorm:"type:jsonb;not null"`
+	Status         string     `json:"status"          gorm:"type:varchar(20);not null;default:'active'"`
+	ReviewLevel    int        `json:"review_level"    gorm:"not null;default:0"`
+	Stability      float64    `json:"stability"      gorm:"not null;default:10"`
+	ForgetStreak   int        `json:"forget_streak"  gorm:"not null;default:0"`
+	DueAt          time.Time  `json:"due_at"          gorm:"not null"`
+	Lapses         int        `json:"lapses"          gorm:"not null;default:0"`
+	ReviewCount    int        `json:"review_count"    gorm:"not null;default:0"`
+	QuestionHash   string     `json:"question_hash"   gorm:"type:varchar(64);not null"`
+	LastReviewedAt *time.Time `json:"last_reviewed_at"`
+	SourceUpdated  bool       `json:"source_updated"  gorm:"not null;default:false"`
+	// Vulnerability is a computed single-card level for list and detail
+	// responses. It is never persisted.
+	Vulnerability string         `json:"vulnerability,omitempty" gorm:"-"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	DeletedAt     gorm.DeletedAt `json:"-"               gorm:"index"`
 }
 
 func (ReviewCard) TableName() string { return "review_cards" }
@@ -143,6 +155,7 @@ type ReviewSession struct {
 	PlannedCount    int        `json:"planned_count"       gorm:"not null;default:0"`
 	CompletedCount  int        `json:"completed_count"     gorm:"not null;default:0"`
 	RememberedCount int        `json:"remembered_count"    gorm:"not null;default:0"`
+	EasyCount       int        `json:"easy_count"          gorm:"not null;default:0"`
 	FuzzyCount      int        `json:"fuzzy_count"         gorm:"not null;default:0"`
 	ForgotCount     int        `json:"forgot_count"        gorm:"not null;default:0"`
 	ReviewDay       time.Time  `json:"review_day"          gorm:"not null"`
@@ -159,6 +172,10 @@ type StartReviewSessionRequest struct {
 	GroupID string   `json:"group_id"`
 	CardIDs []string `json:"card_ids"`
 	Limit   int      `json:"limit"`
+	// ForceNew abandons an active session before starting. Without it an
+	// existing active session is reported as a conflict instead of silently
+	// resumed, so the UI can ask continue-or-replace.
+	ForceNew bool `json:"force_new"`
 }
 
 type ReviewSessionState struct {
@@ -168,6 +185,7 @@ type ReviewSessionState struct {
 }
 
 type ReviewRatingCounts struct {
+	Easy       int `json:"easy"`
 	Remembered int `json:"remembered"`
 	Fuzzy      int `json:"fuzzy"`
 	Forgot     int `json:"forgot"`
@@ -190,6 +208,7 @@ type ReviewGroupNode struct {
 	Group     *ReviewGroup       `json:"group"`
 	Children  []*ReviewGroupNode `json:"children"`
 	CardCount int                `json:"card_count"`
+	DueCount  int                `json:"due_count"`
 }
 
 // ReviewCardSourceInput is the save-time source shape.
@@ -241,6 +260,8 @@ type ReviewCardFilter struct {
 	GroupIDs       []string
 	Statuses       []string
 	Keyword        string
+	Tag            string
+	DueOnly        bool
 	Limit          int
 	Offset         int
 }
@@ -257,6 +278,8 @@ type ReviewQueue struct {
 	New            []*ReviewCard `json:"new"`
 	CompletedToday int           `json:"completed_today"`
 	Limit          int           `json:"limit"`
+	NewLimit       int           `json:"new_limit"`
+	StreakDays     int           `json:"streak_days"`
 }
 
 type SubmitReviewRequest struct {
@@ -297,6 +320,7 @@ type ReviewStats struct {
 	ForgettingCurve    []*ReviewForgettingPoint `json:"forgetting_curve"`
 	Reviewed30d        int64                    `json:"reviewed_30d"`
 	Remembered30d      int64                    `json:"remembered_30d"`
+	Easy30d            int64                    `json:"easy_30d"`
 	Retention30d       float64                  `json:"retention_30d"`
 	WeakTopics         []*ReviewWeakTopic       `json:"weak_topics"`
 }
@@ -313,6 +337,7 @@ type ReviewCardStat struct {
 	Question     string  `json:"question"`
 	GroupID      string  `json:"group_id"`
 	GroupName    string  `json:"group_name"`
+	Easy         int64   `json:"easy"`
 	Remembered   int64   `json:"remembered"`
 	Fuzzy        int64   `json:"fuzzy"`
 	Forgot       int64   `json:"forgot"`
@@ -329,6 +354,7 @@ type ReviewDueForecast struct {
 
 type ReviewRatingTrend struct {
 	Date       string  `json:"date"`
+	Easy       int64   `json:"easy"`
 	Remembered int64   `json:"remembered"`
 	Fuzzy      int64   `json:"fuzzy"`
 	Forgot     int64   `json:"forgot"`
@@ -348,6 +374,97 @@ type ReviewWeakTopic struct {
 	GroupName string  `json:"group_name"`
 	Reviewed  int64   `json:"reviewed"`
 	Retention float64 `json:"retention"`
+}
+
+// ReviewHeatmap is the server-side vulnerability aggregate. Rows are card
+// groups, columns are tags or source documents, and cells are their
+// intersection clusters. Multi-tag cards appear in several columns, so the
+// intensity percentages do not add up.
+type ReviewHeatmap struct {
+	Rows         []*ReviewHeatmapRow    `json:"rows"`
+	Columns      []*ReviewHeatmapColumn `json:"columns"`
+	Cells        []*ReviewHeatmapCell   `json:"cells"`
+	Priorities   []*ReviewHeatmapCell   `json:"priorities"`
+	ObserveCount int                    `json:"observe_count"`
+	Insight      *ReviewHeatmapInsight  `json:"insight"`
+}
+
+type ReviewHeatmapRow struct {
+	ID         string `json:"id"`
+	GroupID    string `json:"group_id"`
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	Virtual    bool   `json:"virtual"`
+	TotalCards int    `json:"total_cards"`
+}
+
+const (
+	ReviewHeatmapColumnKindTag           = "tag"
+	ReviewHeatmapColumnKindSource        = "source"
+	ReviewHeatmapColumnKindUncategorized = "uncategorized"
+)
+
+type ReviewHeatmapColumn struct {
+	Key             string `json:"key"`
+	Title           string `json:"title"`
+	Kind            string `json:"kind"`
+	SourceID        string `json:"source_id"`
+	KnowledgeBaseID string `json:"knowledge_base_id"`
+}
+
+type ReviewHeatmapCell struct {
+	RowID     string  `json:"row_id"`
+	ColumnKey string  `json:"column_key"`
+	Level     string  `json:"level"`
+	Intensity float64 `json:"intensity"`
+	Total     int     `json:"total"`
+	Severe    int     `json:"severe"`
+	Warning   int     `json:"warning"`
+	Observe   int     `json:"observe"`
+	Healthy   int     `json:"healthy"`
+	NoData    int     `json:"no_data"`
+	Clickable bool    `json:"clickable"`
+}
+
+type ReviewHeatmapInsight struct {
+	Kind      string `json:"kind"`
+	RowID     string `json:"row_id"`
+	ColumnKey string `json:"column_key"`
+	Message   string `json:"message"`
+}
+
+type ReviewClusterDetail struct {
+	Cell   *ReviewHeatmapCell   `json:"cell"`
+	Row    *ReviewHeatmapRow    `json:"row"`
+	Column *ReviewHeatmapColumn `json:"column"`
+	Cards  []*ReviewClusterCard `json:"cards"`
+}
+
+type ReviewClusterCard struct {
+	Card            *ReviewCard       `json:"card"`
+	Level           string            `json:"level"`
+	LastRating      string            `json:"last_rating"`
+	SuggestedAction string            `json:"suggested_action"`
+	Source          *ReviewCardSource `json:"source"`
+	KnowledgeBaseID string            `json:"knowledge_base_id"`
+}
+
+const (
+	ReviewBatchActionDelete  = "delete"
+	ReviewBatchActionMove    = "move"
+	ReviewBatchActionAddTags = "add_tags"
+	ReviewBatchActionReset   = "reset"
+)
+
+type BatchReviewCardsRequest struct {
+	CardIDs []string `json:"card_ids"`
+	Action  string   `json:"action"`
+	GroupID string   `json:"group_id"`
+	Tags    []string `json:"tags"`
+}
+
+type BatchReviewCardsResult struct {
+	Affected int `json:"affected"`
 }
 
 type GenerateReviewCardsRequest struct {

@@ -10,6 +10,7 @@ import (
 )
 
 type reviewCountBucket struct {
+	easy       int64
 	remembered int64
 	fuzzy      int64
 	forgot     int64
@@ -19,6 +20,8 @@ type reviewCountBucket struct {
 func (b *reviewCountBucket) add(rating string) {
 	b.total++
 	switch rating {
+	case types.ReviewRatingEasy:
+		b.easy++
 	case types.ReviewRatingRemembered:
 		b.remembered++
 	case types.ReviewRatingFuzzy:
@@ -26,6 +29,10 @@ func (b *reviewCountBucket) add(rating string) {
 	case types.ReviewRatingForgot:
 		b.forgot++
 	}
+}
+
+func (b *reviewCountBucket) success() int64 {
+	return b.easy + b.remembered
 }
 
 // Stats returns the review dashboard aggregate for the requested day window.
@@ -92,6 +99,9 @@ func (s *reviewService) Stats(ctx context.Context, days int) (*types.ReviewStats
 			if log.Rating == types.ReviewRatingRemembered {
 				stats.Remembered30d++
 			}
+			if log.Rating == types.ReviewRatingEasy {
+				stats.Easy30d++
+			}
 		}
 		if log.ReviewedAt.Before(cutoff) {
 			continue
@@ -101,6 +111,8 @@ func (s *reviewService) Stats(ctx context.Context, days int) (*types.ReviewStats
 			stats.Remembered++
 		}
 		switch log.Rating {
+		case types.ReviewRatingEasy:
+			stats.RatingDistribution.Easy++
 		case types.ReviewRatingRemembered:
 			stats.RatingDistribution.Remembered++
 		case types.ReviewRatingFuzzy:
@@ -129,6 +141,8 @@ func (s *reviewService) Stats(ctx context.Context, days int) (*types.ReviewStats
 		if point := trendByDay[ReviewDayStart(log.ReviewedAt).Format("2006-01-02")]; point != nil {
 			point.Total++
 			switch log.Rating {
+			case types.ReviewRatingEasy:
+				point.Easy++
 			case types.ReviewRatingRemembered:
 				point.Remembered++
 			case types.ReviewRatingFuzzy:
@@ -140,21 +154,23 @@ func (s *reviewService) Stats(ctx context.Context, days int) (*types.ReviewStats
 	}
 
 	if stats.Reviewed > 0 {
-		stats.Retention = float64(stats.Remembered) / float64(stats.Reviewed)
+		success := stats.RatingDistribution.Easy + stats.RatingDistribution.Remembered
+		stats.Retention = float64(success) / float64(stats.Reviewed)
 	}
 	if stats.Reviewed30d > 0 {
-		stats.Retention30d = float64(stats.Remembered30d) / float64(stats.Reviewed30d)
+		success := stats.Easy30d + stats.Remembered30d
+		stats.Retention30d = float64(success) / float64(stats.Reviewed30d)
 	}
 	for _, point := range stats.RatingTrend {
 		if point.Total > 0 {
-			point.Retention = float64(point.Remembered) / float64(point.Total)
+			point.Retention = float64(point.Easy+point.Remembered) / float64(point.Total)
 		}
 	}
 
 	for groupID, bucket := range groupBuckets {
 		retention := 0.0
 		if bucket.total > 0 {
-			retention = float64(bucket.remembered) / float64(bucket.total)
+			retention = float64(bucket.success()) / float64(bucket.total)
 		}
 		stats.GroupRanking = append(stats.GroupRanking, &types.ReviewGroupStat{
 			GroupID:   groupID,
@@ -194,6 +210,7 @@ func (s *reviewService) Stats(ctx context.Context, days int) (*types.ReviewStats
 			Question:     card.Question,
 			GroupID:      card.GroupID,
 			GroupName:    groupNames[card.GroupID],
+			Easy:         bucket.easy,
 			Remembered:   bucket.remembered,
 			Fuzzy:        bucket.fuzzy,
 			Forgot:       bucket.forgot,
@@ -284,7 +301,7 @@ func reviewForgettingCurve(logs []*types.ReviewLog) []*types.ReviewForgettingPoi
 				}
 				bucket := buckets[index]
 				bucket.sample++
-				if log.Rating == types.ReviewRatingRemembered {
+				if log.Rating == types.ReviewRatingRemembered || log.Rating == types.ReviewRatingEasy {
 					bucket.hits++
 				}
 				stability := log.StabilityBefore

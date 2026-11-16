@@ -90,6 +90,8 @@ func (h *ReviewHandler) ListCards(c *gin.Context) {
 		GroupID:        c.Query("group_id"),
 		IncludeSubtree: includeSubtree,
 		Keyword:        c.Query("keyword"),
+		Tag:            c.Query("tag"),
+		DueOnly:        c.Query("due_only") == "true",
 		Limit:          limit,
 		Offset:         offset,
 	}
@@ -185,6 +187,49 @@ func (h *ReviewHandler) RestoreCard(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func (h *ReviewHandler) ResetCardSchedule(c *gin.Context) {
+	card, err := h.service.ResetCardSchedule(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": card})
+}
+
+func (h *ReviewHandler) BatchCards(c *gin.Context) {
+	var req types.BatchReviewCardsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	result, err := h.service.BatchCards(c.Request.Context(), &req)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
+}
+
+func (h *ReviewHandler) Heatmap(c *gin.Context) {
+	data, err := h.service.Heatmap(c.Request.Context(), c.Query("group_id"))
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+}
+
+func (h *ReviewHandler) ClusterDetail(c *gin.Context) {
+	data, err := h.service.ClusterDetail(
+		c.Request.Context(), c.Query("row_id"), c.Query("column_key"),
+	)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
 }
 
 func (h *ReviewHandler) TodayQueue(c *gin.Context) {

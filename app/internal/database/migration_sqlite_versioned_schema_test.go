@@ -99,7 +99,7 @@ var baselineSQLiteColumns = map[string][]string{
 	"review_cards":          {"review_level", "stability", "forget_streak", "due_at", "question_hash", "deleted_at"},
 	"review_card_sources":   {"knowledge_id", "chunk_id", "content_hash", "status"},
 	"review_logs":           {"client_request_id", "session_id", "stability_before", "stability_after", "level_before", "level_after"},
-	"review_sessions":       {"mode", "status", "planned_card_ids", "review_day", "planned_count", "completed_count"},
+	"review_sessions":       {"mode", "status", "planned_card_ids", "review_day", "planned_count", "completed_count", "easy_count"},
 }
 
 func TestSQLiteMigrationsCreateBaselineSchema(t *testing.T) {
@@ -111,7 +111,7 @@ func TestSQLiteMigrationsCreateBaselineSchema(t *testing.T) {
 
 	db := openSQLiteDB(t, dbPath)
 	version, dirty := sqliteMigrationState(t, db)
-	require.Equal(t, 2, version, "the personal-edition schema includes review sessions and stability migration")
+	require.Equal(t, 3, version, "the personal-edition schema includes review V3 easy rating migration")
 	require.False(t, dirty)
 
 	for _, table := range baselineSQLiteTables {

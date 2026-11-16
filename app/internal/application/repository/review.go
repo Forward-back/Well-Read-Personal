@@ -197,6 +197,12 @@ func (r *reviewRepository) ListCards(
 			like := "%" + keyword + "%"
 			q = q.Where("question LIKE ? OR answer LIKE ?", like, like)
 		}
+		if tag := strings.ToLower(strings.TrimSpace(filter.Tag)); tag != "" {
+			q = q.Where("LOWER(CAST(tags AS TEXT)) LIKE ?", "%"+tag+"%")
+		}
+		if filter.DueOnly {
+			q = q.Where("due_at <= ? AND review_count > 0", time.Now())
+		}
 	}
 	if filter != nil && filter.Limit > 0 {
 		q = q.Limit(filter.Limit)
@@ -240,9 +246,11 @@ func (r *reviewRepository) SetCardStatus(
 		Model(&types.ReviewCard{}).
 		Where("tenant_id = ? AND id = ?", tenantID, cardID).
 		Updates(map[string]any{
-			"status":     status,
-			"lapses":     gorm.Expr("CASE WHEN ? THEN 0 ELSE lapses END", status == types.ReviewStatusActive),
-			"updated_at": time.Now(),
+			"status": status,
+			// Resuming a paused card clears the streak but keeps the lifetime
+			// lapse count; a card with a history of forgetting stays vulnerable.
+			"forget_streak": gorm.Expr("CASE WHEN ? THEN 0 ELSE forget_streak END", status == types.ReviewStatusActive),
+			"updated_at":    time.Now(),
 		}).Error
 }
 
@@ -268,8 +276,9 @@ func (r *reviewRepository) RestoreCard(
 		Where("tenant_id = ? AND id = ?", tenantID, cardID).
 		Updates(map[string]any{
 			"deleted_at": nil,
-			"status":     types.ReviewStatusActive,
-			"lapses":     0,
+			// Restored cards stay paused; the owner explicitly resumes them so
+			// a restore never silently drops a card back into today's queue.
+			"status":     types.ReviewStatusSuspended,
 			"updated_at": time.Now(),
 		}).Error
 }
@@ -448,6 +457,7 @@ func (r *reviewRepository) applyReview(
 				session.TenantID, session.ID, types.ReviewSessionStatusActive).
 			Updates(map[string]any{
 				"completed_count":  gorm.Expr("completed_count + 1"),
+				"easy_count":       gorm.Expr("easy_count + CASE WHEN ? THEN 1 ELSE 0 END", log.Rating == types.ReviewRatingEasy),
 				"remembered_count": gorm.Expr("remembered_count + CASE WHEN ? THEN 1 ELSE 0 END", log.Rating == types.ReviewRatingRemembered),
 				"fuzzy_count":      gorm.Expr("fuzzy_count + CASE WHEN ? THEN 1 ELSE 0 END", log.Rating == types.ReviewRatingFuzzy),
 				"forgot_count":     gorm.Expr("forgot_count + CASE WHEN ? THEN 1 ELSE 0 END", log.Rating == types.ReviewRatingForgot),
@@ -459,6 +469,8 @@ func (r *reviewRepository) applyReview(
 		}
 		session.CompletedCount++
 		switch log.Rating {
+		case types.ReviewRatingEasy:
+			session.EasyCount++
 		case types.ReviewRatingRemembered:
 			session.RememberedCount++
 		case types.ReviewRatingFuzzy:
@@ -614,6 +626,7 @@ func (r *reviewRepository) UpdateSession(ctx context.Context, session *types.Rev
 			"status":           session.Status,
 			"completed_count":  session.CompletedCount,
 			"remembered_count": session.RememberedCount,
+			"easy_count":       session.EasyCount,
 			"fuzzy_count":      session.FuzzyCount,
 			"forgot_count":     session.ForgotCount,
 			"completed_at":     session.CompletedAt,
@@ -704,4 +717,85 @@ func (r *reviewRepository) ListLogsByCard(
 		Limit(limit).
 		Find(&logs).Error
 	return logs, err
+}
+
+func (r *reviewRepository) ListLogsByCardIDs(
+	ctx context.Context, tenantID uint64, cardIDs []string,
+) ([]*types.ReviewLog, error) {
+	if len(cardIDs) == 0 {
+		return []*types.ReviewLog{}, nil
+	}
+	var logs []*types.ReviewLog
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND card_id IN ?", tenantID, cardIDs).
+		Order("reviewed_at ASC").
+		Find(&logs).Error
+	return logs, err
+}
+
+func (r *reviewRepository) BatchDeleteCards(
+	ctx context.Context, tenantID uint64, cardIDs []string,
+) error {
+	if len(cardIDs) == 0 {
+		return nil
+	}
+	now := time.Now()
+	return r.db.WithContext(ctx).Unscoped().
+		Model(&types.ReviewCard{}).
+		Where("tenant_id = ? AND id IN ? AND deleted_at IS NULL", tenantID, cardIDs).
+		Updates(map[string]any{
+			"status":     types.ReviewStatusDeleted,
+			"deleted_at": now,
+			"updated_at": now,
+		}).Error
+}
+
+func (r *reviewRepository) BatchMoveCards(
+	ctx context.Context, tenantID uint64, cardIDs []string, groupID string,
+) error {
+	if len(cardIDs) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).
+		Model(&types.ReviewCard{}).
+		Where("tenant_id = ? AND id IN ? AND deleted_at IS NULL", tenantID, cardIDs).
+		Updates(map[string]any{"group_id": groupID, "updated_at": time.Now()}).Error
+}
+
+func (r *reviewRepository) BatchUpdateCardTags(
+	ctx context.Context, tenantID uint64, tagsByCard map[string]types.JSON,
+) error {
+	if len(tagsByCard) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for cardID, tags := range tagsByCard {
+			if err := tx.Model(&types.ReviewCard{}).
+				Where("tenant_id = ? AND id = ? AND deleted_at IS NULL", tenantID, cardID).
+				Updates(map[string]any{"tags": tags, "updated_at": time.Now()}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (r *reviewRepository) ResetCardSchedules(
+	ctx context.Context, tenantID uint64, cardIDs []string, dueAt time.Time, stability float64,
+) error {
+	if len(cardIDs) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return tx.Model(&types.ReviewCard{}).
+			Where("tenant_id = ? AND id IN ? AND deleted_at IS NULL", tenantID, cardIDs).
+			Updates(map[string]any{
+				"review_level":  0,
+				"stability":     stability,
+				"forget_streak": 0,
+				"lapses":        0,
+				"due_at":        dueAt,
+				"updated_at":    time.Now(),
+			}).Error
+	})
 }

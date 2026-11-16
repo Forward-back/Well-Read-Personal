@@ -42,6 +42,10 @@ type ReviewRepository interface {
 	ListNewCards(ctx context.Context, tenantID uint64, groupIDs []string, limit int) ([]*types.ReviewCard, error)
 	ListCardsByIDs(ctx context.Context, tenantID uint64, ids []string) ([]*types.ReviewCard, error)
 	CountCompletedToday(ctx context.Context, tenantID uint64, from, to time.Time) (int64, error)
+	BatchDeleteCards(ctx context.Context, tenantID uint64, cardIDs []string) error
+	BatchMoveCards(ctx context.Context, tenantID uint64, cardIDs []string, groupID string) error
+	BatchUpdateCardTags(ctx context.Context, tenantID uint64, tagsByCard map[string]types.JSON) error
+	ResetCardSchedules(ctx context.Context, tenantID uint64, cardIDs []string, dueAt time.Time, stability float64) error
 
 	// Sessions
 	CreateSession(ctx context.Context, session *types.ReviewSession) error
@@ -52,6 +56,7 @@ type ReviewRepository interface {
 	ListSessions(ctx context.Context, tenantID uint64, limit int) ([]*types.ReviewSession, error)
 	ListLogsBySession(ctx context.Context, tenantID uint64, sessionID string) ([]*types.ReviewLog, error)
 	ListLogsByCard(ctx context.Context, tenantID uint64, cardID string, limit int) ([]*types.ReviewLog, error)
+	ListLogsByCardIDs(ctx context.Context, tenantID uint64, cardIDs []string) ([]*types.ReviewLog, error)
 	FindLogBySessionCard(ctx context.Context, tenantID uint64, sessionID, cardID string) (*types.ReviewLog, error)
 
 	// ApplyReview inserts one idempotent review log and updates the card in one
@@ -80,6 +85,10 @@ type ReviewService interface {
 	SetCardStatus(ctx context.Context, id, status string) error
 	DeleteCard(ctx context.Context, id string) error
 	RestoreCard(ctx context.Context, id string) error
+	ResetCardSchedule(ctx context.Context, id string) (*types.ReviewCard, error)
+	BatchCards(ctx context.Context, req *types.BatchReviewCardsRequest) (*types.BatchReviewCardsResult, error)
+	Heatmap(ctx context.Context, groupID string) (*types.ReviewHeatmap, error)
+	ClusterDetail(ctx context.Context, rowID, columnKey string) (*types.ReviewClusterDetail, error)
 
 	TodayQueue(ctx context.Context, groupID string, limit int) (*types.ReviewQueue, error)
 	StartSession(ctx context.Context, req *types.StartReviewSessionRequest) (*types.ReviewSessionState, error)

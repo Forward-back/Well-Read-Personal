@@ -13,6 +13,9 @@ const (
 	ReviewResetStability   = 5.0
 	ReviewTargetRetention  = 0.9
 	ReviewMaxIntervalDays  = 180
+
+	ReviewDailyTotalLimit   = 100
+	ReviewDailyNewCardLimit = 20
 )
 
 // ReviewDayStart returns the start of the review day containing now. The day
@@ -49,8 +52,8 @@ func ReviewIntervalDays(stability float64) int {
 }
 
 // ApplyReviewSchedule updates one card's stability and next due date. The
-// three ratings intentionally stay simple: remembered grows stability, fuzzy
-// grows it slowly, forgot resets it to a short interval.
+// four ratings stay deliberately simple: easy and remembered grow stability,
+// fuzzy grows it slowly, forgot resets it to a short interval.
 func ApplyReviewSchedule(
 	stability float64, level int, rating string, now time.Time,
 ) (float64, int, time.Time, int, error) {
@@ -65,12 +68,12 @@ func ApplyReviewSchedule(
 	}
 	nextLevel := level
 	switch rating {
+	case types.ReviewRatingEasy:
+		stability *= 5
+		nextLevel = level + 2
 	case types.ReviewRatingRemembered:
 		stability *= 3
 		nextLevel = level + 1
-		if nextLevel >= len(types.ReviewScheduleIntervals) {
-			nextLevel = len(types.ReviewScheduleIntervals) - 1
-		}
 	case types.ReviewRatingFuzzy:
 		stability *= 1.5
 	case types.ReviewRatingForgot:
@@ -78,6 +81,9 @@ func ApplyReviewSchedule(
 		nextLevel = 0
 	default:
 		return stability, level, now, 0, fmt.Errorf("unsupported review rating %q", rating)
+	}
+	if nextLevel >= len(types.ReviewScheduleIntervals) {
+		nextLevel = len(types.ReviewScheduleIntervals) - 1
 	}
 	if stability < 1 {
 		stability = 1
