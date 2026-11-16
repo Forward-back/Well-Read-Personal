@@ -65,6 +65,13 @@ const router = createRouter({
           meta: { requiresAuth: true },
         },
         {
+          // Temporary V3 preview route; remove when ReviewV3 replaces Review.vue.
+          path: 'review-v3',
+          name: 'reviewV3Preview',
+          component: () => import('../views/review/v3/ReviewV3.vue'),
+          meta: { requiresAuth: true },
+        },
+        {
           path: 'skills',
           name: 'skills',
           component: () => import('../views/skills/Skills.vue'),

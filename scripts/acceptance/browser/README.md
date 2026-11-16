@@ -12,6 +12,18 @@ node scripts/acceptance/browser/review_v2_acceptance.js
 
 `review_v2_acceptance.js` 覆盖：三标签、20 卡两轮、刷新恢复、易忘预警、第三次忘记自动暂停、来源失效转孤儿、跨日会话过期、7/30/90 统计、桌面/600px 布局与控制台检查。测试卡组与复习记录在结束时清理。
 
+V2 脚本只验证当前 V2 行为；复习 V3 的四档评分、漏洞簇、批量与重置、TDesign 页面需要另写脚本，不能沿用此结论。
+
+### V3 骨架预览
+
+```bash
+NODE_PATH=frontend/node_modules \
+WELLREAD_WEB=http://localhost:5174 \
+node scripts/acceptance/browser/review_v3_skeleton_acceptance.js
+```
+
+`review_v3_skeleton_acceptance.js` 验证临时预览路由 `/platform/review-v3`：三视图切换、卡组栏选择与悬停菜单、卡组新建/重命名/删除、任务条状态、今日占位模块、1440/600px 无横向溢出与控制台 0 错误。脚本会创建并删除一个 `V3骨架-*` 测试卡组；卡片管理、热力图与复习模式尚未覆盖。
+
 ## 其它脚本
 
 ```bash

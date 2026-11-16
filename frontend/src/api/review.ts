@@ -15,6 +15,7 @@ export interface ReviewGroupNode {
   group: ReviewGroup
   children: ReviewGroupNode[]
   card_count: number
+  due_count: number
 }
 
 export interface ReviewCardSource {
@@ -37,6 +38,9 @@ export interface ReviewCardSource {
   updated_at: string
 }
 
+export type ReviewRating = 'forgot' | 'fuzzy' | 'remembered' | 'easy'
+export type ReviewVulnerability = 'severe' | 'warning' | 'observe' | 'healthy' | 'none'
+
 export interface ReviewCard {
   id: string
   tenant_id: number
@@ -56,6 +60,7 @@ export interface ReviewCard {
   question_hash: string
   last_reviewed_at?: string | null
   source_updated: boolean
+  vulnerability?: ReviewVulnerability
   created_at: string
   updated_at: string
 }
@@ -84,6 +89,7 @@ export interface ReviewCardStat {
   question: string
   group_id: string
   group_name: string
+  easy: number
   remembered: number
   fuzzy: number
   forgot: number
@@ -100,6 +106,7 @@ export interface ReviewDueForecast {
 
 export interface ReviewRatingTrend {
   date: string
+  easy: number
   remembered: number
   fuzzy: number
   forgot: number
@@ -129,6 +136,7 @@ export interface ReviewStats {
   forgetting_curve: ReviewForgettingPoint[]
   reviewed_30d: number
   remembered_30d: number
+  easy_30d: number
   retention_30d: number
   weak_topics?: ReviewWeakTopic[]
 }
@@ -143,6 +151,7 @@ export interface ReviewSession {
   planned_count: number
   completed_count: number
   remembered_count: number
+  easy_count: number
   fuzzy_count: number
   forgot_count: number
   review_day: string
@@ -157,7 +166,7 @@ export interface ReviewLog {
   tenant_id: number
   card_id: string
   session_id: string
-  rating: 'forgot' | 'fuzzy' | 'remembered'
+  rating: ReviewRating
   level_before: number
   level_after: number
   interval_days: number
@@ -175,6 +184,7 @@ export interface ReviewSessionState {
 }
 
 export interface ReviewRatingCounts {
+  easy: number
   remembered: number
   fuzzy: number
   forgot: number
@@ -197,6 +207,82 @@ export interface ReviewQueue {
   new: ReviewCard[]
   completed_today: number
   limit: number
+  new_limit: number
+  streak_days: number
+}
+
+export type ReviewHeatmapColumnKind = 'tag' | 'source' | 'uncategorized'
+
+export interface ReviewHeatmapRow {
+  id: string
+  group_id: string
+  name: string
+  path: string
+  virtual: boolean
+  total_cards: number
+}
+
+export interface ReviewHeatmapColumn {
+  key: string
+  title: string
+  kind: ReviewHeatmapColumnKind
+  source_id: string
+  knowledge_base_id: string
+}
+
+export interface ReviewHeatmapCell {
+  row_id: string
+  column_key: string
+  level: ReviewVulnerability
+  intensity: number
+  total: number
+  severe: number
+  warning: number
+  observe: number
+  healthy: number
+  no_data: number
+  clickable: boolean
+}
+
+export interface ReviewHeatmapInsight {
+  kind: 'row' | 'column'
+  row_id: string
+  column_key: string
+  message: string
+}
+
+export interface ReviewHeatmap {
+  rows: ReviewHeatmapRow[]
+  columns: ReviewHeatmapColumn[]
+  cells: ReviewHeatmapCell[]
+  priorities: ReviewHeatmapCell[]
+  observe_count: number
+  insight?: ReviewHeatmapInsight | null
+}
+
+export interface ReviewClusterCard {
+  card: ReviewCard
+  level: ReviewVulnerability
+  last_rating: ReviewRating | ''
+  suggested_action: 'relearn' | 'observe' | ''
+  source?: ReviewCardSource | null
+  knowledge_base_id: string
+}
+
+export interface ReviewClusterDetail {
+  cell: ReviewHeatmapCell
+  row: ReviewHeatmapRow
+  column: ReviewHeatmapColumn
+  cards: ReviewClusterCard[]
+}
+
+export type ReviewBatchAction = 'delete' | 'move' | 'add_tags' | 'reset'
+
+export interface BatchReviewCardsRequest {
+  card_ids: string[]
+  action: ReviewBatchAction
+  group_id?: string
+  tags?: string[]
 }
 
 export interface ReviewCardSourceInput {
@@ -247,6 +333,8 @@ export function listReviewCards(params: {
   include_subtree?: boolean
   status?: string
   keyword?: string
+  tag?: string
+  due_only?: boolean
   limit?: number
   offset?: number
 }) {
@@ -291,6 +379,26 @@ export function restoreReviewCard(id: string) {
   return post<{ success: boolean }>(`/api/v1/review/cards/${encodeURIComponent(id)}/restore`, {})
 }
 
+export function resetReviewCardSchedule(id: string) {
+  return post<{ data: ReviewCard }>(`/api/v1/review/cards/${encodeURIComponent(id)}/reset`, {})
+}
+
+export function batchReviewCards(payload: BatchReviewCardsRequest) {
+  return post<{ data: { affected: number } }>('/api/v1/review/cards/batch', payload)
+}
+
+export function getReviewHeatmap(params?: { group_id?: string }) {
+  const query = new URLSearchParams()
+  if (params?.group_id) query.set('group_id', params.group_id)
+  const suffix = query.toString() ? `?${query}` : ''
+  return get<{ data: ReviewHeatmap }>(`/api/v1/review/heatmap${suffix}`)
+}
+
+export function getReviewClusterDetail(params: { row_id: string; column_key: string }) {
+  const query = new URLSearchParams({ row_id: params.row_id, column_key: params.column_key })
+  return get<{ data: ReviewClusterDetail }>(`/api/v1/review/clusters/detail?${query}`)
+}
+
 export function getReviewQueue(params?: { group_id?: string; limit?: number }) {
   const query = new URLSearchParams()
   if (params?.group_id) query.set('group_id', params.group_id)
@@ -302,7 +410,7 @@ export function getReviewQueue(params?: { group_id?: string; limit?: number }) {
 export function submitReview(payload: {
   card_id: string
   session_id?: string
-  rating: 'forgot' | 'fuzzy' | 'remembered'
+  rating: ReviewRating
   client_request_id: string
 }) {
   return post<{ data: ReviewCard }>('/api/v1/review/reviews', payload)
@@ -313,6 +421,7 @@ export function startReviewSession(payload: {
   group_id?: string
   card_ids?: string[]
   limit?: number
+  force_new?: boolean
 }) {
   return post<{ data: ReviewSessionState }>('/api/v1/review/sessions', payload)
 }

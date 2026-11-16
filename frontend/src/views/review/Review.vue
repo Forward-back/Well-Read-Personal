@@ -252,7 +252,7 @@ async function loadCards() {
 
 async function loadQueue() {
   const response = await getReviewQueue({ group_id: selectedGroupId.value || undefined, limit: 30 })
-  queue.value = response.data || { due: [], new: [], completed_today: 0, limit: 30 }
+  queue.value = response.data || { due: [], new: [], completed_today: 0, limit: 30, new_limit: 20, streak_days: 0 }
 }
 
 async function loadStats() {
@@ -572,11 +572,26 @@ async function startReview() {
 
 async function startSelectedReview() {
   if (!selectedCardIDs.value.length) return
+  if (activeSession.value) {
+    askConfirm({
+      title: t('review.abandonSession'),
+      message: t('review.abandonSessionConfirm'),
+      danger: true,
+      action: () => beginSelectedReview(true),
+    })
+    return
+  }
+  await beginSelectedReview(false)
+}
+
+async function beginSelectedReview(forceNew: boolean) {
+  if (!selectedCardIDs.value.length) return
   try {
     const response = await startReviewSession({
       mode: 'manual',
       group_id: selectedGroupId.value || undefined,
       card_ids: selectedCardIDs.value,
+      force_new: forceNew || undefined,
     })
     selectedCardIDs.value = []
     applySession(response.data)
@@ -767,13 +782,6 @@ async function undoDelete() {
   }
 }
 
-function statusBadgeVariant(status: ReviewCard['status']) {
-  if (status === 'active') return 'default'
-  if (status === 'suspended') return 'outline'
-  if (status === 'orphaned') return 'destructive'
-  return 'secondary'
-}
-
 function formatTime(value?: string | null) {
   if (!value) return '-'
   return new Date(value).toLocaleString('zh-CN', {
@@ -781,6 +789,14 @@ function formatTime(value?: string | null) {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+  })
+}
+
+function formatDue(value?: string | null) {
+  if (!value) return '-'
+  return new Date(value).toLocaleDateString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
   })
 }
 
@@ -805,13 +821,13 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="review-scope bg-background text-foreground h-full overflow-y-auto" data-testid="review-page">
-    <div class="mx-auto w-full max-w-[1200px] p-3 sm:p-5 lg:p-8">
+    <div class="mx-auto w-full max-w-[1200px] px-4 py-5 sm:px-6 lg:px-8">
       <header v-if="!reviewing" class="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div class="min-w-0">
-          <h1 class="text-2xl font-bold tracking-tight">{{ t('review.title') }}</h1>
-          <p class="text-muted-foreground mt-1 text-sm">{{ t('review.subtitle') }}</p>
+          <h1 class="text-[22px] leading-8 font-semibold tracking-tight">{{ t('review.title') }}</h1>
+          <p class="text-muted-foreground mt-0.5 text-[13px] leading-5">{{ t('review.subtitle') }}</p>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" :disabled="loading" @click="refreshAll">
             <RefreshCw :class="{ 'animate-spin': loading }" />{{ t('review.refresh') }}
           </Button>
@@ -893,8 +909,8 @@ onBeforeUnmount(() => {
           <TabsTrigger value="stats" data-testid="review-tab-stats">{{ t('review.tabs.stats') }}</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="review" class="mt-3">
-          <div class="grid gap-3 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <TabsContent value="review" class="mt-4">
+          <div class="grid gap-4 lg:grid-cols-[232px_minmax(0,1fr)]">
             <ReviewGroupSidebar
               :groups="flatGroups"
               :selected-group-id="selectedGroupId"
@@ -904,8 +920,8 @@ onBeforeUnmount(() => {
               @rename="openRenameGroup"
               @delete="openDeleteGroup"
             />
-            <main class="min-w-0 space-y-3">
-              <div v-if="activeSession" class="border-primary/30 bg-primary/5 flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between" data-testid="review-active-session">
+            <main class="min-w-0 space-y-4">
+              <div v-if="activeSession" class="border-primary/25 bg-primary/5 flex flex-col gap-2 rounded-md border px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between" data-testid="review-active-session">
                 <span class="text-sm">{{ t('review.activeSession', { completed: activeSession.session.completed_count, total: activeSession.session.planned_count }) }}</span>
                 <div class="flex gap-2">
                   <Button size="sm" @click="resumeSession">{{ t('review.resumeSession') }}</Button>
@@ -913,60 +929,86 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
-              <div class="grid gap-3 sm:grid-cols-3">
-                <Card>
-                  <CardContent class="pt-4">
-                    <div class="text-muted-foreground text-xs">{{ t('review.today') }}</div>
-                    <div class="mt-1 flex items-baseline gap-2">
-                      <strong class="text-2xl">{{ queue?.due.length ?? 0 }}</strong><span class="text-muted-foreground text-xs">{{ t('review.due') }}</span>
-                      <strong class="text-2xl">{{ queue?.new.length ?? 0 }}</strong><span class="text-muted-foreground text-xs">{{ t('review.newCards') }}</span>
+              <div class="grid gap-3 md:grid-cols-3">
+                <Card class="h-full py-0">
+                  <CardContent class="flex h-full flex-col p-4">
+                    <div class="text-muted-foreground text-[13px] font-medium">{{ t('review.today') }}</div>
+                    <div class="mt-2 grid grid-cols-2 gap-3">
+                      <div>
+                        <div class="text-2xl leading-8 font-semibold tabular-nums">{{ queue?.due.length ?? 0 }}</div>
+                        <div class="text-muted-foreground text-xs">{{ t('review.due') }}</div>
+                      </div>
+                      <div>
+                        <div class="text-2xl leading-8 font-semibold tabular-nums">{{ queue?.new.length ?? 0 }}</div>
+                        <div class="text-muted-foreground text-xs">{{ t('review.newCards') }}</div>
+                      </div>
+                    </div>
+                    <div class="mt-auto pt-3">
+                      <Button class="w-full" :disabled="!queueHasCards && !activeSession" data-testid="review-start" @click="startReview">
+                        <Play />{{ activeSession ? t('review.resumeSession') : t('review.start') }}
+                      </Button>
+                      <p v-if="queueHasCards || activeSession" class="text-muted-foreground mt-1.5 text-xs leading-5">{{ t('review.startHint') }}</p>
                     </div>
                   </CardContent>
                 </Card>
-                <Card>
-                  <CardContent class="pt-4">
-                    <div class="text-muted-foreground text-xs">{{ t('review.todayProgress') }}</div>
-                    <div class="mt-1 text-2xl font-semibold">{{ queue?.completed_today ?? 0 }}<span class="text-muted-foreground text-sm"> / {{ queue?.limit ?? 30 }}</span></div>
-                    <Progress :model-value="dailyProgress" class="mt-2" />
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent class="pt-4">
-                    <div class="text-muted-foreground text-xs">{{ t('review.longTerm') }}</div>
-                    <div class="mt-1 flex items-baseline gap-2">
-                      <strong class="text-2xl">{{ stats?.total_cards ?? cards.length }}</strong><span class="text-muted-foreground text-xs">{{ t('review.totalCards') }}</span>
-                      <strong class="text-2xl">{{ Math.round((stats?.retention_30d ?? 0) * 100) }}%</strong><span class="text-muted-foreground text-xs">{{ t('review.retention30d') }}</span>
+                <Card class="h-full py-0">
+                  <CardContent class="flex h-full flex-col p-4">
+                    <div class="flex items-center justify-between">
+                      <div class="text-muted-foreground text-[13px] font-medium">{{ t('review.todayProgress') }}</div>
+                      <span class="text-muted-foreground text-xs tabular-nums">{{ dailyProgress }}%</span>
                     </div>
+                    <div class="mt-2 text-2xl leading-8 font-semibold tabular-nums">
+                      {{ queue?.completed_today ?? 0 }}<span class="text-muted-foreground text-sm font-normal"> / {{ queue?.limit ?? 30 }}</span>
+                    </div>
+                    <Progress :model-value="dailyProgress" class="mt-3 h-1.5" />
+                    <div class="text-muted-foreground mt-auto pt-3 text-xs leading-5">{{ t('review.completed') }} {{ queue?.completed_today ?? 0 }} · {{ t('review.limit') }} {{ queue?.limit ?? 30 }}</div>
                   </CardContent>
                 </Card>
-              </div>
-
-              <div class="flex flex-wrap items-center gap-2">
-                <Button :disabled="!queueHasCards && !activeSession" data-testid="review-start" @click="startReview">
-                  <Play />{{ activeSession ? t('review.resumeSession') : t('review.start') }}
-                </Button>
-                <span class="text-muted-foreground text-xs">{{ t('review.startHint') }}</span>
+                <Card class="h-full py-0">
+                  <CardContent class="flex h-full flex-col p-4">
+                    <div class="text-muted-foreground text-[13px] font-medium">{{ t('review.longTerm') }}</div>
+                    <div class="mt-2 grid grid-cols-2 gap-3">
+                      <div>
+                        <div class="text-2xl leading-8 font-semibold tabular-nums">{{ stats?.total_cards ?? cards.length }}</div>
+                        <div class="text-muted-foreground text-xs">{{ t('review.totalCards') }}</div>
+                      </div>
+                      <div>
+                        <div class="text-2xl leading-8 font-semibold tabular-nums">{{ Math.round((stats?.retention_30d ?? 0) * 100) }}%</div>
+                        <div class="text-muted-foreground text-xs">{{ t('review.retention30d') }}</div>
+                      </div>
+                    </div>
+                    <div class="text-muted-foreground mt-auto pt-3 text-xs leading-5">{{ t('review.currentGroup') }}：{{ selectedGroup?.name || t('review.allGroups') }}</div>
+                  </CardContent>
+                </Card>
               </div>
 
               <div v-if="stats?.weak_topics?.length" class="space-y-2">
-                <div class="text-sm font-medium">{{ t('review.weakTopics') }}</div>
-                <div v-for="topic in stats.weak_topics" :key="topic.group_id" class="bg-card flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
-                  <span class="truncate">{{ topic.group_name || topic.group_id }}</span>
-                  <span class="text-muted-foreground shrink-0 text-xs">{{ Math.round(topic.retention * 100) }}% · {{ topic.reviewed }} {{ t('review.reviews') }}</span>
+                <div class="flex items-center justify-between gap-2">
+                  <h2 class="text-sm font-medium">{{ t('review.weakTopics') }}</h2>
+                  <span class="text-muted-foreground text-xs">{{ t('review.stats.retention') }}</span>
+                </div>
+                <div class="bg-card divide-border divide-y overflow-hidden rounded-md border">
+                  <div v-for="topic in stats.weak_topics" :key="topic.group_id" class="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
+                    <span class="truncate">{{ topic.group_name || topic.group_id }}</span>
+                    <span class="text-muted-foreground flex shrink-0 items-center gap-2 text-xs tabular-nums">
+                      <Badge :variant="topic.retention < 0.5 ? 'destructive' : 'secondary'">{{ Math.round(topic.retention * 100) }}%</Badge>
+                      <span>{{ topic.reviewed }} {{ t('review.reviews') }}</span>
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div v-if="!queueHasCards" class="text-muted-foreground py-12 text-center">
-                <BookOpen class="mx-auto mb-2 size-6 opacity-60" />
-                <h3 class="text-foreground text-sm font-medium">{{ t('review.noDue') }}</h3>
-                <p class="mt-1 text-xs">{{ t('review.queueEmpty') }}</p>
+              <div v-if="!queueHasCards" class="bg-card rounded-md border border-dashed px-6 py-10 text-center">
+                <BookOpen class="text-muted-foreground mx-auto mb-2 size-5" />
+                <h3 class="text-sm font-medium">{{ t('review.noDue') }}</h3>
+                <p class="text-muted-foreground mt-1 text-xs">{{ t('review.queueEmpty') }}</p>
               </div>
             </main>
           </div>
         </TabsContent>
 
-        <TabsContent value="cards" class="mt-3">
-          <div class="grid gap-3 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <TabsContent value="cards" class="mt-4">
+          <div class="grid gap-4 lg:grid-cols-[232px_minmax(0,1fr)]">
             <ReviewGroupSidebar
               :groups="flatGroups"
               :selected-group-id="selectedGroupId"
@@ -978,56 +1020,74 @@ onBeforeUnmount(() => {
             />
             <main class="min-w-0 space-y-3">
               <div class="flex flex-wrap items-center gap-2">
-                <div class="relative min-w-0 flex-1 sm:max-w-xs">
-                  <Search class="text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2" />
+                <div class="relative min-w-0 flex-1 sm:max-w-[320px]">
+                  <Search class="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
                   <Input v-model="searchKeyword" class="pl-8" :placeholder="t('review.searchPlaceholder')" @keyup.enter="loadCards" />
                 </div>
                 <Select v-model="statusFilter" @update:model-value="loadCards">
-                  <SelectTrigger class="w-[130px]"><SelectValue /></SelectTrigger>
+                  <SelectTrigger class="w-[128px]"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem v-for="option in statusOptions" :key="option.value" :value="option.value">{{ option.label }}</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button v-if="selectedCardIDs.length" variant="outline" size="sm" @click="startSelectedReview">
-                  <Play />{{ t('review.startSelected') }} ({{ selectedCardIDs.length }})
-                </Button>
-                <Button v-if="selectedCardIDs.length > 1" variant="outline" size="sm" @click="confirmMergeCards">
-                  {{ t('review.mergeCards') }} ({{ selectedCardIDs.length }})
-                </Button>
+                <span class="text-muted-foreground ml-auto text-xs tabular-nums">{{ t('review.cardCount', { count: cards.length }) }}</span>
               </div>
 
-              <div class="flex items-center justify-between gap-2">
-                <div class="text-sm font-medium">{{ t('review.cards') }}</div>
-                <div class="text-muted-foreground text-xs">{{ t('review.cardCount', { count: cards.length }) }}</div>
+              <div v-if="selectedCardIDs.length" class="border-primary/25 bg-primary/5 flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2">
+                <span class="text-sm">{{ t('review.selectedCount', { count: selectedCardIDs.length }) }}</span>
+                <div class="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" @click="startSelectedReview">
+                    <Play />{{ t('review.startSelected') }} ({{ selectedCardIDs.length }})
+                  </Button>
+                  <Button v-if="selectedCardIDs.length > 1" variant="outline" size="sm" @click="confirmMergeCards">
+                    {{ t('review.mergeCards') }} ({{ selectedCardIDs.length }})
+                  </Button>
+                </div>
               </div>
 
-              <div v-if="undoCardID" class="bg-muted flex items-center justify-between rounded-md p-2 text-sm">
+              <div v-if="undoCardID" class="bg-muted flex items-center justify-between rounded-md px-3 py-2 text-sm">
                 <span>{{ t('review.deletedHint') }}</span>
                 <Button variant="ghost" size="sm" @click="undoDelete">{{ t('review.undo') }}</Button>
               </div>
 
               <div v-if="loading" class="space-y-2">
-                <Skeleton v-for="index in 3" :key="index" class="h-16 w-full" />
+                <Skeleton v-for="index in 3" :key="index" class="h-14 w-full" />
               </div>
-              <div v-else-if="cards.length" class="space-y-2">
-                <div v-for="card in cards" :key="card.id" class="bg-card flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center" data-testid="review-card-row">
+              <div v-else-if="cards.length" class="bg-card divide-border divide-y overflow-hidden rounded-md border">
+                <div
+                  v-for="card in cards"
+                  :key="card.id"
+                  class="group flex items-start gap-3 px-3 py-2.5 transition-colors sm:items-center"
+                  :class="selectedCardIDs.includes(card.id) ? 'bg-primary/5' : 'hover:bg-muted/60'"
+                  data-testid="review-card-row"
+                >
                   <Checkbox
+                    class="mt-0.5 border-[var(--td-gray-color-5)] sm:mt-0"
                     :model-value="selectedCardIDs.includes(card.id)"
                     @update:model-value="(value) => toggleCardSelection(card.id, Boolean(value))"
                   />
-                  <button type="button" class="min-w-0 flex-1 border-0 bg-transparent text-left" data-testid="review-card-open" @click="openPerformance(card)">
-                    <div class="truncate text-sm font-medium">{{ card.question }}</div>
-                    <div class="text-muted-foreground mt-1 flex flex-wrap items-center gap-2 text-xs">
-                      <Badge :variant="statusBadgeVariant(card.status)">{{ t(`review.status.${card.status}`) }}</Badge>
+                  <button
+                    type="button"
+                    class="min-w-0 flex-1 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-1"
+                    data-testid="review-card-open"
+                    @click="openPerformance(card)"
+                  >
+                    <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                      <span class="truncate text-sm font-medium">{{ card.question }}</span>
+                      <Badge v-if="card.status === 'suspended'" variant="outline">{{ t('review.status.suspended') }}</Badge>
+                      <Badge v-else-if="card.status === 'orphaned'" variant="destructive">{{ t('review.status.orphaned') }}</Badge>
                       <Badge v-if="card.forget_streak >= 2 || card.lapses >= 3" variant="destructive">{{ t('review.warningBadge') }}</Badge>
+                    </div>
+                    <div class="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                       <span>L{{ card.review_level }}</span>
-                      <span v-if="card.review_count">×{{ card.review_count }}</span>
+                      <span v-if="card.review_count">{{ t('review.stats.reviewCount', { count: card.review_count }) }}</span>
                       <span v-if="card.lapses">{{ card.lapses }} × {{ t('review.forgot') }}</span>
+                      <span>{{ t('review.nextDue') }} {{ formatDue(card.due_at) }}</span>
                     </div>
                   </button>
                   <DropdownMenu>
                     <DropdownMenuTrigger as-child>
-                      <Button variant="ghost" size="icon-sm" :title="t('review.moreActions')"><MoreHorizontal /></Button>
+                      <Button variant="ghost" size="icon-sm" class="opacity-60 group-hover:opacity-100 focus-visible:opacity-100" :title="t('review.moreActions')"><MoreHorizontal /></Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem v-if="card.status === 'active'" @select="toggleSuspend(card)">
@@ -1047,12 +1107,12 @@ onBeforeUnmount(() => {
                   </DropdownMenu>
                 </div>
               </div>
-              <div v-else class="text-muted-foreground py-12 text-center text-sm">{{ t('review.noCards') }}</div>
+              <div v-else class="bg-card text-muted-foreground rounded-md border border-dashed px-6 py-10 text-center text-sm">{{ t('review.noCards') }}</div>
             </main>
           </div>
         </TabsContent>
 
-        <TabsContent value="stats" class="mt-3">
+        <TabsContent value="stats" class="mt-4">
           <ReviewStatsPanel
             v-if="activeTab === 'stats'"
             :stats="stats"
@@ -1205,49 +1265,78 @@ onBeforeUnmount(() => {
       </Dialog>
 
       <Sheet v-model:open="performanceVisible">
-        <SheetContent side="right" class="review-scope w-full overflow-y-auto sm:max-w-[520px]">
-          <SheetHeader>
-            <SheetTitle>{{ t('review.performanceTitle') }}</SheetTitle>
+        <SheetContent side="right" class="review-scope flex w-full flex-col gap-0 overflow-hidden p-0 sm:!max-w-[520px]">
+          <SheetHeader class="border-border border-b px-5 py-4 pr-12">
+            <SheetTitle class="text-base">{{ t('review.performanceTitle') }}</SheetTitle>
           </SheetHeader>
-          <div v-if="performanceLoading" class="space-y-2">
+          <div v-if="performanceLoading" class="space-y-3 p-5">
             <Skeleton class="h-8 w-3/4" />
             <Skeleton class="h-24 w-full" />
           </div>
-          <div v-else-if="performance" class="space-y-4">
-            <div>
-              <div class="text-sm font-medium">{{ performance.card.question }}</div>
-              <div class="text-muted-foreground mt-1 flex flex-wrap items-center gap-2 text-xs">
-                <Badge v-if="performance.warning !== 'none'" variant="destructive">{{ t('review.warningBadge') }}</Badge>
-                <span>{{ performance.warning_reason }}</span>
-              </div>
-            </div>
-            <div class="grid grid-cols-4 gap-2 text-center">
-              <div class="bg-muted rounded-md p-2"><strong class="block text-lg">{{ performance.counts.remembered }}</strong><span class="text-muted-foreground text-xs">{{ t('review.remembered') }}</span></div>
-              <div class="bg-muted rounded-md p-2"><strong class="block text-lg">{{ performance.counts.fuzzy }}</strong><span class="text-muted-foreground text-xs">{{ t('review.fuzzy') }}</span></div>
-              <div class="bg-muted rounded-md p-2"><strong class="block text-lg">{{ performance.counts.forgot }}</strong><span class="text-muted-foreground text-xs">{{ t('review.forgot') }}</span></div>
-              <div class="bg-muted rounded-md p-2"><strong class="block text-lg">{{ performance.counts.total }}</strong><span class="text-muted-foreground text-xs">{{ t('review.reviews') }}</span></div>
-            </div>
-            <div class="text-muted-foreground flex flex-wrap gap-3 text-xs">
-              <span>{{ t('review.stability') }}：{{ Math.round(performance.card.stability) }} 天</span>
-              <span>{{ t('review.nextDue') }}：{{ new Date(performance.card.due_at).toLocaleDateString() }}</span>
-              <span>{{ t('review.forgetStreak') }}：{{ performance.forget_streak }}</span>
-            </div>
-            <div>
-              <div class="mb-2 flex items-center justify-between text-sm font-medium">
-                <span>{{ t('review.history') }}</span><span class="text-muted-foreground text-xs">{{ performance.logs.length }}</span>
-              </div>
-              <div v-if="performance.logs.length" class="space-y-2">
-                <div v-for="log in performance.logs" :key="log.id" class="flex items-center justify-between gap-2 text-xs">
-                  <Badge :variant="log.rating === 'remembered' ? 'default' : log.rating === 'forgot' ? 'destructive' : 'outline'">
-                    {{ t(`review.${log.rating}`) }}
-                  </Badge>
-                  <span class="text-muted-foreground">{{ formatTime(log.reviewed_at) }}</span>
-                  <span>{{ log.interval_days }} 天</span>
+          <div v-else-if="performance" class="flex-1 overflow-y-auto">
+            <div class="space-y-5 p-5">
+              <div class="space-y-1.5">
+                <p class="text-[15px] leading-6 font-medium">{{ performance.card.question }}</p>
+                <div v-if="performance.warning !== 'none'" class="flex flex-wrap items-center gap-2 text-xs">
+                  <Badge variant="destructive">{{ t('review.warningBadge') }}</Badge>
+                  <span class="text-destructive">{{ performance.warning_reason }}</span>
                 </div>
               </div>
-              <p v-else class="text-muted-foreground text-sm">{{ t('review.noHistory') }}</p>
+
+              <div class="border-border bg-card grid grid-cols-4 divide-x divide-border overflow-hidden rounded-md border text-center">
+                <div class="px-2 py-3">
+                  <div class="text-lg leading-6 font-semibold tabular-nums">{{ performance.counts.remembered }}</div>
+                  <div class="text-muted-foreground mt-0.5 text-xs">{{ t('review.remembered') }}</div>
+                </div>
+                <div class="px-2 py-3">
+                  <div class="text-lg leading-6 font-semibold tabular-nums">{{ performance.counts.fuzzy }}</div>
+                  <div class="text-muted-foreground mt-0.5 text-xs">{{ t('review.fuzzy') }}</div>
+                </div>
+                <div class="px-2 py-3">
+                  <div class="text-lg leading-6 font-semibold tabular-nums">{{ performance.counts.forgot }}</div>
+                  <div class="text-muted-foreground mt-0.5 text-xs">{{ t('review.forgot') }}</div>
+                </div>
+                <div class="px-2 py-3">
+                  <div class="text-lg leading-6 font-semibold tabular-nums">{{ performance.counts.total }}</div>
+                  <div class="text-muted-foreground mt-0.5 text-xs">{{ t('review.stats.reviewed') }}</div>
+                </div>
+              </div>
+
+              <dl class="border-border bg-card grid grid-cols-3 gap-3 rounded-md border px-4 py-3">
+                <div>
+                  <dt class="text-muted-foreground text-xs">{{ t('review.stability') }}</dt>
+                  <dd class="mt-0.5 text-sm font-medium tabular-nums">{{ Math.round(performance.card.stability) }} 天</dd>
+                </div>
+                <div>
+                  <dt class="text-muted-foreground text-xs">{{ t('review.nextDue') }}</dt>
+                  <dd class="mt-0.5 text-sm font-medium tabular-nums">{{ formatDue(performance.card.due_at) }}</dd>
+                </div>
+                <div>
+                  <dt class="text-muted-foreground text-xs">{{ t('review.forgetStreak') }}</dt>
+                  <dd class="mt-0.5 text-sm font-medium tabular-nums">{{ performance.forget_streak }}</dd>
+                </div>
+              </dl>
+
+              <div class="space-y-2">
+                <div class="flex items-center justify-between gap-2">
+                  <h3 class="text-sm font-medium">{{ t('review.history') }}</h3>
+                  <span class="text-muted-foreground text-xs tabular-nums">{{ performance.logs.length }}</span>
+                </div>
+                <div v-if="performance.logs.length" class="border-border divide-border divide-y overflow-hidden rounded-md border">
+                  <div v-for="log in performance.logs" :key="log.id" class="grid grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 text-xs">
+                    <Badge :variant="log.rating === 'remembered' ? 'default' : log.rating === 'forgot' ? 'destructive' : 'outline'">
+                      {{ t(`review.${log.rating}`) }}
+                    </Badge>
+                    <span class="text-muted-foreground truncate">{{ formatTime(log.reviewed_at) }}</span>
+                    <span class="tabular-nums">{{ log.interval_days }} 天</span>
+                  </div>
+                </div>
+                <p v-else class="text-muted-foreground py-4 text-center text-sm">{{ t('review.noHistory') }}</p>
+              </div>
             </div>
-            <Button variant="outline" class="w-full" @click="performanceVisible = false">{{ t('review.cancel') }}</Button>
+          </div>
+          <div class="border-border flex justify-end border-t p-4">
+            <Button variant="outline" @click="performanceVisible = false">{{ t('review.close') }}</Button>
           </div>
         </SheetContent>
       </Sheet>
