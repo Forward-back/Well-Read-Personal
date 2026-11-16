@@ -40,7 +40,7 @@ WellRead Personal 是单 owner、本地部署的个人知识库系统，根目�
 - **文档来源**：产品/需求文档只从 app 业务侧与当前产品文档获取；`rag/test/`、`data/rag/Data` 是独立测试数据，不能当作业务需求或演示数据。
 - **只推个人仓库**：origin = `git@github.com:Forward-back/Well-Read-Personal.git`；不要添加或推送其他上游；提交前确认不含 `.env`、密钥、`data/rag/`、`backups/`。
 - **高风险动作先确认**：删除/移动大量文件、重置数据库、重建数据卷、轮换凭据、修改部署与 CI，先向用户说明影响。
-- **UI 组件**：新复习 V2 及后续迁移页面参考 `shadcn.com.cn` 的组件组合方式，用 `shadcn-vue` + Tailwind 实现；不直接复制 React 组件源码；语义色映射现有 TDesign CSS 变量并保持当前配色；旧页面继续 TDesign，禁止同页混用。完整规则见[界面规范](docs/02-需求与设计/界面规范.md) §6 与 [ADR 0003](docs/06-架构决策/0003-UI组件渐进迁移到shadcn-vue.md)。
+- **UI 组件**：全前端统一使用 TDesign Vue Next；Tailwind 只做布局与间距，不引入第二套组件库。禁止新增 `shadcn-vue`/`reka-ui` 等依赖，禁止同页混用两套组件；现有复习页 shadcn 试点在复习 V3 同批替换并清理。视觉目标是 TDesign 视觉语言 + 品牌绿；每个页面动工前先与 owner 确认信息密度；页头、密度、状态、空态与交互硬规则见[界面规范](docs/02-需求与设计/界面规范.md) §3 与 §6。完整规则见[界面规范](docs/02-需求与设计/界面规范.md) §6 与 [ADR 0005](docs/06-架构决策/0005-UI组件沿用TDesign并停止shadcn-vue迁移.md)。
 
 ### 3.1 功能取舍与交付原则
 

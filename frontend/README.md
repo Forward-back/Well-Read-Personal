@@ -5,50 +5,43 @@ WellRead 个人版的 Vue 3 单页应用：问答、知识库、精读、复习�
 ## 技术栈
 
 - Vue 3 + TypeScript + Vite 7
-- TDesign Vue Next（存量页面）
-- shadcn-vue + Tailwind CSS（复习页已迁移，旧页面继续 TDesign）
+- TDesign Vue Next（全前端统一组件）
+- Tailwind CSS（布局与间距；不承载第二套组件主题）
+- 现有复习页 shadcn-vue 为 V2 试点残留，复习 V3 替换后删除
 - ECharts（复习统计页）
 - Pinia（状态）、Vue Router（路由）
 - vue-i18n（多语言）
 - Markdown/Mermaid/KaTeX、Office 预览、xlsx 导入等展示能力
 
-## UI 组件（复习 V2）
+## UI 组件（TDesign 统一路线）
 
-复习 V2 起，新页面组件参考 `shadcn.com.cn` 的组合方式，用 `shadcn-vue` 实现；旧页面继续 TDesign，不允许同页混用。复习页已迁移到 shadcn-vue，包含复习/卡片/统计三标签、卡组右键菜单、卡组表现抽屉与 ECharts 统计；其他页面保持 TDesign。
+全前端统一使用 TDesign Vue Next；Tailwind 只做布局、间距与自定义区块。停止 shadcn-vue 全前端迁移，禁止新增 `shadcn-vue`、`reka-ui`、`class-variance-authority` 等依赖，禁止同页混用两套组件。
 
-```bash
-npm install -D tailwindcss @tailwindcss/vite
-npx shadcn-vue@latest init
-npx shadcn-vue@latest add button dialog dropdown-menu context-menu tabs sheet card badge progress table input select tooltip separator skeleton
-```
-
-- 组件源码进入 `src/components/ui`，按需添加，不引入全量组件库。
-- `components.json` 别名：`@/components`、`@/components/ui`、`@/lib/utils`。
-- 语义色 token 映射现有 TDesign CSS 变量，保持品牌绿与当前圆角；不采用 shadcn 默认色板。
-- 首版不全局引入 Tailwind Preflight，避免影响 TDesign 旧页面；组件基础重置局部化。
-- 主题切换同步 `theme-mode` 与 `.dark` class，shadcn 组件跟随现有深浅色。
-- 统计图表用 ECharts，按路由异步加载；不用 shadcn-vue Chart。
-- 完整规则与组件范围见 `docs/02-需求与设计/界面规范.md` §6。
+- 视觉目标：TDesign 视觉语言 + 品牌绿；颜色、圆角与状态语义见 `docs/02-需求与设计/界面规范.md` §3。
+- 组件与环境边界见 `docs/02-需求与设计/界面规范.md` §6 与 `docs/06-架构决策/0005-UI组件沿用TDesign并停止shadcn-vue迁移.md`。
+- 图标使用 lucide；不使用 emoji。统计图用 ECharts，颜色读取 TDesign CSS 变量，主题切换后重绘。
+- 每个页面动工前先与 owner 确认信息密度，并记录到设计说明或阶段记录。
+- 当前代码状态：复习页仍保留 V2 的 shadcn-vue 三标签实现；V3 预览页在临时路由 `/platform/review-v3`（TDesign 页头、三视图切换、卡组栏、今日任务条，热力图/卡片/统计/复习模式仍占位）。V3 全部视图完成后替换 `/platform/review`，并在同一批删除 `src/components/ui`、`components.json`、仅服务于 shadcn 的工具与依赖，清理 `tailwind.css`。替换完成前不要新增 shadcn 页面或组件。
 
 ## 目录地图
 
 | 路径 | 作用 |
 |---|---|
 | `src/api/` | 按业务域拆分的后端 API 封装 |
-| `src/components/` | 通用组件（菜单、聊天、设置、模型选择等）；`ui/` 为 shadcn-vue 源码 |
+| `src/components/` | 通用组件（菜单、聊天、设置、模型选择等）；当前 `ui/` 为 V2 shadcn 试点，V3 清理 |
 | `src/composables/` | 可复用组合式逻辑 |
 | `src/config/` | 部署能力、上下文引导等前端配置 |
 | `src/directives/` | 全局指令 |
 | `src/hooks/` | 页面级 hooks |
 | `src/i18n/` | 语言包与文案扫描脚本 |
-| `src/lib/` | `cn()` 等 shadcn 工具函数 |
+| `src/lib/` | 当前仅 `cn()` 等 shadcn 工具，V3 随试点清理 |
 | `src/router/` | 路由表与登录守卫 |
 | `src/stores/` | Pinia 状态（auth、ui、menu、chat 资源等） |
 | `src/styles/` | 全局样式与主题扩展 |
 | `src/types/` | 前后端共享类型/视图类型 |
 | `src/utils/` | 请求、格式化、Markdown、引用、复习摘录清洗等工具 |
 | `src/views/` | 页面：auth/chat/creatChat/knowledge/reading/review/skills/settings/platform |
-| `src/assets/` | 字体、图片、主题；`tailwind.css` 为 shadcn token 入口 |
+| `src/assets/` | 字体、图片、主题；`tailwind.css` 当前含 shadcn token，V3 收敛为布局入口 |
 | `public/` | 静态资源；登录页架构图在 `public/diagrams/` |
 | `design/` | 设计源（图标、字体），不进入生产构建 |
 | `scripts/` | 前端专项脚本（构建、图标矢量化、PR 校验） |

@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>复习功能优化 · 交互原型 v1.0</title>
+<style>
+  :root {
+    --primary:#10B981; --primary-dark:#059669; --primary-light:#D1FAE5; --primary-bg:#ECFDF5;
+    --success:#10B981; --success-bg:#ECFDF5;
+    --warning:#F59E0B; --warning-bg:#FFFBEB;
+    --danger:#EF4444;  --danger-bg:#FEF2F2;
+    --info:#3B82F6;    --info-bg:#EFF6FF;
+    --gap-severe:#EF4444; --gap-warn:#F59E0B; --gap-watch:#FCD34D; --gap-ok:#6EE7B7; --gap-none:#E5E7EB;
+    --n900:#111827; --n700:#374151; --n600:#4B5563; --n500:#6B7280;
+    --n400:#9CA3AF; --n300:#D1D5DB; --n200:#E5E7EB; --n100:#F3F4F6; --n50:#F9FAFB;
+    --bg:#F6F7F9; --card:#fff; --border:#E5E7EB;
+    --radius:10px; --radius-lg:14px;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.04); --shadow:0 2px 8px rgba(0,0,0,.06); --shadow-lg:0 8px 24px rgba(0,0,0,.08);
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--n900); font-size:14px; line-height:1.6; }
+
+  /* 顶栏 */
+  .topbar { position:sticky; top:0; z-index:100; background:rgba(255,255,255,.92);
+            backdrop-filter:blur(8px); border-bottom:1px solid var(--border); padding:14px 28px; }
+  .topbar-inner { max-width:1280px; margin:0 auto; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; }
+  .topbar h1 { font-size:17px; font-weight:600; } .topbar h1 span { color:var(--primary-dark); }
+  .tabs { display:flex; gap:6px; flex-wrap:wrap; }
+  .tab { padding:7px 14px; border-radius:var(--radius); border:none; background:transparent;
+         color:var(--n600); cursor:pointer; font-size:13px; transition:.15s; }
+  .tab:hover { background:var(--n100); }
+  .tab.active { background:var(--n900); color:#fff; font-weight:500; }
+  .tab .due { background:var(--primary); color:#fff; font-size:11px; padding:0 7px;
+              border-radius:999px; margin-left:4px; font-weight:600; }
+
+  .page { max-width:1280px; margin:0 auto; padding:28px; display:none; }
+  .page.active { display:block; }
+
+  /* 通用 */
+  .card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius-lg);
+          padding:22px; box-shadow:var(--shadow-sm); }
+  .label { font-size:12px; color:var(--n500); text-transform:uppercase; letter-spacing:.5px; font-weight:500; }
+  .section-title { font-size:19px; font-weight:600; margin-bottom:6px; }
+  .page-desc { color:var(--n500); font-size:13px; margin-bottom:22px; }
+  .badge { display:inline-flex; align-items:center; gap:4px; padding:2px 10px;
+           border-radius:999px; font-size:12px; font-weight:500; }
+  .b-danger { background:var(--danger-bg); color:#B91C1C; }
+  .b-warn { background:var(--warning-bg); color:#B45309; }
+  .b-info { background:var(--info-bg); color:#1D4ED8; }
+  .b-ok { background:var(--success-bg); color:#047857; }
+  .b-neutral { background:var(--n100); color:var(--n600); }
+  .btn { padding:9px 16px; border-radius:var(--radius); border:1px solid var(--border);
+         background:#fff; color:var(--n700); cursor:pointer; font-size:13px; font-weight:500; transition:.15s;
+         display:inline-flex; align-items:center; gap:6px; }
+  .btn:hover { background:var(--n50); }
+  .btn-primary { background:var(--primary); border-color:var(--primary); color:#fff; font-weight:600; }
+  .btn-primary:hover { background:var(--primary-dark); }
+  .btn-danger { background:var(--danger); border-color:var(--danger); color:#fff; font-weight:600; }
+  .btn-lg { padding:13px 26px; font-size:15px; border-radius:var(--radius-lg); }
+
+  /* ===== ① 今日复习 ===== */
+  .taskbar { display:flex; align-items:center; gap:20px; background:linear-gradient(135deg,#ECFDF5,#F0FDF4);
+             border:1px solid var(--primary-light); border-radius:var(--radius-lg);
+             padding:20px 28px; margin-bottom:22px; flex-wrap:wrap; }
+  .taskbar .bignum { font-size:44px; font-weight:700; color:var(--primary-dark); line-height:1; }
+  .taskbar .meta { display:flex; gap:20px; color:var(--n600); font-size:13px; flex-wrap:wrap; }
+  .taskbar .meta strong { color:var(--n900); font-size:15px; }
+  .hm-layout { display:grid; grid-template-columns:1.5fr 1fr; gap:18px; }
+  .heat-grid { display:grid; grid-template-columns:90px repeat(6,1fr); gap:6px; margin-top:14px; }
+  .heat-rowhead { font-size:12px; color:var(--n500); display:flex; align-items:center;
+                  justify-content:flex-end; padding-right:8px; font-weight:500; }
+  .heat-colhead { font-size:12px; color:var(--n500); text-align:center; padding-bottom:4px; }
+  .heat-cell { height:50px; border-radius:8px; cursor:pointer; display:flex; flex-direction:column;
+               align-items:center; justify-content:center; color:#fff; font-weight:600;
+               font-size:15px; transition:.15s; }
+  .heat-cell:hover { transform:scale(1.06); box-shadow:var(--shadow); z-index:2; }
+  .heat-cell small { font-size:10px; font-weight:400; opacity:.85; }
+  .heat-cell.severe { background:var(--gap-severe); } .heat-cell.warn { background:var(--gap-warn); }
+  .heat-cell.watch { background:var(--gap-watch); color:var(--n900); }
+  .heat-cell.ok { background:var(--gap-ok); color:var(--n900); }
+  .heat-cell.none { background:var(--gap-none); color:var(--n400); font-weight:400; font-size:12px; cursor:default; }
+  .heat-cell.none:hover { transform:none; box-shadow:none; }
+  .heat-legend { display:flex; gap:14px; margin-top:14px; font-size:12px; color:var(--n500); flex-wrap:wrap; align-items:center; }
+  .legend-dot { width:13px; height:13px; border-radius:4px; display:inline-block; vertical-align:-2px; margin-right:5px; }
+  .prio-item { display:flex; gap:12px; align-items:center; padding:13px; border-radius:var(--radius);
+               margin-bottom:10px; border:1px solid; cursor:pointer; transition:.15s; }
+  .prio-item:hover { box-shadow:var(--shadow); transform:translateX(2px); }
+  .prio-item.p1 { background:var(--danger-bg); border-color:#FECACA; }
+  .prio-item.p2 { background:var(--warning-bg); border-color:#FDE68A; }
+  .prio-item.p0 { background:var(--n50); border-color:var(--n200); }
+  .prio-num { font-size:21px; font-weight:700; line-height:1; min-width:52px; }
+  .insight { background:var(--info-bg); border:1px solid #BFDBFE; border-radius:var(--radius);
+             padding:13px 16px; margin-top:14px; font-size:13px; color:#1E40AF; }
+
+  /* ===== ② 复习模式 ===== */
+  .stage { background:#fff; border-radius:var(--radius-lg); border:1px solid var(--border);
+           box-shadow:var(--shadow-lg); padding:38px; max-width:720px; margin:0 auto; }
+  .rprog { display:flex; align-items:center; gap:12px; margin-bottom:22px; font-size:13px; color:var(--n500); }
+  .rbar { flex:1; height:6px; background:var(--n100); border-radius:999px; overflow:hidden; }
+  .rfill { height:100%; background:var(--primary); width:40%; }
+  .leech { background:var(--danger-bg); border:1px solid #FECACA; color:#B91C1C; border-radius:var(--radius);
+           padding:9px 15px; font-size:13px; font-weight:500; margin-bottom:18px; }
+  .rquestion { font-size:23px; font-weight:600; line-height:1.4; margin-bottom:10px; }
+  .rhint { color:var(--n500); font-size:13px; margin-bottom:20px; }
+  .ranswer { background:var(--n50); border-left:3px solid var(--primary); border-radius:var(--radius);
+             padding:20px; margin:18px 0; color:var(--n700); line-height:1.7; }
+  .ranswer .key { color:var(--primary-dark); font-weight:600; }
+  .fsrs-strip { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:18px 0 8px; }
+  .fsrs-cell { background:var(--n50); border-radius:var(--radius); padding:11px; text-align:center; }
+  .fsrs-cell .v { font-size:17px; font-weight:700; }
+  .fsrs-cell .v.bad { color:var(--danger); } .fsrs-cell .v.warn2 { color:var(--warning); }
+  .fsrs-cell .k { font-size:11px; color:var(--n500); margin-top:2px; }
+  .fsrs-note { font-size:12px; color:var(--n400); text-align:center; margin-bottom:16px; }
+  .inline-actions { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+  .srcjump { background:var(--primary-bg); border:1px solid var(--primary-light); border-radius:var(--radius);
+             padding:13px 15px; margin-bottom:18px; display:flex; align-items:center;
+             justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .srcjump .t { font-size:13px; color:#065F46; } .srcjump .t strong { color:var(--primary-dark); }
+  .rate { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+  .rate button { padding:14px; border-radius:var(--radius); border:1px solid var(--border);
+                 background:#fff; cursor:pointer; text-align:center; transition:.15s; }
+  .rate button:hover { transform:translateY(-2px); box-shadow:var(--shadow); }
+  .rate .rl { font-weight:600; font-size:14px; } .rate .rs { font-size:11px; color:var(--n500); margin-top:2px; }
+  .rate .rk { font-size:10px; color:var(--n400); margin-top:5px; }
+  .f1 { border-top:3px solid var(--danger); } .f2 { border-top:3px solid var(--warning); }
+  .f3 { border-top:3px solid var(--success); } .f4 { border-top:3px solid var(--info); }
+
+  /* ===== ③ 漏洞详情 ===== */
+  .chead { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; flex-wrap:wrap; margin-bottom:16px; }
+  .cbar { height:10px; background:var(--n100); border-radius:999px; overflow:hidden; margin-top:10px; max-width:420px; }
+  .cfill { height:100%; background:linear-gradient(90deg,var(--gap-warn),var(--gap-severe)); }
+  .gtable { width:100%; border-collapse:collapse; font-size:13px; }
+  .gtable th { text-align:left; padding:9px 12px; background:var(--n50); border-bottom:1px solid var(--border);
+               font-size:12px; color:var(--n500); font-weight:500; }
+  .gtable td { padding:11px 12px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  .gtable tr:hover td { background:var(--n50); }
+  .param { display:inline-block; padding:2px 8px; border-radius:6px; font-size:12px;
+           font-weight:600; font-family:ui-monospace,monospace; }
+  .p-bad { background:var(--danger-bg); color:#B91C1C; } .p-warn { background:var(--warning-bg); color:#B45309; }
+  .p-ok { background:var(--success-bg); color:#047857; } .p-n { background:var(--n100); color:var(--n600); }
+  .abar { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:18px; }
+  .acard { border:1px solid var(--border); border-radius:var(--radius); padding:15px; text-align:center;
+           cursor:pointer; transition:.15s; background:#fff; }
+  .acard:hover { border-color:var(--primary); box-shadow:var(--shadow); transform:translateY(-2px); }
+  .acard .i { font-size:22px; margin-bottom:6px; } .acard .t { font-weight:600; font-size:13px; }
+  .acard .s { font-size:12px; color:var(--n500); margin-top:3px; }
+  .acard.hi { background:var(--primary-bg); border-color:var(--primary-light); }
+
+  /* ===== ④ 卡片管理 ===== */
+  .fbar { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+  .fbar input[type=text] { flex:1; min-width:220px; padding:9px 13px; border:1px solid var(--border);
+                           border-radius:var(--radius); font-size:13px; }
+  select { padding:9px 13px; border:1px solid var(--border); border-radius:var(--radius);
+           background:#fff; font-size:13px; color:var(--n600); }
+  .mrow { display:grid; grid-template-columns:28px 1fr 110px 100px 40px; gap:14px; align-items:center;
+          padding:11px 16px; border-bottom:1px solid var(--border); }
+  .mrow:hover { background:var(--n50); }
+  .mrow input { opacity:0; transition:.15s; cursor:pointer; } .mrow:hover input { opacity:1; }
+  .mhead { background:var(--n50); font-size:12px; color:var(--n500); font-weight:500; border-bottom:1px solid var(--border); }
+  .mhead input { opacity:1 !important; }
+
+  /* ===== ⑤ 统计 ===== */
+  .kgrid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:16px; }
+  .kpi { background:#fff; border:1px solid var(--border); border-radius:var(--radius-lg); padding:20px; }
+  .kpi .n { font-size:32px; font-weight:700; line-height:1; }
+  .kpi .l { font-size:12px; color:var(--n500); margin-top:7px; }
+  .kpi .d { font-size:12px; color:var(--n400); margin-top:5px; }
+  .ph { background:var(--n50); border:2px dashed var(--n300); border-radius:var(--radius);
+        padding:36px 20px; text-align:center; color:var(--n500); font-size:13px; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
+  .donut { display:flex; align-items:center; gap:18px; }
+
+  /* ===== ⑦ 对照 ===== */
+  .issue { background:#fff; border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; margin-bottom:10px; }
+  .issue .sev { float:right; font-size:11px; padding:2px 8px; border-radius:4px; }
+  .sev-h { background:var(--danger-bg); color:#B91C1C; } .sev-m { background:var(--warning-bg); color:#B45309; }
+  .issue .ti { font-weight:600; margin-bottom:5px; } .issue .de { font-size:13px; color:var(--n600); }
+  .issue .fx { font-size:13px; color:var(--primary-dark); margin-top:5px; }
+
+  @media (max-width:900px){
+    .hm-layout,.two,.kgrid { grid-template-columns:1fr; }
+    .abar,.rate,.fsrs-strip { grid-template-columns:repeat(2,1fr); }
+    .page { padding:18px; } .heat-grid { grid-template-columns:70px repeat(6,1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar"><div class="topbar-inner">
+  <h1>复习功能 · <span>优化原型</span> v1.0</h1>
+  <nav class="tabs">
+    <button class="tab active" data-p="today">① 今日复习</button>
+    <button class="tab" data-p="review">② 复习模式</button>
+    <button class="tab" data-p="detail">③ 漏洞簇详情</button>
+    <button class="tab" data-p="manage">④ 卡片管理</button>
+    <button class="tab" data-p="stats">⑤ 统计进度</button>
+    <button class="tab" data-p="graph">⑥ 知识图谱</button>
+    <button class="tab" data-p="issues">⑦ 病灶对照</button>
+  </nav>
+</div></div>
+
+<!-- ① 今日复习 -->
+<section id="p-today" class="page active">
+  <h2 class="section-title">今日复习 —— 漏洞热力图为主视觉</h2>
+  <p class="page-desc">入口逻辑:先看到今天做多少(任务条)→ 再看到哪里红了(热力图)→ 点红格子补强。§4.1</p>
+
+  <div class="taskbar">
+    <div><div class="label">今日待复习</div><div class="bignum">7<span style="font-size:16px;color:var(--n500);"> 张</span></div></div>
+    <div class="meta">
+      <div>预计 <strong>4 分钟</strong></div>
+      <div>连续打卡 <strong>1 天</strong></div>
+      <div>漏洞簇 <strong style="color:var(--danger);">1 个严重</strong></div>
+    </div>
+    <button class="btn btn-primary btn-lg" style="margin-left:auto;">▶ 开始今日复习</button>
+  </div>
+
+  <div class="hm-layout">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <h3 style="font-size:15px;">知识漏洞热力图</h3>
+        <span class="badge b-danger">1 严重 · 1 警告 · 2 观察</span>
+      </div>
+      <div class="heat-grid">
+        <div></div>
+        <div class="heat-colhead">中断</div><div class="heat-colhead">总线</div>
+        <div class="heat-colhead">CPU调度</div><div class="heat-colhead">存储</div>
+        <div class="heat-colhead">指令系统</div><div class="heat-colhead">I/O</div>
+        <div class="heat-rowhead">计算机组成</div>
+        <div class="heat-cell severe" onclick="goto('detail')">60%<small>3/5 异常</small></div>
+        <div class="heat-cell ok">10%<small>0/4</small></div>
+        <div class="heat-cell none">—</div>
+        <div class="heat-cell watch">25%<small>1/4</small></div>
+        <div class="heat-cell none">—</div>
+        <div class="heat-cell warn">40%<small>2/5</small></div>
+        <div class="heat-rowhead">操作系统</div>
+        <div class="heat-cell none">—</div>
+        <div class="heat-cell ok">0%<small>0/6</small></div>
+        <div class="heat-cell watch">20%<small>1/5</small></div>
+        <div class="heat-cell none">—</div>
+        <div class="heat-cell ok">8%<small>0/4</small></div>
+        <div class="heat-cell none">—</div>
+        <div class="heat-rowhead">数据结构</div>
+        <div class="heat-cell none">—</div>
+        <div class="heat-cell none">—</div>
+        <div class="heat-cell none">—</div>
+        <div class="heat-cell ok">5%<small>0/3</small></div>
+        <div class="heat-cell none">—</div>
+        <div class="heat-cell ok">12%<small>0/4</small></div>
+      </div>
+      <div class="heat-legend">
+        <span><i class="legend-dot" style="background:var(--gap-severe)"></i>严重 ≥60%</span>
+        <span><i class="legend-dot" style="background:var(--gap-warn)"></i>警告 40–59%</span>
+        <span><i class="legend-dot" style="background:var(--gap-watch)"></i>观察 20–39%</span>
+        <span><i class="legend-dot" style="background:var(--gap-ok)"></i>健康 &lt;20%</span>
+        <span><i class="legend-dot" style="background:var(--gap-none)"></i>无数据</span>
+        <span style="margin-left:auto;color:var(--n400);">点红格子 → 簇详情</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="font-size:15px;margin-bottom:12px;">今日优先补强 <span class="badge b-neutral">最多 3 条</span></h3>
+      <div class="prio-item p1" onclick="goto('detail')">
+        <div class="prio-num" style="color:var(--danger);">60%</div>
+        <div style="flex:1;"><div style="font-weight:600;">中断子系统</div>
+        <div style="font-size:12px;color:var(--n500);">3/5 异常 · 根因疑似"判优方式"理解不透</div></div>
+        <button class="btn btn-danger" style="padding:7px 13px;font-size:12px;">去补强</button>
+      </div>
+      <div class="prio-item p2">
+        <div class="prio-num" style="color:var(--warning);">40%</div>
+        <div style="flex:1;"><div style="font-weight:600;">I/O 方式</div>
+        <div style="font-size:12px;color:var(--n500);">2/5 异常 · 建议先看 DMA 与中断对比</div></div>
+        <button class="btn btn-primary" style="padding:7px 13px;font-size:12px;">去补强</button>
+      </div>
+      <div class="prio-item p0">
+        <div class="prio-num" style="color:var(--n400);">25%</div>
+        <div style="flex:1;"><div style="font-weight:600;">存储系统</div>
+        <div style="font-size:12px;color:var(--n500);">观察中 · 连续 2 次超阈才升级警告</div></div>
+        <span class="badge b-neutral">观察</span>
+      </div>
+      <div class="insight">💡 <b>系统洞察</b>:「中断」与「I/O 方式」同时亮红,两者在知识结构上相邻——
+        推断漏洞不在单点,而在<b>"CPU 与外设交互方式"这条主线</b>。建议重读教材第 8 章后再补强。</div>
+    </div>
+  </div>
+</section>
+
+<!-- ② 复习模式 -->
+<section id="p-review" class="page">
+  <h2 class="section-title">复习模式 —— 全屏翻卡 · 漏洞卡标注版</h2>
+  <p class="page-desc">核心闭环:先答后翻 → 自评四键(1–4)→ 自动下一张。漏洞卡在此"用的时候"介入:横幅 + 参数条 + 就地行动 + 引用溯源。§4.2</p>
+
+  <div class="stage">
+    <div class="rprog"><span>2 / 7</span><div class="rbar"><div class="rfill"></div></div><span>补强队列 · 中断子系统</span></div>
+    <div class="leech">⚠️ 这是你的漏洞卡 —— 第 3 次忘记了,本次复习后建议回教材重看一遍</div>
+    <div class="rquestion">独立请求方式的中断请求有哪些优点和缺点?</div>
+    <div class="rhint">💭 先在脑内回想,再显示答案(空格键)</div>
+    <button class="btn btn-primary btn-lg" style="width:100%;">显示答案(空格键)</button>
+
+    <div class="ranswer" style="margin-top:20px;">
+      <b>优点</b>:各请求线相互独立,可快速定位中断源,响应速度快;<br>
+      <b>缺点</b>:每台设备独占一根请求线,CPU 中断请求线数量有限,
+      <span class="key">能接入的设备数量受限</span>,且线路硬件开销大。
+    </div>
+
+    <div class="fsrs-strip">
+      <div class="fsrs-cell"><div class="v bad">8.5/10</div><div class="k">材料难度(对你偏难)</div></div>
+      <div class="fsrs-cell"><div class="v bad">1.2 天</div><div class="k">记忆可撑约</div></div>
+      <div class="fsrs-cell"><div class="v warn2">3 次</div><div class="k">累计忘记</div></div>
+      <div class="fsrs-cell"><div class="v">8 分钟</div><div class="k">建议间隔</div></div>
+    </div>
+    <div class="fsrs-note">"记忆只撑 1.2 天"——之前即使答对,也很快遗忘,这是隐蔽型漏洞的信号</div>
+
+    <div class="inline-actions">
+      <button class="btn">📖 回教材 P148</button>
+      <button class="btn">✂️ 这张卡太长,拆开记</button>
+      <button class="btn">✨ 换个问法再考我</button>
+    </div>
+
+    <div class="srcjump">
+      <div class="t">📖 来自你的笔记 <strong>《计算机组成原理 · 第 8 章 中断系统》P148</strong> —— 建议重读"8.2.3 中断判优"后评分</div>
+      <button class="btn btn-primary" style="padding:7px 14px;font-size:12px;">打开原文</button>
+    </div>
+
+    <div class="label" style="margin-bottom:10px;">自评:想起来了多少?</div>
+    <div class="rate">
+      <button class="f1"><div class="rl">😭 忘记</div><div class="rs">10 分钟后再来</div><div class="rk">快捷键 1</div></button>
+      <button class="f2"><div class="rl">😅 想得慢</div><div class="rs">缩短间隔</div><div class="rk">快捷键 2</div></button>
+      <button class="f3"><div class="rl">😊 想起来了</div><div class="rs">按计划间隔</div><div class="rk">快捷键 3</div></button>
+      <button class="f4"><div class="rl">😎 秒答</div><div class="rs">大幅拉长间隔</div><div class="rk">快捷键 4</div></button>
+    </div>
+  </div>
+</section>
+
+<!-- ③ 漏洞簇详情 -->
+<section id="p-detail" class="page">
+  <h2 class="section-title">漏洞簇详情 —— 参数透明 + 四个行动出口</h2>
+  <p class="page-desc">每个异常卡带 D/S/Lapse 人话参数与系统建议;底部四出口:重学 / 回原文 / 拆卡 / 生成新卡。§4.3 · §4.4</p>
+
+  <div class="card">
+    <div class="chead">
+      <div>
+        <span class="badge b-danger">严重</span> <span class="badge b-neutral">计算机组成原理</span>
+        <h3 style="font-size:19px;margin-top:8px;">中断子系统</h3>
+        <div style="font-size:13px;color:var(--n500);">漏洞强度 = 3 ÷ 5 = <b style="color:var(--danger);">60%</b></div>
+        <div class="cbar"><div class="cfill" style="width:60%;"></div></div>
+      </div>
+      <div style="text-align:right;">
+        <button class="btn btn-danger btn-lg">▶ 重学这 3 张</button>
+        <div style="font-size:12px;color:var(--n500);margin-top:6px;">绕过今日调度,直接强化;评分照常写回</div>
+      </div>
+    </div>
+    <table class="gtable">
+      <thead><tr><th>卡片</th><th>材料难度</th><th>记忆可撑</th><th>累计忘记</th><th>状态</th><th>系统建议</th></tr></thead>
+      <tbody>
+        <tr><td>独立请求方式的中断请求有哪些优点和缺点?</td>
+          <td><span class="param p-bad">8.5/10</span></td><td><span class="param p-bad">1.2 天</span></td>
+          <td><span class="param p-bad">×3</span></td><td><span class="badge b-danger">🔴 易忘</span></td>
+          <td style="font-size:12px;color:var(--n500);">卡片太长,建议拆"优点/缺点"两张</td></tr>
+        <tr><td>CPU 响应可屏蔽中断需要满足哪些条件?</td>
+          <td><span class="param p-bad">7.8/10</span></td><td><span class="param p-bad">2.5 天</span></td>
+          <td><span class="param p-bad">×2</span></td><td><span class="badge b-danger">🔴 易忘</span></td>
+          <td style="font-size:12px;color:var(--n500);">"三条件+时机"混合,建议拆卡</td></tr>
+        <tr><td>多重中断第一次开/第二次关中断的作用?</td>
+          <td><span class="param p-n">6.0/10</span></td><td><span class="param p-warn">2.0 天</span></td>
+          <td><span class="param p-n">×1</span></td><td><span class="badge b-warn">🟠 模糊</span></td>
+          <td style="font-size:12px;color:var(--n500);">总评"记住"但 S 低——隐蔽漏洞,靠 S 发现</td></tr>
+        <tr><td>中断驱动与程序查询的主要区别?</td>
+          <td><span class="param p-ok">4.2/10</span></td><td><span class="param p-ok">12 天</span></td>
+          <td><span class="param p-n">×0</span></td><td><span class="badge b-ok">🟢 已记住</span></td>
+          <td style="font-size:12px;color:var(--n500);">正常,不计入漏洞</td></tr>
+      </tbody>
+    </table>
+    <div class="insight" style="margin-top:16px;">🧠 <b>根因推断</b>:三张异常卡均涉及"中断硬件机制",D 最高的是「独立请求方式」——
+      判断根因为<b>判优方法理解问题而非记忆问题</b>。已定位:教材第 8 章 P148–152。</div>
+    <div class="abar">
+      <div class="acard hi"><div class="i">🔁</div><div class="t">重学这 3 张</div><div class="s">立即进入强化队列</div></div>
+      <div class="acard"><div class="i">📖</div><div class="t">回原始笔记</div><div class="s">跳转 P148 重读上下文</div></div>
+      <div class="acard"><div class="i">✂️</div><div class="t">拆分卡片</div><div class="s">AI 建议 2 种拆法</div></div>
+      <div class="acard"><div class="i">✨</div><div class="t">生成新角度卡</div><div class="s">换问法考察同一概念</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ④ 卡片管理 -->
+<section id="p-manage" class="page">
+  <h2 class="section-title">卡片管理 —— 紧凑列表 · 术语人话版</h2>
+  <p class="page-desc">行高 ~56px;状态语义化 badge;checkbox hover 出现,选中浮现批量操作栏;筛选支持"仅今日到期"。§4.5</p>
+  <div class="card" style="margin-bottom:12px;">
+    <div class="fbar">
+      <input type="text" placeholder="搜索题干、答案、标签…">
+      <select><option>全部状态</option><option>🟢 已记住</option><option>🟠 模糊</option><option>🔴 易忘</option><option>⚪ 新卡</option></select>
+      <select><option>全部卡组</option><option>计算机组成原理 (9)</option><option>考研 (9)</option></select>
+      <select><option>全部标签</option><option>中断</option><option>总线</option><option>存储</option></select>
+      <select><option>不限时间</option><option>仅今日到期</option></select>
+      <button class="btn">＋ 新建卡片</button>
+      <button class="btn">✨ 从笔记生成</button>
+    </div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden;">
+    <div class="mrow mhead">
+      <input type="checkbox"><span>题干</span><span>状态</span><span>下次到期</span><span></span>
+    </div>
+    <div class="mrow"><input type="checkbox">
+      <div><div style="font-weight:500;">独立请求方式的中断请求有哪些优点和缺点?</div>
+        <div style="font-size:11px;color:var(--n400);">复习 1 次 · 记忆只撑 1.2 天 · 忘记过 1 次 · 标签:中断</div></div>
+      <span class="badge b-danger">🔴 易忘</span><span style="font-size:12px;color:var(--n600);">今天</span>
+      <span style="color:var(--n400);cursor:pointer;">⋯</span></div>
+    <div class="mrow"><input type="checkbox">
+      <div><div style="font-weight:500;">中断驱动方式与程序查询方式的主要区别是什么?</div>
+        <div style="font-size:11px;color:var(--n400);">复习 1 次 · 记忆可撑约 9 天 · 标签:中断</div></div>
+      <span class="badge b-ok">🟢 已记住</span><span style="font-size:12px;color:var(--n600);">9 天后</span>
+      <span style="color:var(--n400);cursor:pointer;">⋯</span></div>
+    <div class="mrow"><input type="checkbox">
+      <div><div style="font-weight:500;">多重中断流程中第一次开中断和第二次关中断分别起什么作用?</div>
+        <div style="font-size:11px;color:var(--n400);">复习 1 次 · 记忆只撑 2 天 · 标签:中断</div></div>
+      <span class="badge b-warn">🟠 模糊</span><span style="font-size:12px;color:var(--n600);">明天</span>
+      <span style="color:var(--n400);cursor:pointer;">⋯</span></div>
+    <div class="mrow" style="border-bottom:none;">
+      <span></span><span style="font-size:12px;color:var(--n500);">共 9 张 · 已选 0 张</span>
+      <span></span><span></span><span></span></div>
+  </div>
+</section>
+
+<!-- ⑤ 统计进度 -->
+<section id="p-stats" class="page">
+  <h2 class="section-title">统计进度 —— 优雅降级 · 警告变行动</h2>
+  <p class="page-desc">复习 &lt; 10 次时图表区显示占位符;保留率附基线;"优先复习建议"取代易忘卡红色轰炸。§4.6</p>
+  <div class="kgrid">
+    <div class="kpi"><div class="n">9</div><div class="l">总卡片</div><div class="d">覆盖 1 个卡组</div></div>
+    <div class="kpi"><div class="n" style="color:var(--primary-dark);">78%</div><div class="l">保留率</div><div class="d">健康区间 ≥80%</div></div>
+    <div class="kpi"><div class="n">1</div><div class="l">连续天数</div><div class="d">🔥 打卡中</div></div>
+    <div class="kpi"><div class="n" style="color:var(--warning);">7</div><div class="l">今日待复习</div><div class="d"><button class="btn btn-primary" style="padding:5px 12px;font-size:12px;">开始复习</button></div></div>
+  </div>
+  <div class="two">
+    <div class="card"><h3 style="font-size:14px;margin-bottom:12px;">实际 vs 理论遗忘曲线</h3>
+      <div class="ph"><div style="font-size:28px;opacity:.3;margin-bottom:8px;">📈</div>
+        <b>需要 ≥ 10 次复习才能绘制</b>
+        <div style="margin-top:6px;font-size:12px;">完成今日队列后,你的真实遗忘曲线将逐步显现</div></div></div>
+    <div class="card"><h3 style="font-size:14px;margin-bottom:12px;">评分分布</h3>
+      <div class="donut">
+        <svg width="90" height="90" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="38" fill="none" stroke="#D1FAE5" stroke-width="15" stroke-dasharray="185 240" transform="rotate(-90 50 50)"/>
+          <circle cx="50" cy="50" r="38" fill="none" stroke="#FCD34D" stroke-width="15" stroke-dasharray="37 240" stroke-dashoffset="-185" transform="rotate(-90 50 50)"/>
+          <circle cx="50" cy="50" r="38" fill="none" stroke="#FCA5A5" stroke-width="15" stroke-dasharray="18 240" stroke-dashoffset="-222" transform="rotate(-90 50 50)"/>
+        </svg>
+        <div style="flex:1;font-size:13px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:5px;"><span>🟢 记住</span><b>7 张 · 78%</b></div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:5px;"><span>🟠 模糊</span><b>1 张 · 11%</b></div>
+          <div style="display:flex;justify-content:space-between;"><span>🔴 忘记</span><b>1 张 · 11%</b></div>
+        </div></div></div>
+  </div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <h3 style="font-size:14px;">优先复习建议 <span class="badge b-neutral">最多 2–3 条</span></h3>
+      <button class="btn btn-primary" style="padding:7px 14px;font-size:12px;">复习这 2 张</button></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:240px;background:var(--warning-bg);border:1px solid #FCD34D;border-radius:var(--radius);padding:13px;">
+        <div style="font-size:12px;color:#B45309;font-weight:600;margin-bottom:5px;">⚠️ 连续忘记 1 次</div>
+        <div style="font-weight:500;">独立请求方式的中断请求有哪些优点和缺点?</div>
+        <div style="font-size:12px;color:var(--n500);margin-top:5px;">建议:5 分钟内重做一次</div></div>
+      <div style="flex:1;min-width:240px;background:var(--info-bg);border:1px solid #93C5FD;border-radius:var(--radius);padding:13px;">
+        <div style="font-size:12px;color:#1D4ED8;font-weight:600;margin-bottom:5px;">💡 记忆稳定度异常低</div>
+        <div style="font-weight:500;">中断驱动方式与程序查询方式的主要区别是什么?</div>
+        <div style="font-size:12px;color:var(--n500);margin-top:5px;">建议:今晚睡前再过一遍</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ⑥ 知识图谱 -->
+<section id="p-graph" class="page">
+  <h2 class="section-title">知识图谱 —— 漏洞传播(P2 · 周/月回顾入口)</h2>
+  <p class="page-desc">红色=确认漏洞,橙色=下游疑似受影响。不做日常入口,回答"这段时间哪里在退步"。§4.7</p>
+  <div class="card" style="position:relative;">
+    <div style="position:absolute;top:18px;right:18px;background:rgba(255,255,255,.9);border:1px solid var(--border);
+                border-radius:var(--radius);padding:10px 14px;font-size:12px;color:var(--n600);">
+      <div><i class="legend-dot" style="background:var(--gap-severe);border-radius:50%;"></i>确认漏洞</div>
+      <div><i class="legend-dot" style="background:var(--gap-warn);border-radius:50%;"></i>疑似受影响</div>
+      <div><i class="legend-dot" style="background:var(--gap-ok);border-radius:50%;"></i>健康</div>
+      <div><i class="legend-dot" style="background:var(--gap-none);border-radius:50%;"></i>未学习</div></div>
+    <svg viewBox="0 0 900 400" width="100%" height="400">
+      <line x1="450" y1="80" x2="230" y2="190" stroke="#D1D5DB" stroke-width="2"/>
+      <line x1="450" y1="80" x2="450" y2="200" stroke="#EF4444" stroke-width="2.5" stroke-dasharray="6 4"/>
+      <line x1="450" y1="80" x2="670" y2="190" stroke="#D1D5DB" stroke-width="2"/>
+      <line x1="230" y1="190" x2="130" y2="310" stroke="#F59E0B" stroke-width="2" stroke-dasharray="6 4"/>
+      <line x1="230" y1="190" x2="330" y2="310" stroke="#D1D5DB" stroke-width="2"/>
+      <line x1="450" y1="200" x2="530" y2="320" stroke="#F59E0B" stroke-width="2" stroke-dasharray="6 4"/>
+      <line x1="670" y1="190" x2="770" y2="310" stroke="#D1D5DB" stroke-width="2"/>
+      <g class="gnode" style="cursor:pointer" onclick="goto('detail')">
+        <circle cx="450" cy="80" r="44" fill="#EF4444"/>
+        <text x="450" y="76" text-anchor="middle" fill="#fff" font-size="15" font-weight="700">中断</text>
+        <text x="450" y="94" text-anchor="middle" fill="#FECACA" font-size="11">强度 60%</text></g>
+      <g><circle cx="230" cy="190" r="33" fill="#6EE7B7"/><text x="230" y="195" text-anchor="middle" fill="#065F46" font-size="12" font-weight="600">中断隐指令</text></g>
+      <g><circle cx="450" cy="200" r="33" fill="#F59E0B"/><text x="450" y="196" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">判优方式</text><text x="450" y="212" text-anchor="middle" fill="#FEF3C7" font-size="10">根因疑似</text></g>
+      <g><circle cx="670" cy="190" r="33" fill="#6EE7B7"/><text x="670" y="195" text-anchor="middle" fill="#065F46" font-size="12" font-weight="600">中断响应</text></g>
+      <g><circle cx="130" cy="310" r="27" fill="#FCD34D"/><text x="130" y="308" text-anchor="middle" fill="#78350F" font-size="11" font-weight="600">独立请求</text><text x="130" y="322" text-anchor="middle" fill="#92400E" font-size="9">疑似受影响</text></g>
+      <g><circle cx="330" cy="310" r="27" fill="#6EE7B7"/><text x="330" y="315" text-anchor="middle" fill="#065F46" font-size="11" font-weight="600">菊花链</text></g>
+      <g><circle cx="530" cy="320" r="27" fill="#FCD34D"/><text x="530" y="318" text-anchor="middle" fill="#78350F" font-size="11" font-weight="600">可屏蔽中断</text><text x="530" y="332" text-anchor="middle" fill="#92400E" font-size="9">疑似受影响</text></g>
+      <g><circle cx="770" cy="310" r="27" fill="#E5E7EB"/><text x="770" y="315" text-anchor="middle" fill="#6B7280" font-size="11">DMA(未学)</text></g>
+    </svg>
+    <div style="font-size:13px;color:var(--n500);background:var(--n50);border-radius:var(--radius);padding:11px 15px;">
+      📌 点红色节点 → 跳簇详情;hover → D/S/L 摘要。红根 + 橙链 = 一眼看出漏洞的根在哪、可能扩散到哪。</div>
+  </div>
+</section>
+
+<!-- ⑦ 病灶对照 -->
+<section id="p-issues" class="page">
+  <h2 class="section-title">原 UI 十项病灶 → 本方案修复去向</h2>
+  <p class="page-desc">开发验收时逐条核对,全部关闭视为改造完成。</p>
+  <div class="issue"><span class="sev sev-h">严重</span><div class="ti">1. 主任务错位:复习页无"开始复习"入口</div>
+    <div class="de">副标题说"今天只做今天该做的",页面却没有任务量、没有开始按钮。</div>
+    <div class="fx">✅ 修复:今日复习页任务条 + 全页最大 CTA(页签①)</div></div>
+  <div class="issue"><span class="sev sev-h">严重</span><div class="ti">2. 缺失复习模式页(翻卡自评闭环不存在)</div>
+    <div class="de">用户只能"看卡片列表",无法"做复习"——SRS 的核心交互流缺失。</div>
+    <div class="fx">✅ 修复:全屏翻卡页,先答后翻 + 四键评分 + 键盘流(页签②)</div></div>
+  <div class="issue"><span class="sev sev-h">严重</span><div class="ti">3. 算法黑话直出:L0/L1/稳定度像天书</div>
+    <div class="de">"正常 L0 ×1"“稳定度 9 天"用户无法解读,算法状态未翻译。</div>
+    <div class="fx">✅ 修复:术语人话全覆盖——🟢已记住/🟠模糊/🔴易忘、"记忆可撑约 9 天"(页签④)</div></div>
+  <div class="issue"><span class="sev sev-m">中等</span><div class="ti">4. 绿色三义混用(品牌/状态/统计)</div>
+    <div class="fx">✅ 修复:品牌绿只给 CTA;状态四色只给 badge 与评分键;漏洞色阶独立(§3.2)</div></div>
+  <div class="issue"><span class="sev sev-m">中等</span><div class="ti">5. 样本不足时统计页画空图</div>
+    <div class="fx">✅ 修复:&lt;10 次渲染占位组件 + 引导文案(页签⑤)</div></div>
+  <div class="issue"><span class="sev sev-m">中等</span><div class="ti">6. 易忘卡红色轰炸 + 原始分数(0/1 0%)</div>
+    <div class="fx">✅ 修复:"优先复习建议"最多 2–3 条,建议性文案 + 一键 CTA(页签⑤)</div></div>
+  <div class="issue"><span class="sev sev-m">中等</span><div class="ti">7. 详情抽屉底部"取消"按钮语义错误</div>
+    <div class="fx">✅ 修复:改为「立即复习」「编辑卡片」「重置进度」三个动作(§4.5)</div></div>
+  <div class="issue"><span class="sev sev-m">中等</span><div class="ti">8. 列表行高 80px,checkbox 常驻无批量操作</div>
+    <div class="fx">✅ 修复:行高 ~56px + hover checkbox + 选中浮现批量栏(页签④)</div></div>
+  <div class="issue"><span class="sev sev-m">中等</span><div class="ti">9. 卡组栏无"今日到期"指示</div>
+    <div class="fx">✅ 修复:卡组带今日到期数绿色角标(§4.1)</div></div>
+  <div class="issue"><span class="sev sev-m">中等</span><div class="ti">10. 顶部按钮主次不分,"刷新"多余</div>
+    <div class="fx">✅ 修复:唯一主 CTA 实心绿;刷新删除,数据自动同步(§3.4)</div></div>
+</section>
+
+<script>
+  function goto(p){
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+    document.querySelector('.tab[data-p="'+p+'"]').classList.add('active');
+    document.getElementById('p-'+p).classList.add('active');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+  document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>goto(t.dataset.p)));
+</script>
+</body>
+</html>
