@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -213,7 +214,13 @@ func (h *ReviewHandler) BatchCards(c *gin.Context) {
 }
 
 func (h *ReviewHandler) Heatmap(c *gin.Context) {
-	data, err := h.service.Heatmap(c.Request.Context(), c.Query("group_id"))
+	opts := &types.ReviewHeatmapOptions{
+		GroupID: c.Query("group_id"),
+		Expand:  c.Query("expand") == "1" || strings.EqualFold(c.Query("expand"), "true"),
+	}
+	opts.RowLimit, _ = strconv.Atoi(c.Query("row_limit"))
+	opts.ColumnLimit, _ = strconv.Atoi(c.Query("column_limit"))
+	data, err := h.service.Heatmap(c.Request.Context(), opts)
 	if err != nil {
 		_ = c.Error(err)
 		return
@@ -222,9 +229,17 @@ func (h *ReviewHandler) Heatmap(c *gin.Context) {
 }
 
 func (h *ReviewHandler) ClusterDetail(c *gin.Context) {
-	data, err := h.service.ClusterDetail(
-		c.Request.Context(), c.Query("row_id"), c.Query("column_key"),
-	)
+	rowGroupID := strings.TrimSpace(c.Query("row_group_id"))
+	if rowGroupID == "" {
+		rowGroupID = strings.TrimSuffix(strings.TrimSuffix(c.Query("row_id"), ":virtual"), ":direct")
+	}
+	req := &types.ReviewClusterDetailRequest{
+		ScopeGroupID: strings.TrimSpace(c.Query("scope_group_id")),
+		RowGroupID:   rowGroupID,
+		ColumnKey:    strings.TrimSpace(c.Query("column_key")),
+		Direct:       c.Query("direct") == "1" || strings.EqualFold(c.Query("direct"), "true"),
+	}
+	data, err := h.service.ClusterDetail(c.Request.Context(), req)
 	if err != nil {
 		_ = c.Error(err)
 		return
@@ -336,6 +351,56 @@ func (h *ReviewHandler) ImportGeneratedCards(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"imported": count}})
+}
+
+func (h *ReviewHandler) PreviewCardSplit(c *gin.Context) {
+	var req types.GenerateCardVariantsRequest
+	_ = c.ShouldBindJSON(&req)
+	preview, err := h.service.PreviewCardSplit(c.Request.Context(), c.Param("id"), req.Count)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": preview})
+}
+
+func (h *ReviewHandler) ApplyCardSplit(c *gin.Context) {
+	var req types.ApplyCardSplitRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	result, err := h.service.ApplyCardSplit(c.Request.Context(), c.Param("id"), &req)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
+}
+
+func (h *ReviewHandler) PreviewCardAngles(c *gin.Context) {
+	var req types.GenerateCardVariantsRequest
+	_ = c.ShouldBindJSON(&req)
+	preview, err := h.service.PreviewCardAngles(c.Request.Context(), c.Param("id"), req.Count)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": preview})
+}
+
+func (h *ReviewHandler) RootCause(c *gin.Context) {
+	var req types.ReviewRootCauseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	result, err := h.service.RootCause(c.Request.Context(), &req)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
 }
 
 func (h *ReviewHandler) StartSession(c *gin.Context) {

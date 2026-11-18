@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Clock3, Flame, ListChecks, Target } from '@lucide/vue'
-
-import type { ReviewQueue, ReviewSessionState } from '@/api/review'
+import type { ReviewHeatmap, ReviewHeatmapCell, ReviewQueue, ReviewSessionState } from '@/api/review'
+import ReviewHeatmapPanel from './ReviewHeatmap.vue'
+import ReviewPriorities from './ReviewPriorities.vue'
+import goalIcon from '@/assets/icons/animated/goal.gif'
+import checklistIcon from '@/assets/icons/animated/checklist.gif'
+import bookIcon from '@/assets/icons/animated/book.gif'
+import clockIcon from '@/assets/icons/animated/clock.gif'
+import fireIcon from '@/assets/icons/animated/fire.gif'
+import rocketIcon from '@/assets/icons/animated/rocket.gif'
+import sparklesIcon from '@/assets/icons/animated/sparkles.gif'
 
 const props = defineProps<{
   queue: ReviewQueue | null
@@ -11,6 +18,9 @@ const props = defineProps<{
   selectedGroupName: string
   selectedGroupId: string
   groupOptions: Array<{ label: string; value: string }>
+  heatmap: ReviewHeatmap | null
+  heatmapLoading: boolean
+  heatmapError: string
   loading: boolean
   error: string
 }>()
@@ -18,6 +28,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   start: []
   retry: []
+  retryHeatmap: []
+  openCluster: [cell: ReviewHeatmapCell]
+  drill: [groupID: string]
+  expand: []
   'update:groupId': [groupId: string]
 }>()
 
@@ -68,6 +82,8 @@ function onGroupChange(value: string | number | Array<string | number>) {
   const next = Array.isArray(value) ? value[0] : value
   emit('update:groupId', next === undefined ? '' : String(next))
 }
+
+const canStart = computed(() => hasQueue.value || hasActiveSession.value)
 </script>
 
 <template>
@@ -87,7 +103,10 @@ function onGroupChange(value: string | number | Array<string | number>) {
         <div class="task-card__head">
           <div class="task-card__copy">
             <div class="task-card__eyebrow">{{ selectedGroupName || t('review.v3.allGroups') }}</div>
-            <h2 class="task-card__title">{{ taskTitle }}</h2>
+            <div class="task-card__title-row">
+              <img class="rv-icon rv-icon--lg" :src="goalIcon" alt="" />
+              <h2 class="task-card__title">{{ taskTitle }}</h2>
+            </div>
             <p class="task-card__hint">{{ taskHint }}</p>
           </div>
           <t-button
@@ -98,22 +117,27 @@ function onGroupChange(value: string | number | Array<string | number>) {
             data-testid="review-v3-start"
             @click="emit('start')"
           >
+            <img v-if="!ctaDisabled" class="rv-icon rv-icon--sm task-card__cta-icon" :src="rocketIcon" alt="" />
             {{ ctaLabel }}
           </t-button>
         </div>
 
         <div class="task-card__metrics">
           <div class="metric">
-            <div class="metric__label">{{ t('review.v3.remainingDue') }}</div>
+            <div class="metric__label">
+              <img class="rv-icon rv-icon--sm" :src="checklistIcon" alt="" />{{ t('review.v3.remainingDue') }}
+            </div>
             <div class="metric__value">{{ dueCount }}</div>
           </div>
           <div class="metric">
-            <div class="metric__label">{{ t('review.v3.remainingNew') }}</div>
+            <div class="metric__label">
+              <img class="rv-icon rv-icon--sm" :src="bookIcon" alt="" />{{ t('review.v3.remainingNew') }}
+            </div>
             <div class="metric__value">{{ newCount }}</div>
           </div>
           <div class="metric" :title="t('review.v3.estimatedHint')">
             <div class="metric__label">
-              <Clock3 :size="13" />{{ t('review.v3.estimatedLabel') }}
+              <img class="rv-icon rv-icon--sm" :src="clockIcon" alt="" />{{ t('review.v3.estimatedLabel') }}
             </div>
             <div class="metric__value">
               {{ estimatedMinutes ? t('review.v3.estimatedValue', { count: estimatedMinutes }) : '—' }}
@@ -121,7 +145,7 @@ function onGroupChange(value: string | number | Array<string | number>) {
           </div>
           <div class="metric">
             <div class="metric__label">
-              <Flame :size="13" />{{ t('review.stats.streak') }}
+              <img class="rv-icon rv-icon--sm" :src="fireIcon" alt="" />{{ t('review.stats.streak') }}
             </div>
             <div class="metric__value">{{ t('review.v3.streakDays', { count: streakDays }) }}</div>
           </div>
@@ -134,25 +158,25 @@ function onGroupChange(value: string | number | Array<string | number>) {
       </section>
 
       <div class="today-view__panels">
-        <t-card class="today-panel" :bordered="false" :title="t('review.v3.heatmapTitle')">
-          <template #actions>
-            <span class="today-panel__pending">{{ t('review.v3.preview') }}</span>
-          </template>
-          <div class="today-panel__placeholder">
-            <Target :size="22" />
-            <p>{{ t('review.v3.heatmapPending') }}</p>
-          </div>
-        </t-card>
+        <ReviewHeatmapPanel
+          :heatmap="heatmap"
+          :loading="heatmapLoading"
+          :error="heatmapError"
+          :can-start="canStart"
+          @select="cell => emit('openCluster', cell)"
+          @drill="groupID => emit('drill', groupID)"
+          @expand="emit('expand')"
+          @start="emit('start')"
+          @retry="emit('retryHeatmap')"
+        />
 
-        <t-card class="today-panel" :bordered="false" :title="t('review.v3.prioritiesTitle')">
-          <template #actions>
-            <span class="today-panel__pending">{{ t('review.v3.preview') }}</span>
-          </template>
-          <div class="today-panel__placeholder">
-            <ListChecks :size="22" />
-            <p>{{ t('review.v3.prioritiesPending') }}</p>
-          </div>
-        </t-card>
+        <ReviewPriorities :heatmap="heatmap" @select="cell => emit('openCluster', cell)" />
+      </div>
+
+      <div v-if="heatmap?.insight" class="today-view__insight" data-testid="review-v3-insight">
+        <img class="rv-icon rv-icon--sm" :src="sparklesIcon" alt="" />
+        <span class="today-view__insight-label">{{ t('review.v3.insightTitle') }}</span>
+        <span>{{ heatmap.insight.message }}</span>
       </div>
     </t-loading>
   </div>
@@ -187,7 +211,8 @@ function onGroupChange(value: string | number | Array<string | number>) {
 
 .task-card {
   padding: 20px;
-  background: var(--td-bg-color-container);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--td-brand-color) 4%, var(--td-bg-color-container)) 0%, var(--td-bg-color-container) 42%);
   border: 1px solid var(--td-component-stroke);
   border-radius: var(--td-radius-medium);
 }
@@ -212,8 +237,15 @@ function onGroupChange(value: string | number | Array<string | number>) {
   white-space: nowrap;
 }
 
+.task-card__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
 .task-card__title {
-  margin: 4px 0 0;
+  margin: 0;
   font-size: 20px;
   line-height: 28px;
   font-weight: 600;
@@ -229,6 +261,17 @@ function onGroupChange(value: string | number | Array<string | number>) {
 
 .task-card__cta {
   flex: 0 0 auto;
+
+  :deep(.t-button__text),
+  :deep(> span) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+}
+
+.task-card__cta-icon {
+  margin-right: 2px;
 }
 
 .task-card__metrics {
@@ -279,48 +322,34 @@ function onGroupChange(value: string | number | Array<string | number>) {
 
 .today-view__panels {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
   gap: 16px;
   margin-top: 16px;
 }
 
-.today-panel {
-  min-width: 0;
-
-  :deep(.t-card__header) {
-    min-height: 44px;
-    padding: 0 16px;
-  }
-
-  :deep(.t-card__body) {
-    padding: 0 16px 16px;
-  }
-}
-
-.today-panel__pending {
-  font-size: 11px;
-  color: var(--td-text-color-placeholder);
-  border: 1px solid var(--td-component-stroke);
-  border-radius: var(--td-radius-round);
-  padding: 1px 7px;
-}
-
-.today-panel__placeholder {
+.today-view__insight {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 132px;
-  border: 1px dashed var(--td-component-stroke);
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 9px 14px;
+  border: 1px solid color-mix(in srgb, var(--td-warning-color) 28%, transparent);
   border-radius: var(--td-radius-default);
-  background: var(--td-bg-color-container-hover);
-  color: var(--td-text-color-placeholder);
-  font-size: 13px;
+  background: color-mix(in srgb, var(--td-warning-color) 8%, var(--td-bg-color-container));
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--td-text-color-secondary);
 
-  p {
-    margin: 0;
+  svg {
+    color: var(--td-warning-color);
   }
+}
+
+.today-view__insight-label {
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin-right: 2px;
 }
 
 @media (max-width: 960px) {

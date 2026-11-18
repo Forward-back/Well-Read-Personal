@@ -22,6 +22,52 @@
 
     <!-- Content -->
     <div v-else class="settings-group">
+      <!-- 头像 -->
+      <div class="setting-row">
+        <div class="setting-info">
+          <label>{{ t('userProfile.avatar.label') }}</label>
+          <p class="desc">{{ t('userProfile.avatar.description') }}</p>
+        </div>
+        <div class="setting-control avatar-control">
+          <div class="avatar-preview" :class="{ 'is-empty': !displayAvatar }">
+            <img v-if="displayAvatar" :src="displayAvatar" alt="" />
+            <span v-else>{{ avatarInitial }}</span>
+          </div>
+          <div class="avatar-actions">
+            <t-button theme="default" variant="outline" size="small" @click="pickAvatar">
+              {{ displayAvatar ? t('userProfile.avatar.change') : t('userProfile.avatar.choose') }}
+            </t-button>
+            <t-button
+              v-if="pendingAvatar"
+              theme="primary"
+              size="small"
+              :loading="avatarSaving"
+              @click="saveAvatar"
+            >
+              {{ avatarSaving ? t('userProfile.avatar.saving') : t('userProfile.avatar.save') }}
+            </t-button>
+            <t-button
+              v-if="displayAvatar"
+              theme="danger"
+              variant="text"
+              size="small"
+              :disabled="avatarSaving"
+              @click="removeAvatar"
+            >
+              {{ t('userProfile.avatar.remove') }}
+            </t-button>
+          </div>
+          <p class="avatar-hint">{{ t('userProfile.avatar.hint') }}</p>
+          <input
+            ref="avatarInput"
+            class="avatar-file-input"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            @change="onAvatarFile"
+          />
+        </div>
+      </div>
+
       <!-- 用户 ID -->
       <div class="setting-row">
         <div class="setting-info">
@@ -178,6 +224,7 @@ import {
   getCurrentUser,
   getAuthConfig,
   changePassword,
+  updateMyAvatar,
   logout as logoutApi,
   type UserInfo,
 } from '@/api/auth'
@@ -190,6 +237,14 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const userInfo = ref<UserInfo | null>(null)
+const avatarInput = ref<HTMLInputElement | null>(null)
+const pendingAvatar = ref<string | null>(null)
+const avatarSaving = ref(false)
+const displayAvatar = computed(() => pendingAvatar.value ?? userInfo.value?.avatar ?? '')
+const avatarInitial = computed(() => {
+  const source = userInfo.value?.username || userInfo.value?.email || 'W'
+  return source.trim().slice(0, 1).toUpperCase()
+})
 const complexPasswordEnabled = ref(false)
 const loading = ref(true)
 const error = ref('')
@@ -261,6 +316,106 @@ const loadInfo = async () => {
     error.value = err?.message || t('tenant.messages.networkError')
   } finally {
     loading.value = false
+  }
+}
+
+const pickAvatar = () => {
+  if (avatarSaving.value) return
+  const input = avatarInput.value
+  if (!input) return
+  input.value = ''
+  input.click()
+}
+
+const cropSquare = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('read'))
+    reader.onload = () => {
+      const image = new Image()
+      image.onerror = () => reject(new Error('image'))
+      image.onload = () => {
+        const side = Math.min(image.width, image.height)
+        const sx = (image.width - side) / 2
+        const sy = (image.height - side) / 2
+        const canvas = document.createElement('canvas')
+        canvas.width = 256
+        canvas.height = 256
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          reject(new Error('canvas'))
+          return
+        }
+        ctx.drawImage(image, sx, sy, side, side, 0, 0, 256, 256)
+        resolve(canvas.toDataURL('image/jpeg', 0.88))
+      }
+      image.src = String(reader.result || '')
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+const onAvatarFile = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+    MessagePlugin.warning(t('userProfile.avatar.invalidType'))
+    input.value = ''
+    return
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    MessagePlugin.warning(t('userProfile.avatar.tooLarge'))
+    input.value = ''
+    return
+  }
+  try {
+    pendingAvatar.value = await cropSquare(file)
+  } catch {
+    MessagePlugin.error(t('userProfile.avatar.readFailed'))
+  } finally {
+    input.value = ''
+  }
+}
+
+const saveAvatar = async () => {
+  if (!pendingAvatar.value || avatarSaving.value) return
+  avatarSaving.value = true
+  try {
+    const resp = await updateMyAvatar(pendingAvatar.value)
+    if (!resp.success) {
+      MessagePlugin.error(resp.message || t('userProfile.avatar.failed'))
+      return
+    }
+    const saved = resp.data?.avatar ?? pendingAvatar.value
+    if (userInfo.value) userInfo.value = { ...userInfo.value, avatar: saved }
+    authStore.setAvatar(saved)
+    pendingAvatar.value = null
+    MessagePlugin.success(t('userProfile.avatar.success'))
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('userProfile.avatar.failed'))
+  } finally {
+    avatarSaving.value = false
+  }
+}
+
+const removeAvatar = async () => {
+  if (avatarSaving.value) return
+  avatarSaving.value = true
+  try {
+    const resp = await updateMyAvatar('')
+    if (!resp.success) {
+      MessagePlugin.error(resp.message || t('userProfile.avatar.failed'))
+      return
+    }
+    if (userInfo.value) userInfo.value = { ...userInfo.value, avatar: '' }
+    authStore.setAvatar('')
+    pendingAvatar.value = null
+    MessagePlugin.success(t('userProfile.avatar.removed'))
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('userProfile.avatar.failed'))
+  } finally {
+    avatarSaving.value = false
   }
 }
 
@@ -436,6 +591,58 @@ onMounted(loadInfo)
 .password-mask {
   letter-spacing: 0.12em;
   color: var(--td-text-color-secondary);
+}
+
+.avatar-control {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.avatar-preview {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 14px;
+  background: var(--td-brand-color-light);
+  color: var(--td-brand-color);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+
+  img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+  }
+
+  &.is-empty {
+    background: var(--td-bg-color-secondarycontainer);
+    color: var(--td-text-color-secondary);
+  }
+}
+
+.avatar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.avatar-hint {
+  margin: 0;
+  color: var(--td-text-color-placeholder);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: right;
+}
+
+.avatar-file-input {
+  display: none;
 }
 
 .password-popup-inner {

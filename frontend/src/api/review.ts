@@ -61,6 +61,7 @@ export interface ReviewCard {
   last_reviewed_at?: string | null
   source_updated: boolean
   vulnerability?: ReviewVulnerability
+  vulnerability_reason?: string
   created_at: string
   updated_at: string
 }
@@ -211,13 +212,16 @@ export interface ReviewQueue {
   streak_days: number
 }
 
-export type ReviewHeatmapColumnKind = 'tag' | 'source' | 'uncategorized'
+export type ReviewHeatmapColumnKind = 'tag' | 'knowledge_base' | 'source' | 'uncategorized' | 'other'
+export type ReviewHeatmapRowKind = 'group' | 'direct' | 'other'
 
 export interface ReviewHeatmapRow {
   id: string
   group_id: string
   name: string
   path: string
+  kind: ReviewHeatmapRowKind
+  drillable: boolean
   virtual: boolean
   total_cards: number
 }
@@ -244,6 +248,14 @@ export interface ReviewHeatmapCell {
   clickable: boolean
 }
 
+export interface ReviewHeatmapFormula {
+  severe_weight: number
+  warning_weight: number
+  observe_weight: number
+  denominator: number
+  text: string
+}
+
 export interface ReviewHeatmapInsight {
   kind: 'row' | 'column'
   row_id: string
@@ -258,6 +270,13 @@ export interface ReviewHeatmap {
   priorities: ReviewHeatmapCell[]
   observe_count: number
   insight?: ReviewHeatmapInsight | null
+  scope_group_id: string
+  scope_path: string
+  row_total: number
+  column_total: number
+  row_truncated: boolean
+  column_truncated: boolean
+  formula?: ReviewHeatmapFormula | null
 }
 
 export interface ReviewClusterCard {
@@ -274,6 +293,23 @@ export interface ReviewClusterDetail {
   row: ReviewHeatmapRow
   column: ReviewHeatmapColumn
   cards: ReviewClusterCard[]
+  reasons: string[]
+  formula?: ReviewHeatmapFormula | null
+  scope_group_id: string
+}
+
+export interface ReviewRootCause {
+  summary: string
+  reasons: string[]
+  focus_suggestions: string[]
+  evidence_card_ids: string[]
+  model_id: string
+  source: 'llm' | 'rule'
+}
+
+export interface ApplyCardSplitResult {
+  created: ReviewCard[]
+  archived_original: boolean
 }
 
 export type ReviewBatchAction = 'delete' | 'move' | 'add_tags' | 'reset'
@@ -387,16 +423,61 @@ export function batchReviewCards(payload: BatchReviewCardsRequest) {
   return post<{ data: { affected: number } }>('/api/v1/review/cards/batch', payload)
 }
 
-export function getReviewHeatmap(params?: { group_id?: string }) {
+export function getReviewHeatmap(params?: {
+  group_id?: string
+  row_limit?: number
+  column_limit?: number
+  expand?: boolean
+}) {
   const query = new URLSearchParams()
   if (params?.group_id) query.set('group_id', params.group_id)
+  if (params?.row_limit) query.set('row_limit', String(params.row_limit))
+  if (params?.column_limit) query.set('column_limit', String(params.column_limit))
+  if (params?.expand) query.set('expand', '1')
   const suffix = query.toString() ? `?${query}` : ''
   return get<{ data: ReviewHeatmap }>(`/api/v1/review/heatmap${suffix}`)
 }
 
-export function getReviewClusterDetail(params: { row_id: string; column_key: string }) {
-  const query = new URLSearchParams({ row_id: params.row_id, column_key: params.column_key })
+export function getReviewClusterDetail(params: {
+  scope_group_id?: string
+  row_group_id: string
+  column_key: string
+  direct?: boolean
+}) {
+  const query = new URLSearchParams({ row_group_id: params.row_group_id, column_key: params.column_key })
+  if (params.scope_group_id) query.set('scope_group_id', params.scope_group_id)
+  if (params.direct) query.set('direct', '1')
   return get<{ data: ReviewClusterDetail }>(`/api/v1/review/clusters/detail?${query}`)
+}
+
+export function getReviewRootCause(payload: {
+  scope_group_id?: string
+  row_group_id: string
+  column_key: string
+  direct?: boolean
+}) {
+  return post<{ data: ReviewRootCause }>('/api/v1/review/clusters/root-cause', payload)
+}
+
+export function previewCardSplit(cardId: string, count = 2) {
+  return post<{ data: ReviewGenerationPreview }>(
+    `/api/v1/review/cards/${encodeURIComponent(cardId)}/split/preview`,
+    { count },
+  )
+}
+
+export function applyCardSplit(cardId: string, cards: CreateReviewCardRequest[]) {
+  return post<{ data: ApplyCardSplitResult }>(
+    `/api/v1/review/cards/${encodeURIComponent(cardId)}/split/apply`,
+    { cards },
+  )
+}
+
+export function previewCardAngles(cardId: string, count = 1) {
+  return post<{ data: ReviewGenerationPreview }>(
+    `/api/v1/review/cards/${encodeURIComponent(cardId)}/angles/preview`,
+    { count },
+  )
 }
 
 export function getReviewQueue(params?: { group_id?: string; limit?: number }) {

@@ -17,6 +17,7 @@ const createMenuChildren = () => reactive<MenuChild[]>([])
 
 export const useMenuStore = defineStore('menuStore', () => {
   const menuArr = reactive<MenuItem[]>([
+    { title: '', titleKey: 'menu.welcome', icon: 'menu-home.svg', path: '/' },
     {
       title: '',
       titleKey: 'menu.newChat',

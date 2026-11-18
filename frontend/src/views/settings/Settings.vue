@@ -1,9 +1,9 @@
 <template>
-  <Teleport to="body">
-    <Transition name="modal">
-      <div v-if="visible" class="settings-overlay">
-        <div class="settings-modal">
-          <button class="close-btn" @click="handleClose" :aria-label="$t('general.close')">
+  <Teleport to="body" :disabled="isPageMode">
+    <Transition name="modal" :css="!isPageMode">
+      <div v-if="visible" :class="isPageMode ? 'settings-page' : 'settings-overlay'">
+        <div :class="isPageMode ? 'settings-page__inner' : 'settings-modal'">
+          <button v-if="!isPageMode" class="close-btn" @click="handleClose" :aria-label="$t('general.close')">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
               <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
             </svg>
@@ -130,6 +130,7 @@ const normalizeSection = (value: unknown): SectionKey => {
 }
 
 const visible = computed(() => route.path === '/platform/settings' || uiStore.showSettingsModal)
+const isPageMode = computed(() => route.path === '/platform/settings')
 
 const syncRoute = (section: SectionKey) => {
   if (route.path !== '/platform/settings') return
@@ -158,7 +159,7 @@ const handleClose = () => {
 }
 
 const handleEscape = (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && visible.value) {
+  if (e.key === 'Escape' && visible.value && !isPageMode.value) {
     handleClose()
   }
 }
@@ -199,6 +200,26 @@ onUnmounted(() => {
 </script>
 
 <style lang="less" scoped>
+.settings-page {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: #f7f5f0;
+}
+
+.settings-page__inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #f7f5f0;
+}
+
+html[theme-mode="dark"] .settings-page,
+html[theme-mode="dark"] .settings-page__inner {
+  background: var(--td-bg-color-page);
+}
+
 .settings-overlay {
   position: fixed;
   inset: 0;

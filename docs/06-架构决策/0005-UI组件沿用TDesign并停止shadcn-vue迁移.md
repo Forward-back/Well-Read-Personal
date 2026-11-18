@@ -31,6 +31,8 @@ status: accepted
 - 复习 V3 需要重写现有 shadcn 复习页，工作量高于在旧页面上小修。
 - 删除 shadcn 目录与依赖前，必须先完成后端契约与 TDesign 页面替换，避免页面不可用。
 - 旧 TDesign 页面不受影响；不再存在「历史页 8px / 新页 6px」的圆角分叉。
+- 2026-11-17 已完成：复习 V3 替换主路由，生成/合并/重绑/JSON 导出已移植；`src/components/ui`、`components.json`、shadcn/reka 依赖与 `tailwind.css` 语义 token 已删除，Tailwind 只保留布局 utility。
 - 视觉验收仍由 owner 实机或截图确认；自动化测试只证明功能与布局，不代表审美通过。
 - [ADR 0003](0003-UI组件渐进迁移到shadcn-vue.md) 标记为 superseded；本文成为 UI 组件的长期决策。
 - 文档入口：[界面规范](../02-需求与设计/界面规范.md) §3/§6、`frontend/README.md`、`CLAUDE.md` §3。
+- 2026-11-18：视觉目标条款由 [ADR 0007](0007-PostHog布局语言落地页与壳层改造.md) 部分修订：落地页与共享壳层已改用 PostHog 布局语言，TDesign 组件栈与品牌绿强调保留；详情页在各自批次迁移前仍按本文与界面规范执行。

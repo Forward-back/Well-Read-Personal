@@ -47,6 +47,11 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  const setAvatar = (avatar: string) => {
+    if (!user.value) return
+    setUser({ ...user.value, avatar })
+  }
+
   const setTenant = (tenantData: TenantInfo | null) => {
     tenant.value = tenantData
     if (tenantData) {
@@ -200,6 +205,7 @@ export const useAuthStore = defineStore('auth', () => {
     isLiteMode,
 
     setUser,
+    setAvatar,
     setTenant,
     setToken,
     setRefreshToken,

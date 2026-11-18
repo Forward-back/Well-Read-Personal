@@ -18,6 +18,7 @@ type ReviewRepository interface {
 	DeleteGroup(ctx context.Context, tenantID uint64, id string, deleteCards bool) error
 
 	CreateCard(ctx context.Context, card *types.ReviewCard, sources []*types.ReviewCardSource) error
+	CreateDerivedCardsAndSuspend(ctx context.Context, tenantID uint64, originalCardID string, cards []*types.ReviewCard, sourcesByCard [][]*types.ReviewCardSource) error
 	GetCard(ctx context.Context, tenantID uint64, id string) (*types.ReviewCard, error)
 	GetCardWithSources(ctx context.Context, tenantID uint64, id string) (*types.ReviewCardDetail, error)
 	ListCards(ctx context.Context, tenantID uint64, filter *types.ReviewCardFilter) ([]*types.ReviewCard, error)
@@ -37,6 +38,8 @@ type ReviewRepository interface {
 	ListAllCards(ctx context.Context, tenantID uint64) ([]*types.ReviewCard, error)
 	ListAllSources(ctx context.Context, tenantID uint64) ([]*types.ReviewCardSource, error)
 	ListAllLogs(ctx context.Context, tenantID uint64) ([]*types.ReviewLog, error)
+	ListActiveCardsByGroupIDs(ctx context.Context, tenantID uint64, groupIDs []string) ([]*types.ReviewCard, error)
+	ListActiveSourcesByCardIDs(ctx context.Context, tenantID uint64, cardIDs []string) ([]*types.ReviewCardSource, error)
 
 	ListDueCards(ctx context.Context, tenantID uint64, groupIDs []string, now time.Time, limit int) ([]*types.ReviewCard, error)
 	ListNewCards(ctx context.Context, tenantID uint64, groupIDs []string, limit int) ([]*types.ReviewCard, error)
@@ -87,8 +90,8 @@ type ReviewService interface {
 	RestoreCard(ctx context.Context, id string) error
 	ResetCardSchedule(ctx context.Context, id string) (*types.ReviewCard, error)
 	BatchCards(ctx context.Context, req *types.BatchReviewCardsRequest) (*types.BatchReviewCardsResult, error)
-	Heatmap(ctx context.Context, groupID string) (*types.ReviewHeatmap, error)
-	ClusterDetail(ctx context.Context, rowID, columnKey string) (*types.ReviewClusterDetail, error)
+	Heatmap(ctx context.Context, opts *types.ReviewHeatmapOptions) (*types.ReviewHeatmap, error)
+	ClusterDetail(ctx context.Context, req *types.ReviewClusterDetailRequest) (*types.ReviewClusterDetail, error)
 
 	TodayQueue(ctx context.Context, groupID string, limit int) (*types.ReviewQueue, error)
 	StartSession(ctx context.Context, req *types.StartReviewSessionRequest) (*types.ReviewSessionState, error)
@@ -105,4 +108,8 @@ type ReviewService interface {
 	Export(ctx context.Context) (*types.ReviewExport, error)
 	PreviewGeneration(ctx context.Context, req *types.GenerateReviewCardsRequest) (*types.ReviewGenerationPreview, error)
 	ImportGeneratedCards(ctx context.Context, req *types.ImportReviewCardsRequest) (int, error)
+	PreviewCardSplit(ctx context.Context, cardID string, count int) (*types.ReviewGenerationPreview, error)
+	ApplyCardSplit(ctx context.Context, cardID string, req *types.ApplyCardSplitRequest) (*types.ApplyCardSplitResult, error)
+	PreviewCardAngles(ctx context.Context, cardID string, count int) (*types.ReviewGenerationPreview, error)
+	RootCause(ctx context.Context, req *types.ReviewRootCauseRequest) (*types.ReviewRootCause, error)
 }

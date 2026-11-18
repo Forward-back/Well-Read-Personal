@@ -1389,6 +1389,9 @@ const handleKnowledgeFileDrop = (event: CustomEvent) => {
 const pendingKnowledgeId = ref<string | null>(
   (route.query.knowledge_id as string) || null
 );
+const pendingChunkId = ref<string>(
+  typeof route.query.chunk_id === 'string' ? route.query.chunk_id : ''
+);
 
 let autoOpenRequest = 0;
 
@@ -1396,6 +1399,7 @@ const tryAutoOpenDocument = async () => {
   if (!pendingKnowledgeId.value) return;
   const targetId = pendingKnowledgeId.value;
   pendingKnowledgeId.value = null;
+  pendingChunkId.value = typeof route.query.chunk_id === 'string' ? route.query.chunk_id : '';
   const initialTab: 'content' | 'collab' | 'versions' =
     route.query.doc_tab === 'collab' ? 'collab'
       : route.query.doc_tab === 'versions' ? 'versions'
@@ -1433,6 +1437,21 @@ watch(
   (newId) => {
     if (typeof newId !== 'string' || !newId) return;
     pendingKnowledgeId.value = newId;
+    tryAutoOpenDocument();
+  },
+);
+
+// Deep links from review sources carry ?chunk_id=; jump after the drawer opens
+// the requested document. If the drawer is already on that document, the prop
+// change alone is enough for DocContent to scroll to the chunk.
+watch(
+  () => route.query.chunk_id,
+  (newChunkId) => {
+    if (typeof newChunkId !== 'string' || !newChunkId) return;
+    pendingChunkId.value = newChunkId;
+    const knowledgeId = typeof route.query.knowledge_id === 'string' ? route.query.knowledge_id : '';
+    if (!knowledgeId) return;
+    pendingKnowledgeId.value = knowledgeId;
     tryAutoOpenDocument();
   },
 );
@@ -1603,6 +1622,7 @@ const updateStatus = (analyzeList: KnowledgeCard[]) => {
 
 const closeDoc = () => {
   isCardDetails.value = false;
+  pendingChunkId.value = '';
 };
 const openCardDetails = (item: KnowledgeCard, initialTab: 'content' | 'collab' | 'versions' = 'content') => {
   docInitialTab.value = initialTab;
@@ -3206,6 +3226,7 @@ async function createNewSession(value: string): Promise<void> {
       <!-- DocContent drawer (shared by documents tab and gaze source refs) -->
       <DocContent ref="docContentRef" :visible="isCardDetails" :details="details" :canEditKB="canEdit"
         :canManageKB="canManage" :canDownloadKB="canDownloadKnowledge" :kbId="kbId" :initialTab="docInitialTab"
+        :initialChunkId="pendingChunkId"
         @closeDoc="closeDoc" @getDoc="getDoc" @summaryStateChange="syncDocumentSummaryState">
       </DocContent>
     </div>

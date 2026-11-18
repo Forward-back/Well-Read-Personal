@@ -235,7 +235,7 @@ mermaid.initialize({
     topPadding: 50
   }
 });
-const props = defineProps(["visible", "details", "knowledgeType", "sourceInfo", "canEditKB", "canManageKB", "canDownloadKB", "parse_status", "kbId", "initialTab"]);
+const props = defineProps(["visible", "details", "knowledgeType", "sourceInfo", "canEditKB", "canManageKB", "canDownloadKB", "parse_status", "kbId", "initialTab", "initialChunkId"]);
 const emit = defineEmits(["closeDoc", "getDoc", "questionDeleted", "summaryStateChange"]);
 
 const applySummaryState = (summaryStatus?: string, description?: string) => {
@@ -803,7 +803,11 @@ const toggleCommentsRail = () => {
   commentsRailVisible.value = !commentsRailVisible.value;
 };
 
+const pendingInitialChunkId = ref('');
+let resolvingChunkPage = false;
+
 const jumpToCommentedChunk = async (chunkId) => {
+  if (!chunkId) return false;
   drawerTab.value = 'content';
   viewMode.value = 'chunks';
   commentsRailVisible.value = true;
@@ -813,14 +817,66 @@ const jumpToCommentedChunk = async (chunkId) => {
     target.scrollIntoView({ block: 'center', behavior: 'smooth' });
     target.classList.add('is-comment-target');
     window.setTimeout(() => target.classList.remove('is-comment-target'), 1400);
-    return;
+    return true;
   }
-  const index = collabChunks.value.findIndex((chunk) => chunk.id === chunkId);
-  if (index >= 0) {
-    const page = Math.floor(index / CHUNK_PAGE_SIZE) + 1;
+  const matched = collabChunks.value.find((chunk) => chunk.id === chunkId);
+  if (matched) {
+    const globalIndex = Number.isFinite(matched.index) ? matched.index : 0;
+    const page = Math.floor(globalIndex / CHUNK_PAGE_SIZE) + 1;
     if (page !== loadedChunkPage.value) handleChunkPageChange(page);
+    return false;
   }
+  // The target chunk may live on a page the drawer has not loaded yet. Resolve
+  // its document-wide index, then request that page; the md watcher retries.
+  if (!resolvingChunkPage && props.details?.id) {
+    resolvingChunkPage = true;
+    try {
+      const response = await getChunkByIdOnly(chunkId);
+      const chunk = response?.data || response;
+      if (chunk?.knowledge_id && chunk.knowledge_id !== props.details.id) return false;
+      const chunkIndex = Number(chunk?.chunk_index);
+      if (Number.isFinite(chunkIndex) && chunkIndex >= 0) {
+        const page = Math.floor(chunkIndex / CHUNK_PAGE_SIZE) + 1;
+        if (page !== loadedChunkPage.value) handleChunkPageChange(page);
+      }
+    } catch {
+      // Keep the current page; the caller shows the normal detail view.
+    } finally {
+      resolvingChunkPage = false;
+    }
+  }
+  return false;
 };
+
+const tryJumpToInitialChunk = async () => {
+  const chunkId = pendingInitialChunkId.value;
+  if (!chunkId || !props.visible || !props.details?.id) return;
+  if (!(props.details?.md || []).length && !props.details?.chunkLoading) return;
+  const jumped = await jumpToCommentedChunk(chunkId);
+  if (jumped) pendingInitialChunkId.value = '';
+};
+
+let lastInitialChunkId = '';
+
+watch(
+  () => [props.visible, props.initialChunkId, props.details?.id, props.details?.md],
+  () => {
+    const initial = typeof props.initialChunkId === 'string' ? props.initialChunkId : '';
+    if (!initial) {
+      pendingInitialChunkId.value = '';
+      lastInitialChunkId = '';
+      return;
+    }
+    if (!props.visible || !props.details?.id) return;
+    if (initial !== lastInitialChunkId) {
+      lastInitialChunkId = initial;
+      pendingInitialChunkId.value = initial;
+    }
+    if (!pendingInitialChunkId.value) return;
+    void tryJumpToInitialChunk();
+  },
+  { flush: 'post' },
+);
 
 const onDocDrawerScroll = () => {
   if (selectionToolbar.visible) selectionToolbar.visible = false;
@@ -919,6 +975,8 @@ watch(() => props.details?.id, () => {
   loadedChunkPage.value = 1;
   pendingChunkPage = null;
   anchorChunks.value = [];
+  pendingInitialChunkId.value = '';
+  lastInitialChunkId = '';
   selectionToolbar.visible = false;
 });
 watch(() => props.details?.chunkLoading, (val) => {
@@ -1794,10 +1852,11 @@ const downloadFile = () => {
       MessagePlugin.error(t('file.downloadFailed'));
     });
 };
-const handleChunkPageChange = (pageInfo: { current: number }) => {
-  if (props.details?.chunkLoading || pageInfo.current === loadedChunkPage.value) return;
-  pendingChunkPage = pageInfo.current;
-  emit('getDoc', pageInfo.current);
+const handleChunkPageChange = (pageInfo: { current: number } | number) => {
+  const current = typeof pageInfo === 'number' ? pageInfo : pageInfo?.current;
+  if (!current || props.details?.chunkLoading || current === loadedChunkPage.value) return;
+  pendingChunkPage = current;
+  emit('getDoc', current);
 };
 
 </script>

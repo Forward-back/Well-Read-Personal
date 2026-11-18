@@ -91,6 +91,9 @@ type User struct {
 	PasswordHash string `json:"-"          gorm:"type:varchar(255);not null"`
 	// Avatar URL of the user
 	Avatar string `json:"avatar"     gorm:"type:varchar(500)"`
+	// AvatarData stores an uploaded avatar as a small data URL. API responses
+	// expose it through UserInfo.Avatar; the raw field never leaks in JSON.
+	AvatarData string `json:"-" gorm:"column:avatar_data;type:text"`
 	// Workspace ID that the user belongs to
 	TenantID uint64 `json:"tenant_id"  gorm:"index"`
 	// Whether the user is active
@@ -226,11 +229,15 @@ type UserInfo struct {
 
 // ToUserInfo converts User to UserInfo (without sensitive data)
 func (u *User) ToUserInfo() *UserInfo {
+	avatar := u.Avatar
+	if u.AvatarData != "" {
+		avatar = u.AvatarData
+	}
 	return &UserInfo{
 		ID:                  u.ID,
 		Username:            u.Username,
 		Email:               u.Email,
-		Avatar:              u.Avatar,
+		Avatar:              avatar,
 		TenantID:            u.TenantID,
 		IsActive:            u.IsActive,
 		CanAccessAllTenants: u.CanAccessAllTenants,

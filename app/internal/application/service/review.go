@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,12 +19,39 @@ type reviewService struct {
 	knowledgeRepo     interfaces.KnowledgeRepository
 	knowledgeResolver reviewKnowledgeResolver
 	modelService      interfaces.ModelService
+
+	rootCauseMu    sync.Mutex
+	rootCauseCache map[string]reviewRootCauseCacheEntry
+}
+
+type reviewKnowledgeResolverAdapter struct {
+	knowledge     interfaces.KnowledgeRepository
+	knowledgeBase interfaces.KnowledgeBaseRepository
+}
+
+func (a *reviewKnowledgeResolverAdapter) GetKnowledgeBatch(
+	ctx context.Context, tenantID uint64, ids []string,
+) ([]*types.Knowledge, error) {
+	if a.knowledge == nil {
+		return nil, nil
+	}
+	return a.knowledge.GetKnowledgeBatch(ctx, tenantID, ids)
+}
+
+func (a *reviewKnowledgeResolverAdapter) GetKnowledgeBaseByIDs(
+	ctx context.Context, ids []string,
+) ([]*types.KnowledgeBase, error) {
+	if a.knowledgeBase == nil {
+		return nil, nil
+	}
+	return a.knowledgeBase.GetKnowledgeBaseByIDs(ctx, ids)
 }
 
 // reviewKnowledgeResolver is the narrow slice of the knowledge repository the
-// vulnerability view needs: document titles for heatmap columns.
+// vulnerability view needs: document titles and knowledge-base names.
 type reviewKnowledgeResolver interface {
 	GetKnowledgeBatch(ctx context.Context, tenantID uint64, ids []string) ([]*types.Knowledge, error)
+	GetKnowledgeBaseByIDs(ctx context.Context, ids []string) ([]*types.KnowledgeBase, error)
 }
 
 func NewReviewService(repo interfaces.ReviewRepository) interfaces.ReviewService {
@@ -34,6 +62,7 @@ func NewReviewServiceWithGeneration(
 	repo interfaces.ReviewRepository,
 	chunkRepo interfaces.ChunkRepository,
 	knowledgeRepo interfaces.KnowledgeRepository,
+	knowledgeBaseRepo interfaces.KnowledgeBaseRepository,
 	modelService interfaces.ModelService,
 ) interfaces.ReviewService {
 	service := &reviewService{
@@ -42,8 +71,11 @@ func NewReviewServiceWithGeneration(
 		knowledgeRepo: knowledgeRepo,
 		modelService:  modelService,
 	}
-	if knowledgeRepo != nil {
-		service.knowledgeResolver = knowledgeRepo
+	if knowledgeRepo != nil || knowledgeBaseRepo != nil {
+		service.knowledgeResolver = &reviewKnowledgeResolverAdapter{
+			knowledge:     knowledgeRepo,
+			knowledgeBase: knowledgeBaseRepo,
+		}
 	}
 	return service
 }
@@ -942,7 +974,9 @@ func (s *reviewService) GetCardPerformance(
 	for i, log := range logs {
 		chronological[len(logs)-1-i] = log
 	}
-	card.Vulnerability = reviewCardLevel(card, chronological, time.Now())
+	level, reason := reviewCardLevelDetail(card, chronological, time.Now())
+	card.Vulnerability = level
+	card.VulnerabilityReason = reason
 	performance := &types.ReviewCardPerformance{
 		Card:         card,
 		ForgetStreak: card.ForgetStreak,
@@ -985,13 +1019,22 @@ func (s *reviewService) GetCardPerformance(
 	switch card.Vulnerability {
 	case types.ReviewCardLevelSevere:
 		performance.Warning = "high"
-		performance.WarningReason = "这张卡近期反复忘记，建议重学并回原文巩固"
+		performance.WarningReason = reason
+		if performance.WarningReason == "" {
+			performance.WarningReason = "这张卡近期反复忘记，建议重学并回原文巩固"
+		}
 	case types.ReviewCardLevelWarning:
 		performance.Warning = "watch"
-		performance.WarningReason = "这张卡近期表现不稳，建议回原文复习"
+		performance.WarningReason = reason
+		if performance.WarningReason == "" {
+			performance.WarningReason = "这张卡近期表现不稳，建议回原文复习"
+		}
 	case types.ReviewCardLevelObserve:
 		performance.Warning = "watch"
-		performance.WarningReason = "这张卡最近想得慢或已逾期，暂时继续观察"
+		performance.WarningReason = reason
+		if performance.WarningReason == "" {
+			performance.WarningReason = "这张卡最近想得慢或已逾期，暂时继续观察"
+		}
 	}
 	return performance, nil
 }

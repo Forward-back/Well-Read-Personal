@@ -244,10 +244,13 @@ const handleKBEditorSuccess = (kbId: string) => {
 <style lang="less" scoped>
 .dialogue-wrap {
     flex: 1;
+    height: 100%;
+    min-height: 0;
     display: flex;
     justify-content: center;
-    align-items: center;
-    // position: relative;
+    align-items: stretch;
+    padding: 48px 24px 24px;
+    box-sizing: border-box;
 }
 
 .dialogue-answers {
@@ -256,11 +259,14 @@ const handleKBEditorSuccess = (kbId: string) => {
     align-items: center;
     width: 100%;
     max-width: 960px;
+    height: 100%;
+    min-height: 0;
     gap: 24px;
 
     :deep(.answers-input) {
         position: static;
         transform: translateX(0);
+        margin-top: auto;
     }
 }
 
@@ -304,6 +310,10 @@ const handleKBEditorSuccess = (kbId: string) => {
 }
 
 .suggested-questions-container {
+    width: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
     max-width: 960px;
     margin: 0;
     padding: 0 16px;

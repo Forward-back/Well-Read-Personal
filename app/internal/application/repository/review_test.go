@@ -137,6 +137,19 @@ func TestReviewRepositoryDeleteAndRestoreCard(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, deleted)
 
+	deletedList, err := repo.ListCards(ctx, 1, &types.ReviewCardFilter{
+		Statuses: []string{types.ReviewStatusDeleted},
+	})
+	require.NoError(t, err)
+	require.Len(t, deletedList, 1, "deleted status filter must surface soft-deleted cards for restore")
+	assert.Equal(t, card.ID, deletedList[0].ID)
+
+	visibleList, err := repo.ListCards(ctx, 1, &types.ReviewCardFilter{
+		Statuses: []string{types.ReviewStatusActive},
+	})
+	require.NoError(t, err)
+	assert.Empty(t, visibleList, "normal status filters keep deleted cards hidden")
+
 	require.NoError(t, repo.RestoreCard(ctx, 1, card.ID))
 	restored, err := repo.GetCard(ctx, 1, card.ID)
 	require.NoError(t, err)

@@ -449,8 +449,8 @@ func TestReviewServiceCardPerformanceAndWarning(t *testing.T) {
 	assert.Equal(t, 2, performance.Counts.Forgot)
 	assert.Equal(t, 1, performance.Counts.Remembered)
 	assert.Equal(t, 0, performance.ForgetStreak)
-	assert.Equal(t, "watch", performance.Warning)
-	assert.Equal(t, types.ReviewCardLevelWarning, performance.Card.Vulnerability)
+	assert.Equal(t, "none", performance.Warning, "historical lapses alone no longer warn after a successful review")
+	assert.Equal(t, types.ReviewCardLevelHealthy, performance.Card.Vulnerability)
 
 	watchCard := createTestCard(t, svc, ctx, "连续忘记卡")
 	for i, rating := range []string{types.ReviewRatingForgot, types.ReviewRatingForgot} {
@@ -466,6 +466,7 @@ func TestReviewServiceCardPerformanceAndWarning(t *testing.T) {
 	assert.Equal(t, 2, performance.ForgetStreak)
 	assert.Equal(t, "high", performance.Warning)
 	assert.Equal(t, types.ReviewCardLevelSevere, performance.Card.Vulnerability)
+	assert.Equal(t, "连续忘记 2 次", performance.WarningReason)
 
 	_, err = svc.SubmitReview(ctx, &types.SubmitReviewRequest{
 		CardID:          card.ID,
@@ -475,5 +476,33 @@ func TestReviewServiceCardPerformanceAndWarning(t *testing.T) {
 	require.NoError(t, err)
 	performance, err = svc.GetCardPerformance(ctx, card.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "high", performance.Warning)
+	assert.Equal(t, "watch", performance.Warning)
+	assert.Equal(t, "最近一次复习忘记", performance.WarningReason)
+}
+
+func TestReviewCardLevelIgnoresLifetimeLapses(t *testing.T) {
+	svc, _, ctx := setupReviewServiceTest(t)
+	card := createTestCard(t, svc, ctx, "历史忘记后恢复")
+	for i := 0; i < 3; i++ {
+		_, err := svc.SubmitReview(ctx, &types.SubmitReviewRequest{
+			CardID:          card.ID,
+			Rating:          types.ReviewRatingForgot,
+			ClientRequestID: fmt.Sprintf("lapses-%d", i),
+		})
+		require.NoError(t, err)
+	}
+	for i := 0; i < 3; i++ {
+		_, err := svc.SubmitReview(ctx, &types.SubmitReviewRequest{
+			CardID:          card.ID,
+			Rating:          types.ReviewRatingEasy,
+			ClientRequestID: fmt.Sprintf("recover-%d", i),
+		})
+		require.NoError(t, err)
+	}
+	detail, err := svc.GetCard(ctx, card.ID)
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, detail.Card.Lapses, 3)
+	assert.Equal(t, 0, detail.Card.ForgetStreak)
+	assert.Equal(t, types.ReviewCardLevelHealthy, detail.Card.Vulnerability,
+		"a previously unstable card can recover without resetting its schedule")
 }

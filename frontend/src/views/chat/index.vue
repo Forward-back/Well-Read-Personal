@@ -1552,20 +1552,19 @@ onBeforeRouteUpdate((to, from, next) => {
     --chat-right-inset: 0px;
     box-sizing: border-box;
     flex: 1;
-    // The parent .platform-route-outlet is a flex column with min-height:0
-    // and overflow:hidden — we also need min-height:0 here so that our
-    // own flex:1 child (.chat_thread) can shrink below its content
-    // height and keep the input container in view.
+    // The parent .app-window__content is a flex column with min-height:0 and
+    // overflow:hidden — keep min-height:0 here so .chat_thread can shrink
+    // below its content height and keep the input container pinned at the bottom.
     min-height: 0;
     position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
-    max-width: calc(100vw - 260px);
-    min-width: 400px;
+    max-width: 100%;
+    min-width: 0;
 
     &.is-sidebar-collapsed {
-        max-width: calc(100vw - 60px);
+        max-width: 100%;
     }
 
     &.is-embedded {

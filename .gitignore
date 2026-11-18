@@ -37,6 +37,7 @@ rag/src_backup_*/
 # Local design tool workdirs
 .archify/
 .diagram-design-work/
+/tmp/
 
 # Logs
 **/*.log

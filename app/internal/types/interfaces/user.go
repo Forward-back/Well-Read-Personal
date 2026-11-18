@@ -24,6 +24,8 @@ type UserService interface {
 	GetUserByTenantID(ctx context.Context, tenantID uint64) (*types.User, error)
 	// UpdateUser updates user information
 	UpdateUser(ctx context.Context, user *types.User) error
+	// UpdateUserAvatar stores or clears the user's uploaded avatar data URL.
+	UpdateUserAvatar(ctx context.Context, userID, avatar string) error
 	// ChangePassword changes user password
 	ChangePassword(ctx context.Context, userID string, oldPassword, newPassword string) error
 	// ValidateToken validates an access token. It returns the user

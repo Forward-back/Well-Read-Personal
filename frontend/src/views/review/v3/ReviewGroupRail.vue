@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronRight, Folder, FolderOpen, Layers, MoreHorizontal, Plus } from '@lucide/vue'
-
 import type { ReviewGroup } from '@/api/review'
 import type { ReviewFlatGroup } from './types'
+import bookIcon from '@/assets/icons/animated/book.gif'
+import folderIcon from '@/assets/icons/hand/folder.png'
+import arrowIcon from '@/assets/icons/hand/arrow-right.png'
+import moreIcon from '@/assets/icons/hand/more.png'
+import plusIcon from '@/assets/icons/hand/plus.png'
 
 const props = defineProps<{
   groups: ReviewFlatGroup[]
@@ -83,14 +86,14 @@ function select(groupId: string) {
 
 <template>
   <aside class="group-rail" data-testid="review-v3-group-rail">
-    <div class="group-rail__label">{{ t('review.groups') }}</div>
+    <div class="group-rail__label"><img :src="bookIcon" alt="" />{{ t('review.groups') }}</div>
     <button
       type="button"
       class="group-row group-row--root"
       :class="{ 'group-row--active': selectedGroupId === '' }"
       @click="select('')"
     >
-      <Layers class="group-row__icon" :size="15" />
+      <img class="group-row__icon group-row__hand" :src="folderIcon" alt="" />
       <span class="group-row__name">{{ t('review.v3.allGroups') }}</span>
       <span class="group-row__counts">
         <span class="group-row__cards">{{ allCardCount }}</span>
@@ -122,11 +125,11 @@ function select(groupId: string) {
           :aria-label="item.group.name"
           @click.stop="toggle(item.group.id)"
         >
-          <ChevronRight :size="13" />
+          <img class="group-row__arrow" :src="arrowIcon" alt="" />
         </button>
         <span v-else class="group-row__chevron-spacer" />
-        <Folder v-if="collapsed.has(item.group.id)" class="group-row__icon" :size="15" />
-        <FolderOpen v-else class="group-row__icon" :size="15" />
+        <img v-if="collapsed.has(item.group.id)" class="group-row__icon group-row__hand" :src="folderIcon" alt="" />
+        <img v-else class="group-row__icon group-row__hand" :src="folderIcon" alt="" />
         <span class="group-row__name" :title="item.group.name">{{ item.group.name }}</span>
         <span class="group-row__counts">
           <span class="group-row__cards">{{ item.card_count }}</span>
@@ -148,7 +151,7 @@ function select(groupId: string) {
             data-testid="review-v3-group-menu"
             @click.stop
           >
-            <MoreHorizontal :size="14" />
+            <img class="group-row__hand" :src="moreIcon" alt="" />
           </button>
         </t-dropdown>
       </div>
@@ -160,7 +163,7 @@ function select(groupId: string) {
       data-testid="review-v3-group-add"
       @click="emit('create', '')"
     >
-      <Plus :size="14" />
+      <img class="group-row__hand" :src="plusIcon" alt="" />
       {{ t('review.newGroup') }}
     </button>
   </aside>
@@ -190,10 +193,19 @@ function select(groupId: string) {
 }
 
 .group-rail__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 2px 10px 8px;
   font-size: 12px;
   font-weight: 500;
   color: var(--td-text-color-placeholder);
+
+  img {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+  }
 }
 
 .group-rail__tree {
@@ -278,6 +290,20 @@ function select(groupId: string) {
 .group-row__icon {
   flex: 0 0 auto;
   color: var(--td-text-color-secondary);
+}
+
+.group-row__hand {
+  width: 15px;
+  height: 15px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.group-row__arrow {
+  width: 12px;
+  height: 12px;
+  object-fit: contain;
+  transition: transform 0.15s ease;
 }
 
 .group-row__name {

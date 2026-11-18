@@ -222,6 +222,23 @@ export async function updateMyPreferences(
 }
 
 /**
+ * 更新当前用户头像。avatar 为 PNG/JPEG/WebP data URL；空字符串表示清除。
+ */
+export async function updateMyAvatar(
+  avatar: string,
+): Promise<{ success: boolean; data?: { avatar: string }; message?: string }> {
+  try {
+    const response = await put('/api/v1/auth/me/avatar', { avatar })
+    return response as unknown as { success: boolean; data?: { avatar: string }; message?: string }
+  } catch (error: any) {
+    return {
+      success: false,
+      message: error.message || t('error.auth.updateAvatarFailed'),
+    }
+  }
+}
+
+/**
  * 获取当前空间信息
  */
 export async function getCurrentTenant(): Promise<{ success: boolean; data?: TenantInfo; message?: string }> {

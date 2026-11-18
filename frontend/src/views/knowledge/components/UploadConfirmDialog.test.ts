@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 const dialog = readFileSync(new URL('./UploadConfirmDialog.vue', import.meta.url), 'utf8')
 const host = readFileSync(new URL('../../../components/UploadConfirmHost.vue', import.meta.url), 'utf8')
 const knowledgeBase = readFileSync(new URL('../KnowledgeBase.vue', import.meta.url), 'utf8')
-const platform = readFileSync(new URL('../../platform/index.vue', import.meta.url), 'utf8')
+const shell = readFileSync(new URL('../../shell/AppShell.vue', import.meta.url), 'utf8')
 
 test('selects multiple document tags and returns them with the confirmation result', () => {
   assert.match(host, /:tag-ids="uploadConfirmStore\.tagIds"/)
@@ -62,7 +62,7 @@ test('calls out directory uploads via relative paths in the file list', () => {
 })
 
 test('routes global knowledge file drops through the upload confirmation flow', () => {
-  assert.match(platform, /gaze:knowledge-file-drop/)
+  assert.match(shell, /gaze:knowledge-file-drop/)
   assert.match(knowledgeBase, /handleKnowledgeFileDrop/)
   assert.match(knowledgeBase, /handleUploadSourceFiles\(files\)/)
 })

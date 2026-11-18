@@ -260,6 +260,18 @@ func (s *userService) UpdateUser(ctx context.Context, user *types.User) error {
 	return s.userRepo.UpdateUser(ctx, user)
 }
 
+// UpdateUserAvatar stores or clears the uploaded avatar data URL. An empty
+// value clears the uploaded avatar; the legacy Avatar URL column is untouched.
+func (s *userService) UpdateUserAvatar(ctx context.Context, userID, avatar string) error {
+	user, err := s.userRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	user.AvatarData = avatar
+	user.UpdatedAt = time.Now()
+	return s.userRepo.UpdateUser(ctx, user)
+}
+
 // ChangePassword changes user password after verifying the current
 // credential. On success every outstanding session is revoked so a stolen
 // token cannot survive the rotation.

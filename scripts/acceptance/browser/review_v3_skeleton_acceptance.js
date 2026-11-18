@@ -79,7 +79,7 @@ async function login(page) {
 }
 
 async function gotoV3(page) {
-  await page.goto(BASE + '/platform/review-v3', { waitUntil: 'networkidle2' })
+  await page.goto(BASE + '/platform/review', { waitUntil: 'networkidle2' })
   await page.waitForSelector('[data-testid="review-v3-task-bar"]', { timeout: 20000 })
   await page.waitForSelector('[data-testid="review-v3-group-rail"]', { timeout: 20000 })
 }
@@ -160,7 +160,7 @@ async function main() {
     await login(page)
     record('login', 'owner logged in')
     await gotoV3(page)
-    record('route', '/platform/review-v3 rendered')
+    record('route', '/platform/review main route rendered')
 
     const tabLabels = await page.$$eval('.t-tabs__nav-item', (nodes) => nodes.map((node) => node.innerText.trim()))
     if (!['今日', '卡片', '统计'].every((label) => tabLabels.includes(label))) {
@@ -219,10 +219,10 @@ async function main() {
     }
 
     await clickText(page, '.t-tabs__nav-item', '卡片', { exact: true })
-    await waitText(page, '卡片管理正在迁移到 TDesign')
+    await page.waitForSelector('[data-testid="review-v3-cards"]', { timeout: 20000 })
     record('cards-tab', 'placeholder visible')
     await clickText(page, '.t-tabs__nav-item', '统计', { exact: true })
-    await waitText(page, '统计页正在迁移到 TDesign')
+    await page.waitForSelector('[data-testid="review-v3-stats"]', { timeout: 20000 })
     record('stats-tab', 'placeholder visible')
     await clickText(page, '.t-tabs__nav-item', '今日', { exact: true })
     await page.waitForSelector('[data-testid="review-v3-task-bar"]', { timeout: 10000 })

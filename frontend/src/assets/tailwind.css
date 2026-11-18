@@ -1,12 +1,6 @@
-
-
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
-@import "tw-animate-css";
-@import "shadcn-vue/tailwind.css";
-
-@custom-variant dark (&:is(.dark *));
 
 @layer base {
   button {
@@ -15,52 +9,4 @@
     background-color: transparent;
     border: 0;
   }
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --font-heading: var(--font-sans);
-}
-
-:root {
-  --background: var(--td-bg-color-page);
-  --foreground: var(--td-text-color-primary);
-  --card: var(--td-bg-color-container);
-  --card-foreground: var(--td-text-color-primary);
-  --popover: var(--td-bg-color-container);
-  --popover-foreground: var(--td-text-color-primary);
-  --primary: var(--td-brand-color);
-  --primary-foreground: #ffffff;
-  --secondary: var(--td-bg-color-container-hover);
-  --secondary-foreground: var(--td-text-color-primary);
-  --muted: var(--td-bg-color-container-hover);
-  --muted-foreground: var(--td-text-color-secondary);
-  --accent: var(--td-brand-color-1);
-  --accent-foreground: var(--td-brand-color);
-  --destructive: var(--td-error-color);
-  --border: var(--td-component-stroke);
-  --input: var(--td-component-stroke);
-  --ring: var(--td-brand-color);
-  --radius: 8px;
 }

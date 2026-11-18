@@ -284,7 +284,11 @@ const persistLoginResponse = async (response: any) => {
   }
   await nextTick()
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
-  router.replace(redirect.startsWith('/platform') ? redirect : '/platform/creatChat')
+  const safeRedirect =
+    redirect.startsWith('/') &&
+    !redirect.startsWith('//') &&
+    !redirect.startsWith('/login')
+  router.replace(safeRedirect ? redirect : '/')
 }
 
 const handleLogin = async () => {
@@ -313,7 +317,7 @@ const handleLogin = async () => {
 
 onMounted(() => {
   if (authStore.isLoggedIn) {
-    router.replace('/platform/creatChat')
+    router.replace('/')
   }
 })
 </script>

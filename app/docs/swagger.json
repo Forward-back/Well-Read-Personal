@@ -429,6 +429,63 @@
                 }
             }
         },
+        "/auth/me/avatar": {
+            "put": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "上传或清除当前用户头像。头像使用 PNG/JPEG/WebP data URL，解码后不超过 384KB；传空字符串表示清除。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "认证"
+                ],
+                "summary": "更新当前用户头像",
+                "parameters": [
+                    {
+                        "description": "头像 data URL 或空字符串",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "avatar": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新后的头像",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "头像格式或大小不合法",
+                        "schema": {
+                            "$ref": "#/definitions/gaze_internal_errors.AppError"
+                        }
+                    },
+                    "500": {
+                        "description": "更新失败",
+                        "schema": {
+                            "$ref": "#/definitions/gaze_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/refresh": {
             "post": {
                 "description": "使用刷新令牌获取新的访问令牌",

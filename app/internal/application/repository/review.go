@@ -152,6 +152,35 @@ func (r *reviewRepository) CreateCard(
 	})
 }
 
+func (r *reviewRepository) CreateDerivedCardsAndSuspend(
+	ctx context.Context, tenantID uint64, originalCardID string,
+	cards []*types.ReviewCard, sourcesByCard [][]*types.ReviewCardSource,
+) error {
+	if len(cards) != len(sourcesByCard) {
+		return errors.New("card/source batch length mismatch")
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for i, card := range cards {
+			if err := tx.Create(card).Error; err != nil {
+				return err
+			}
+			sources := sourcesByCard[i]
+			for _, source := range sources {
+				source.CardID = card.ID
+				source.TenantID = card.TenantID
+			}
+			if len(sources) > 0 {
+				if err := tx.Create(&sources).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return tx.Model(&types.ReviewCard{}).
+			Where("tenant_id = ? AND id = ?", tenantID, originalCardID).
+			Update("status", types.ReviewStatusSuspended).Error
+	})
+}
+
 func (r *reviewRepository) GetCard(
 	ctx context.Context, tenantID uint64, id string,
 ) (*types.ReviewCard, error) {
@@ -185,7 +214,18 @@ func (r *reviewRepository) GetCardWithSources(
 func (r *reviewRepository) ListCards(
 	ctx context.Context, tenantID uint64, filter *types.ReviewCardFilter,
 ) ([]*types.ReviewCard, error) {
-	q := r.db.WithContext(ctx).Where("tenant_id = ?", tenantID)
+	q := r.db.WithContext(ctx)
+	// Soft-deleted cards carry deleted_at so normal queries hide them. An
+	// explicit deleted filter must use Unscoped or the restore entry vanishes.
+	if filter != nil {
+		for _, status := range filter.Statuses {
+			if status == types.ReviewStatusDeleted {
+				q = r.db.Unscoped().WithContext(ctx)
+				break
+			}
+		}
+	}
+	q = q.Where("tenant_id = ?", tenantID)
 	if filter != nil {
 		if len(filter.GroupIDs) > 0 {
 			q = q.Where("group_id IN ?", filter.GroupIDs)
@@ -565,6 +605,34 @@ func (r *reviewRepository) ListAllSources(
 	var sources []*types.ReviewCardSource
 	err := r.db.WithContext(ctx).
 		Where("tenant_id = ?", tenantID).
+		Order("created_at ASC").
+		Find(&sources).Error
+	return sources, err
+}
+
+func (r *reviewRepository) ListActiveCardsByGroupIDs(
+	ctx context.Context, tenantID uint64, groupIDs []string,
+) ([]*types.ReviewCard, error) {
+	if len(groupIDs) == 0 {
+		return []*types.ReviewCard{}, nil
+	}
+	var cards []*types.ReviewCard
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND status = ? AND group_id IN ?", tenantID, types.ReviewStatusActive, groupIDs).
+		Order("created_at ASC").
+		Find(&cards).Error
+	return cards, err
+}
+
+func (r *reviewRepository) ListActiveSourcesByCardIDs(
+	ctx context.Context, tenantID uint64, cardIDs []string,
+) ([]*types.ReviewCardSource, error) {
+	if len(cardIDs) == 0 {
+		return []*types.ReviewCardSource{}, nil
+	}
+	var sources []*types.ReviewCardSource
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND status = ? AND card_id IN ?", tenantID, types.ReviewSourceStatusActive, cardIDs).
 		Order("created_at ASC").
 		Find(&sources).Error
 	return sources, err

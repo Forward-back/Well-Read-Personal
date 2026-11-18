@@ -91,10 +91,12 @@ type ReviewCard struct {
 	SourceUpdated  bool       `json:"source_updated"  gorm:"not null;default:false"`
 	// Vulnerability is a computed single-card level for list and detail
 	// responses. It is never persisted.
-	Vulnerability string         `json:"vulnerability,omitempty" gorm:"-"`
-	CreatedAt     time.Time      `json:"created_at"`
-	UpdatedAt     time.Time      `json:"updated_at"`
-	DeletedAt     gorm.DeletedAt `json:"-"               gorm:"index"`
+	Vulnerability string `json:"vulnerability,omitempty" gorm:"-"`
+	// VulnerabilityReason is a readable explanation of the computed level.
+	VulnerabilityReason string         `json:"vulnerability_reason,omitempty" gorm:"-"`
+	CreatedAt           time.Time      `json:"created_at"`
+	UpdatedAt           time.Time      `json:"updated_at"`
+	DeletedAt           gorm.DeletedAt `json:"-"               gorm:"index"`
 }
 
 func (ReviewCard) TableName() string { return "review_cards" }
@@ -377,31 +379,57 @@ type ReviewWeakTopic struct {
 }
 
 // ReviewHeatmap is the server-side vulnerability aggregate. Rows are card
-// groups, columns are tags or source documents, and cells are their
-// intersection clusters. Multi-tag cards appear in several columns, so the
-// intensity percentages do not add up.
+// groups at the next layer under the selected scope, columns are tags with a
+// knowledge-base fallback, and cells are their intersection clusters.
+// Multi-tag cards appear in several columns, so the intensity percentages do
+// not add up.
 type ReviewHeatmap struct {
-	Rows         []*ReviewHeatmapRow    `json:"rows"`
-	Columns      []*ReviewHeatmapColumn `json:"columns"`
-	Cells        []*ReviewHeatmapCell   `json:"cells"`
-	Priorities   []*ReviewHeatmapCell   `json:"priorities"`
-	ObserveCount int                    `json:"observe_count"`
-	Insight      *ReviewHeatmapInsight  `json:"insight"`
+	Rows            []*ReviewHeatmapRow    `json:"rows"`
+	Columns         []*ReviewHeatmapColumn `json:"columns"`
+	Cells           []*ReviewHeatmapCell   `json:"cells"`
+	Priorities      []*ReviewHeatmapCell   `json:"priorities"`
+	ObserveCount    int                    `json:"observe_count"`
+	Insight         *ReviewHeatmapInsight  `json:"insight"`
+	ScopeGroupID    string                 `json:"scope_group_id"`
+	ScopePath       string                 `json:"scope_path"`
+	RowTotal        int                    `json:"row_total"`
+	ColumnTotal     int                    `json:"column_total"`
+	RowTruncated    bool                   `json:"row_truncated"`
+	ColumnTruncated bool                   `json:"column_truncated"`
+	Formula         *ReviewHeatmapFormula  `json:"formula"`
 }
+
+type ReviewHeatmapOptions struct {
+	GroupID     string
+	RowLimit    int
+	ColumnLimit int
+	Expand      bool
+}
+
+const (
+	ReviewHeatmapRowKindGroup  = "group"
+	ReviewHeatmapRowKindDirect = "direct"
+	ReviewHeatmapRowKindOther  = "other"
+)
 
 type ReviewHeatmapRow struct {
 	ID         string `json:"id"`
 	GroupID    string `json:"group_id"`
 	Name       string `json:"name"`
 	Path       string `json:"path"`
+	Kind       string `json:"kind"`
+	Drillable  bool   `json:"drillable"`
 	Virtual    bool   `json:"virtual"`
 	TotalCards int    `json:"total_cards"`
 }
 
 const (
 	ReviewHeatmapColumnKindTag           = "tag"
+	ReviewHeatmapColumnKindKnowledgeBase = "knowledge_base"
 	ReviewHeatmapColumnKindSource        = "source"
 	ReviewHeatmapColumnKindUncategorized = "uncategorized"
+	ReviewHeatmapOtherRowID              = "other_row"
+	ReviewHeatmapOtherColumnKey          = "other_column"
 )
 
 type ReviewHeatmapColumn struct {
@@ -426,6 +454,14 @@ type ReviewHeatmapCell struct {
 	Clickable bool    `json:"clickable"`
 }
 
+type ReviewHeatmapFormula struct {
+	SevereWeight  float64 `json:"severe_weight"`
+	WarningWeight float64 `json:"warning_weight"`
+	ObserveWeight float64 `json:"observe_weight"`
+	Denominator   int     `json:"denominator"`
+	Text          string  `json:"text"`
+}
+
 type ReviewHeatmapInsight struct {
 	Kind      string `json:"kind"`
 	RowID     string `json:"row_id"`
@@ -433,11 +469,21 @@ type ReviewHeatmapInsight struct {
 	Message   string `json:"message"`
 }
 
+type ReviewClusterDetailRequest struct {
+	ScopeGroupID string
+	RowGroupID   string
+	ColumnKey    string
+	Direct       bool
+}
+
 type ReviewClusterDetail struct {
-	Cell   *ReviewHeatmapCell   `json:"cell"`
-	Row    *ReviewHeatmapRow    `json:"row"`
-	Column *ReviewHeatmapColumn `json:"column"`
-	Cards  []*ReviewClusterCard `json:"cards"`
+	Cell         *ReviewHeatmapCell    `json:"cell"`
+	Row          *ReviewHeatmapRow     `json:"row"`
+	Column       *ReviewHeatmapColumn  `json:"column"`
+	Cards        []*ReviewClusterCard  `json:"cards"`
+	Reasons      []string              `json:"reasons"`
+	Formula      *ReviewHeatmapFormula `json:"formula"`
+	ScopeGroupID string                `json:"scope_group_id"`
 }
 
 type ReviewClusterCard struct {
@@ -447,6 +493,35 @@ type ReviewClusterCard struct {
 	SuggestedAction string            `json:"suggested_action"`
 	Source          *ReviewCardSource `json:"source"`
 	KnowledgeBaseID string            `json:"knowledge_base_id"`
+}
+
+type GenerateCardVariantsRequest struct {
+	Count int `json:"count"`
+}
+
+type ApplyCardSplitRequest struct {
+	Cards []CreateReviewCardRequest `json:"cards"`
+}
+
+type ApplyCardSplitResult struct {
+	Created          []*ReviewCard `json:"created"`
+	ArchivedOriginal bool          `json:"archived_original"`
+}
+
+type ReviewRootCauseRequest struct {
+	ScopeGroupID string `json:"scope_group_id"`
+	RowGroupID   string `json:"row_group_id"`
+	ColumnKey    string `json:"column_key"`
+	Direct       bool   `json:"direct"`
+}
+
+type ReviewRootCause struct {
+	Summary          string   `json:"summary"`
+	Reasons          []string `json:"reasons"`
+	FocusSuggestions []string `json:"focus_suggestions"`
+	EvidenceCardIDs  []string `json:"evidence_card_ids"`
+	ModelID          string   `json:"model_id"`
+	Source           string   `json:"source"`
 }
 
 const (

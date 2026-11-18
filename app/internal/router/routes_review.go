@@ -29,6 +29,9 @@ func RegisterReviewRoutes(r *gin.RouterGroup, h *handler.ReviewHandler) {
 		review.PUT("/cards/:id", h.UpdateCard)
 		review.POST("/cards/:id/move", h.MoveCard)
 		review.POST("/cards/:id/reset", h.ResetCardSchedule)
+		review.POST("/cards/:id/split/preview", h.PreviewCardSplit)
+		review.POST("/cards/:id/split/apply", h.ApplyCardSplit)
+		review.POST("/cards/:id/angles/preview", h.PreviewCardAngles)
 		review.POST("/cards/:id/status", h.SetCardStatus)
 		review.DELETE("/cards/:id", h.DeleteCard)
 		review.POST("/cards/:id/restore", h.RestoreCard)
@@ -37,6 +40,7 @@ func RegisterReviewRoutes(r *gin.RouterGroup, h *handler.ReviewHandler) {
 
 		review.GET("/heatmap", h.Heatmap)
 		review.GET("/clusters/detail", h.ClusterDetail)
+		review.POST("/clusters/root-cause", h.RootCause)
 
 		review.GET("/queue", h.TodayQueue)
 		review.POST("/sessions", h.StartSession)

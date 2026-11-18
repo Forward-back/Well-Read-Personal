@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/base64"
 	stderrors "errors"
 	"net/http"
 	"strings"
@@ -203,6 +204,107 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 		"data": gin.H{
 			"user":   userInfo,
 			"tenant": tenant,
+		},
+	})
+}
+
+const maxAvatarDecodedBytes = 384 * 1024
+
+var avatarDataURLFormats = []struct {
+	prefix string
+	mime   string
+}{
+	{prefix: "data:image/png;base64,", mime: "image/png"},
+	{prefix: "data:image/jpeg;base64,", mime: "image/jpeg"},
+	{prefix: "data:image/webp;base64,", mime: "image/webp"},
+}
+
+func validateAvatarDataURL(value string) error {
+	if value == "" {
+		return nil
+	}
+	prefix := ""
+	expectedMIME := ""
+	for _, format := range avatarDataURLFormats {
+		if strings.HasPrefix(value, format.prefix) {
+			prefix = format.prefix
+			expectedMIME = format.mime
+			break
+		}
+	}
+	if prefix == "" {
+		return stderrors.New("avatar must be a PNG, JPEG or WebP data URL")
+	}
+	payload := value[len(prefix):]
+	if len(payload) > maxAvatarDecodedBytes*4/3+8 {
+		return stderrors.New("avatar image is too large")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		return stderrors.New("avatar is not valid base64")
+	}
+	if len(decoded) == 0 {
+		return stderrors.New("avatar image is empty")
+	}
+	if len(decoded) > maxAvatarDecodedBytes {
+		return stderrors.New("avatar image is too large")
+	}
+	if detected := http.DetectContentType(decoded); detected != expectedMIME {
+		return stderrors.New("avatar content does not match its declared type")
+	}
+	return nil
+}
+
+// UpdateAvatar godoc
+// @Summary      更新当前用户头像
+// @Description  上传或清除当前用户头像。头像使用 PNG/JPEG/WebP data URL，解码后不超过 384KB；传空字符串表示清除。
+// @Tags         认证
+// @Accept       json
+// @Produce      json
+// @Param        request  body      object{avatar=string}  true  "头像 data URL 或空字符串"
+// @Success      200      {object}  map[string]interface{}  "更新后的头像"
+// @Failure      400      {object}  errors.AppError         "头像格式或大小不合法"
+// @Failure      500      {object}  errors.AppError         "更新失败"
+// @Security     Bearer
+// @Router       /auth/me/avatar [put]
+func (h *AuthHandler) UpdateAvatar(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	var req struct {
+		Avatar string `json:"avatar"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		appErr := errors.NewValidationError("Invalid avatar request").WithDetails(err.Error())
+		c.Error(appErr)
+		return
+	}
+	avatar := strings.TrimSpace(req.Avatar)
+	if err := validateAvatarDataURL(avatar); err != nil {
+		appErr := errors.NewValidationError("Invalid avatar").WithDetails(err.Error())
+		c.Error(appErr)
+		return
+	}
+
+	user, err := h.userService.GetCurrentUser(ctx)
+	if err != nil {
+		logger.Errorf(ctx, "Failed to get current user: %v", err)
+		appErr := errors.NewUnauthorizedError("Failed to get user information").WithDetails(err.Error())
+		c.Error(appErr)
+		return
+	}
+
+	if err := h.userService.UpdateUserAvatar(ctx, user.ID, avatar); err != nil {
+		logger.Errorf(ctx, "Failed to update avatar: %v", err)
+		appErr := errors.NewInternalServerError("Failed to update avatar").WithDetails(err.Error())
+		c.Error(appErr)
+		return
+	}
+
+	logger.Infof(ctx, "Avatar updated for user: %s (dataURLChars=%d)", user.Email, len(avatar))
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"avatar": avatar,
 		},
 	})
 }

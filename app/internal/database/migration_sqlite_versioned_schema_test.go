@@ -86,7 +86,7 @@ var baselineSQLiteTables = []string{
 // because the application reads or writes them.
 var baselineSQLiteColumns = map[string][]string{
 	"tenants":               {"api_principal_config", "memory_config", "reading_model_id"},
-	"users":                 {"is_system_admin"},
+	"users":                 {"is_system_admin", "avatar_data"},
 	"knowledges":            {"pending_subtasks_count", "folder_path", "folder_id", "created_by", "engine_sync_status"},
 	"messages":              {"attachments", "usage", "query_rewritten", "query_rewrite_meta", "skill", "reading_run_id"},
 	"embed_channels":        {"allow_memory"},
@@ -111,7 +111,7 @@ func TestSQLiteMigrationsCreateBaselineSchema(t *testing.T) {
 
 	db := openSQLiteDB(t, dbPath)
 	version, dirty := sqliteMigrationState(t, db)
-	require.Equal(t, 3, version, "the personal-edition schema includes review V3 easy rating migration")
+	require.Equal(t, 4, version, "the personal-edition schema includes review V3 easy rating and user avatar migrations")
 	require.False(t, dirty)
 
 	for _, table := range baselineSQLiteTables {

@@ -25,6 +25,19 @@ type AuthOIDCCallbackResponse struct {
 	IsNewUser    bool               `json:"is_new_user,omitempty"`
 }
 
+// userForAuthResponse maps an uploaded avatar into the legacy avatar field so
+// login clients receive it immediately; the raw avatar_data field stays hidden.
+func userForAuthResponse(user *types.User) *types.User {
+	if user == nil {
+		return nil
+	}
+	clone := *user
+	if clone.AvatarData != "" {
+		clone.Avatar = clone.AvatarData
+	}
+	return &clone
+}
+
 // NewAuthLoginResponse converts a service-layer login response for HTTP output.
 func NewAuthLoginResponse(resp *types.LoginResponse) *AuthLoginResponse {
 	if resp == nil {
@@ -33,7 +46,7 @@ func NewAuthLoginResponse(resp *types.LoginResponse) *AuthLoginResponse {
 	return &AuthLoginResponse{
 		Success:      resp.Success,
 		Message:      resp.Message,
-		User:         resp.User,
+		User:         userForAuthResponse(resp.User),
 		Tenant:       resp.Tenant,
 		Token:        resp.Token,
 		RefreshToken: resp.RefreshToken,
@@ -52,7 +65,7 @@ func NewAuthOIDCCallbackResponse(resp *types.OIDCCallbackResponse) *AuthOIDCCall
 	return &AuthOIDCCallbackResponse{
 		Success:      resp.Success,
 		Message:      resp.Message,
-		User:         resp.User,
+		User:         userForAuthResponse(resp.User),
 		Tenant:       NewTenantResponseWithRole(resp.Tenant, role),
 		Memberships:  resp.Memberships,
 		Token:        resp.Token,

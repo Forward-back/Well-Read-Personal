@@ -19,6 +19,9 @@ func RegisterAuthRoutes(r *gin.RouterGroup, handler *handler.AuthHandler, g *api
 	// auth/me returns only the caller's own identity/profile, so it is safe
 	// for any valid API key. Chat clients / MCP call it to discover "who am I".
 	g.apiKeyRoute(r, http.MethodGet, "/auth/me", apiKeyAny(), handler.GetCurrentUser)
+	// Avatar updates are owner-session only: no apiKeyRoute declaration, so
+	// the API-key gate denies read-only keys while JWT sessions pass through.
+	r.PUT("/auth/me/avatar", handler.UpdateAvatar)
 	r.POST("/auth/change-password", handler.ChangePassword)
 }
 

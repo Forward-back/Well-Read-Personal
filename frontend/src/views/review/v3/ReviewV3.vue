@@ -1,36 +1,63 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { MessagePlugin } from 'tdesign-vue-next'
 
 import {
   createReviewGroup,
   deleteReviewGroup,
+  exportReviewData,
   getActiveReviewSession,
+  getReviewHeatmap,
   getReviewQueue,
   listReviewGroups,
+  startReviewSession,
   updateReviewGroup,
+  type ReviewCard,
   type ReviewGroup,
   type ReviewGroupNode,
+  type ReviewHeatmap,
+  type ReviewHeatmapCell,
   type ReviewQueue,
   type ReviewSessionState,
 } from '@/api/review'
+import ReviewGenerateDialog from './ReviewGenerateDialog.vue'
 import ReviewGroupRail from './ReviewGroupRail.vue'
+import ReviewMode from './ReviewMode.vue'
 import ReviewTodayView from './ReviewTodayView.vue'
 import type { ReviewFlatGroup } from './types'
+import './vulnerability.css'
+import './review-ui.css'
+import calendarIcon from '@/assets/icons/animated/calendar.gif'
+
+const ReviewCardsView = defineAsyncComponent(() => import('./ReviewCardsView.vue'))
+const ReviewStatsView = defineAsyncComponent(() => import('./ReviewStatsView.vue'))
 
 const { t } = useI18n()
+const route = useRoute()
+const router = useRouter()
 
 const activeView = ref<'today' | 'cards' | 'stats'>('today')
+const pageRoot = ref<HTMLElement | null>(null)
 const groups = ref<ReviewGroupNode[]>([])
 const flatGroups = ref<ReviewFlatGroup[]>([])
-const selectedGroupId = ref('')
+const selectedGroupId = ref(typeof route.query.scope === 'string' ? route.query.scope : '')
 const queue = ref<ReviewQueue | null>(null)
+const heatmap = ref<ReviewHeatmap | null>(null)
 const activeSession = ref<ReviewSessionState | null>(null)
+const reviewVisible = ref(false)
+const reviewState = ref<ReviewSessionState | null>(null)
+const reviewLabel = ref('')
+const reviewStarting = ref(false)
+const heatmapExpanded = ref(false)
 const loading = ref(true)
 const queueLoading = ref(false)
+const heatmapLoading = ref(false)
 const error = ref('')
+const heatmapError = ref('')
 let queueRequestSeq = 0
+let heatmapRequestSeq = 0
 
 const groupDialogVisible = ref(false)
 const groupDialogMode = ref<'create' | 'rename'>('create')
@@ -42,6 +69,40 @@ const groupDeleteVisible = ref(false)
 const groupDeleting = ref(false)
 const groupDeleteTarget = ref<ReviewGroup | null>(null)
 const groupDeleteCards = ref(false)
+
+const pendingCardReview = ref<ReviewCard | null>(null)
+const cardConflictVisible = ref(false)
+const cardConflictBusy = ref(false)
+
+const generateVisible = ref(false)
+const moreOptions = computed(() => [
+  { content: t('review.v3.generateCards'), value: 'generate' },
+  { content: t('review.v3.exportJson'), value: 'export' },
+])
+
+function onMoreAction(item: { value: string }) {
+  if (item.value === 'generate') {
+    generateVisible.value = true
+    return
+  }
+  void exportJson()
+}
+
+async function exportJson() {
+  try {
+    const response = await exportReviewData()
+    const blob = new Blob([JSON.stringify(response.data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `wellread-review-${new Date().toISOString().slice(0, 10)}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+    MessagePlugin.success(t('review.v3.exported'))
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('review.v3.exportFailed'))
+  }
+}
 
 function flattenGroups(nodes: ReviewGroupNode[], depth = 0): ReviewFlatGroup[] {
   return nodes.flatMap(node => [
@@ -99,6 +160,25 @@ async function loadQueue() {
   }
 }
 
+async function loadHeatmap() {
+  const seq = ++heatmapRequestSeq
+  heatmapLoading.value = true
+  try {
+    const response = await getReviewHeatmap({
+      group_id: selectedGroupId.value || undefined,
+      expand: heatmapExpanded.value || undefined,
+    })
+    if (seq !== heatmapRequestSeq) return
+    heatmap.value = response.data || null
+    heatmapError.value = ''
+  } catch (err: any) {
+    if (seq !== heatmapRequestSeq) return
+    heatmapError.value = err?.message || t('review.loadFailed')
+  } finally {
+    if (seq === heatmapRequestSeq) heatmapLoading.value = false
+  }
+}
+
 async function loadActiveSession() {
   try {
     const response = await getActiveReviewSession()
@@ -112,7 +192,7 @@ async function refresh() {
   loading.value = true
   error.value = ''
   try {
-    await Promise.all([loadGroups(), loadQueue(), loadActiveSession()])
+    await Promise.all([loadGroups(), loadQueue(), loadHeatmap(), loadActiveSession()])
   } catch (err: any) {
     error.value = err?.message || t('review.loadFailed')
   } finally {
@@ -122,10 +202,175 @@ async function refresh() {
 
 function selectGroup(groupId: string) {
   selectedGroupId.value = groupId
+  const query = { ...route.query }
+  if (groupId) query.scope = groupId
+  else delete query.scope
+  void router.replace({ query })
+}
+
+function sessionLabel(state: ReviewSessionState) {
+  return state.session.mode === 'daily' ? t('review.v3.dailyQueue') : t('review.v3.relearnQueue')
+}
+
+function openReview(state: ReviewSessionState, label: string) {
+  reviewState.value = state
+  reviewLabel.value = label
+  reviewVisible.value = true
+}
+
+async function refreshAfterReview() {
+  await Promise.all([loadQueue(), loadHeatmap(), loadActiveSession()])
+}
+
+function closeReview() {
+  reviewVisible.value = false
+  reviewState.value = null
+  void refreshAfterReview()
+}
+
+function onReviewCompleted() {
+  void refreshAfterReview()
+}
+
+async function beginSession(
+  payload: Parameters<typeof startReviewSession>[0],
+  label: string,
+) {
+  if (reviewStarting.value) return
+  reviewStarting.value = true
+  try {
+    const response = await startReviewSession(payload)
+    if (!response.data) throw new Error(t('review.loadFailed'))
+    activeSession.value = response.data
+    openReview(response.data, label)
+    void loadQueue()
+    void loadHeatmap()
+  } catch (err: any) {
+    await loadActiveSession()
+    if (activeSession.value) {
+      openReview(activeSession.value, sessionLabel(activeSession.value))
+    } else {
+      MessagePlugin.error(err?.message || t('review.loadFailed'))
+    }
+  } finally {
+    reviewStarting.value = false
+  }
 }
 
 function handleStart() {
-  MessagePlugin.info(t('review.v3.sessionPending'))
+  if (reviewStarting.value || reviewVisible.value) return
+  if (activeSession.value) {
+    openReview(activeSession.value, sessionLabel(activeSession.value))
+    return
+  }
+  void beginSession(
+    { mode: 'daily', group_id: selectedGroupId.value || undefined },
+    t('review.v3.dailyQueue'),
+  )
+}
+
+async function refreshAfterCardChange() {
+  await Promise.all([loadGroups(), loadQueue(), loadHeatmap()])
+}
+
+async function beginCardReview(card: ReviewCard, forceNew: boolean) {
+  const response = await startReviewSession({
+    mode: 'manual',
+    group_id: card.group_id,
+    card_ids: [card.id],
+    force_new: forceNew || undefined,
+  })
+  if (!response.data) throw new Error(t('review.loadFailed'))
+  activeSession.value = response.data
+  cardConflictVisible.value = false
+  pendingCardReview.value = null
+  openReview(response.data, t('review.v3.singleQueue'))
+  void refreshAfterReview()
+}
+
+async function handleCardReview(card: ReviewCard) {
+  if (reviewStarting.value || reviewVisible.value) return
+  reviewStarting.value = true
+  try {
+    const active = await getActiveReviewSession()
+    if (active.data) {
+      pendingCardReview.value = card
+      cardConflictVisible.value = true
+      return
+    }
+    await beginCardReview(card, false)
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('review.loadFailed'))
+  } finally {
+    reviewStarting.value = false
+  }
+}
+
+async function abandonAndReviewCard() {
+  const card = pendingCardReview.value
+  if (!card || cardConflictBusy.value) return
+  cardConflictBusy.value = true
+  try {
+    await beginCardReview(card, true)
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('review.loadFailed'))
+  } finally {
+    cardConflictBusy.value = false
+  }
+}
+
+function continueCurrentCardReview() {
+  cardConflictVisible.value = false
+  pendingCardReview.value = null
+  if (activeSession.value) {
+    openReview(activeSession.value, sessionLabel(activeSession.value))
+  } else {
+    void loadActiveSession()
+  }
+}
+
+async function handleStatsReview(groupId: string) {
+  if (reviewStarting.value || reviewVisible.value) return
+  reviewStarting.value = true
+  try {
+    await beginSession({ mode: 'daily', group_id: groupId }, t('review.v3.dailyQueue'))
+  } finally {
+    reviewStarting.value = false
+  }
+}
+
+function openCluster(cell: ReviewHeatmapCell) {
+  if (cell.row_id === 'other_row' || cell.column_key === 'other_column') return
+  const row = heatmap.value?.rows.find(item => item.id === cell.row_id)
+  if (!row) return
+  const query: Record<string, string> = { col: cell.column_key }
+  if (selectedGroupId.value) query.scope = selectedGroupId.value
+  if (row.kind === 'direct') query.direct = '1'
+  void router.push({
+    name: 'reviewV3Cluster',
+    params: {
+      rowGroupId: row.group_id,
+    },
+    query,
+  })
+}
+
+function drillGroup(groupID: string) {
+  heatmapExpanded.value = false
+  selectGroup(groupID)
+}
+
+function expandHeatmap() {
+  heatmapExpanded.value = true
+  void loadHeatmap()
+}
+
+function maybeResumeFromQuery() {
+  if (route.query.resume !== '1' || !activeSession.value) return
+  openReview(activeSession.value, sessionLabel(activeSession.value))
+  const query = { ...route.query }
+  delete query.resume
+  void router.replace({ query })
 }
 
 function openCreateGroup(parentId: string) {
@@ -169,6 +414,7 @@ async function saveGroup() {
       MessagePlugin.success(t('review.groupUpdated'))
       groupDialogVisible.value = false
       await loadGroups()
+      await loadHeatmap()
     }
   } catch (err: any) {
     MessagePlugin.error(err?.message || t('review.groupFailed'))
@@ -188,6 +434,7 @@ async function confirmDeleteGroup() {
     if (selectedGroupId.value === target.id) selectedGroupId.value = ''
     await loadGroups()
     await loadQueue()
+    await loadHeatmap()
   } catch (err: any) {
     MessagePlugin.error(err?.message || t('review.groupFailed'))
   } finally {
@@ -197,23 +444,38 @@ async function confirmDeleteGroup() {
 
 watch(selectedGroupId, () => {
   void loadQueue()
+  void loadHeatmap()
+})
+
+watch(activeView, () => {
+  void nextTick(() => pageRoot.value?.scrollTo({ top: 0 }))
 })
 
 onMounted(() => {
-  void refresh()
+  void refresh().then(() => {
+    maybeResumeFromQuery()
+  })
 })
 </script>
 
 <template>
-  <div class="review-v3">
+  <div ref="pageRoot" class="review-v3 rv-vuln-scope">
     <div class="review-v3__inner">
-      <header class="review-v3__head">
-        <div>
-          <div class="review-v3__title-row">
+      <header class="rv-page-head">
+        <div class="rv-page-head__main">
+          <img class="rv-page-head__icon" :src="calendarIcon" alt="" />
+          <div>
+            <div class="rv-page-head__eyebrow">学习 / 复习</div>
             <h1>{{ t('review.title') }}</h1>
-            <t-tag theme="primary" variant="light" size="small">{{ t('review.v3.preview') }}</t-tag>
+            <p>{{ t('review.subtitle') }}</p>
           </div>
-          <p>{{ t('review.subtitle') }}</p>
+        </div>
+        <div class="rv-page-head__actions">
+          <t-dropdown :options="moreOptions" placement="bottom-right" @click="onMoreAction">
+            <t-button variant="outline" data-testid="review-v3-more">
+              {{ t('review.v3.moreActions') }}
+            </t-button>
+          </t-dropdown>
         </div>
       </header>
 
@@ -237,10 +499,17 @@ onMounted(() => {
                 :selected-group-name="selectedGroupName"
                 :selected-group-id="selectedGroupId"
                 :group-options="groupOptions"
+                :heatmap="heatmap"
+                :heatmap-loading="heatmapLoading"
+                :heatmap-error="heatmapError"
                 :loading="loading || queueLoading"
                 :error="error"
                 @start="handleStart"
                 @retry="refresh"
+                @retry-heatmap="loadHeatmap"
+                @open-cluster="openCluster"
+                @drill="drillGroup"
+                @expand="expandHeatmap"
                 @update:group-id="selectGroup"
               />
             </main>
@@ -248,19 +517,22 @@ onMounted(() => {
         </t-tab-panel>
 
         <t-tab-panel value="cards" :label="t('review.v3.cardsTab')">
-          <div class="review-v3__placeholder">
-            <t-empty :description="t('review.v3.cardsPending')" />
-            <p class="review-v3__note">{{ t('review.v3.emptyPreview') }}</p>
-          </div>
+          <ReviewCardsView
+            :flat-groups="flatGroups"
+            :initial-group-id="selectedGroupId"
+            @review-card="handleCardReview"
+            @updated="refreshAfterCardChange"
+          />
         </t-tab-panel>
 
         <t-tab-panel value="stats" :label="t('review.v3.statsTab')">
-          <div class="review-v3__placeholder">
-            <t-empty :description="t('review.v3.statsPending')" />
-            <p class="review-v3__note">{{ t('review.v3.emptyPreview') }}</p>
-          </div>
+          <ReviewStatsView @review-group="handleStatsReview" />
         </t-tab-panel>
       </t-tabs>
+
+      <footer class="rv-attribution">
+        <a href="https://icons8.com" target="_blank" rel="noopener noreferrer">Animated icons by Icons8</a>
+      </footer>
     </div>
 
     <t-dialog
@@ -292,6 +564,39 @@ onMounted(() => {
       </p>
       <t-checkbox v-model="groupDeleteCards">{{ t('review.groupDeleteWithCards') }}</t-checkbox>
     </t-dialog>
+
+    <t-dialog
+      v-model:visible="cardConflictVisible"
+      :header="t('review.v3.sessionConflictTitle')"
+      :footer="false"
+      width="460px"
+    >
+      <p class="review-v3__dialog-text">{{ t('review.v3.cardConflictHint') }}</p>
+      <div class="review-v3__dialog-actions">
+        <t-button variant="outline" :disabled="cardConflictBusy" @click="continueCurrentCardReview">
+          {{ t('review.v3.continueCurrent') }}
+        </t-button>
+        <t-button theme="danger" :loading="cardConflictBusy" @click="abandonAndReviewCard">
+          {{ t('review.v3.abandonAndReviewCard') }}
+        </t-button>
+      </div>
+    </t-dialog>
+
+    <ReviewGenerateDialog
+      v-model:visible="generateVisible"
+      :flat-groups="flatGroups"
+      :default-group-id="selectedGroupId"
+      @imported="refreshAfterCardChange"
+    />
+
+    <ReviewMode
+      v-if="reviewVisible && reviewState"
+      :state="reviewState"
+      :queue-label="reviewLabel"
+      :streak-days="queue?.streak_days ?? 0"
+      @close="closeReview"
+      @completed="onReviewCompleted"
+    />
   </div>
 </template>
 
@@ -385,6 +690,12 @@ onMounted(() => {
   font-size: 13px;
   line-height: 21px;
   color: var(--td-text-color-secondary);
+}
+
+.review-v3__dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 @media (max-width: 760px) {
