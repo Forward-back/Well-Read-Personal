@@ -31,12 +31,11 @@ import ReviewLevelTag from './ReviewLevelTag.vue'
 import type { ReviewFlatGroup } from './types'
 import { holdDays, normalizeVulnerability } from './vulnerability'
 import { useConfirmDelete } from '@/components/settings/useConfirmDelete'
-import checklistIcon from '@/assets/icons/animated/checklist.gif'
-import bookIcon from '@/assets/icons/animated/book.gif'
-import searchIcon from '@/assets/icons/hand/search.png'
-import plusIcon from '@/assets/icons/hand/plus.png'
-import moreIcon from '@/assets/icons/hand/more.png'
-import closeIcon from '@/assets/icons/hand/close.png'
+import checklistIcon from '@/assets/icons/static/checklist.png'
+import bookIcon from '@/assets/icons/static/book.png'
+import searchIcon from '@/assets/icons/static/search.png'
+import moreIcon from '@/assets/icons/static/more.png'
+import closeIcon from '@/assets/icons/static/close.png'
 
 const props = defineProps<{
   flatGroups: ReviewFlatGroup[]
@@ -110,6 +109,63 @@ const groupNameByID = computed(() => {
   for (const item of props.flatGroups) map.set(item.group.id, item.group.name)
   return map
 })
+
+const groupFilterOpen = ref(false)
+const expandedGroupIds = ref<Set<string>>(new Set())
+
+const groupParentByID = computed(() => {
+  const map = new Map<string, string>()
+  props.flatGroups.forEach(item => map.set(item.group.id, item.group.parent_id || ''))
+  return map
+})
+
+const groupParentIDs = computed(() => {
+  const parents = new Set<string>()
+  props.flatGroups.forEach(item => {
+    if (item.group.parent_id) parents.add(item.group.parent_id)
+  })
+  return parents
+})
+
+const selectedGroupLabel = computed(() =>
+  groupNameByID.value.get(filters.groupId) || t('review.v3.allGroups'),
+)
+
+const visibleGroupFilters = computed(() =>
+  props.flatGroups.filter(item => {
+    let cursor = item.group.parent_id || ''
+    while (cursor) {
+      if (!expandedGroupIds.value.has(cursor)) return false
+      cursor = groupParentByID.value.get(cursor) || ''
+    }
+    return true
+  }),
+)
+
+function toggleGroupFilterExpand(groupId: string) {
+  const next = new Set(expandedGroupIds.value)
+  if (next.has(groupId)) next.delete(groupId)
+  else next.add(groupId)
+  expandedGroupIds.value = next
+}
+
+function selectGroupFilter(groupId: string) {
+  filters.groupId = groupId
+  groupFilterOpen.value = false
+}
+
+function ensureGroupFilterVisible(groupId: string) {
+  if (!groupId) return
+  const next = new Set(expandedGroupIds.value)
+  let cursor = groupParentByID.value.get(groupId) || ''
+  while (cursor) {
+    next.add(cursor)
+    cursor = groupParentByID.value.get(cursor) || ''
+  }
+  expandedGroupIds.value = next
+}
+
+watch(() => filters.groupId, ensureGroupFilterVisible, { immediate: true })
 
 const groupOptions = computed(() => [
   { label: t('review.v3.allGroups'), value: '' },
@@ -620,9 +676,7 @@ onMounted(() => {
           </div>
         </div>
         <div class="cards-panel__head-actions">
-          <span class="cards-toolbar__count">{{ t('review.cardCount', { count: cards.length }) }}</span>
           <t-button theme="primary" data-testid="review-v3-card-create" @click="openCreate">
-            <template #icon><img class="inline-hand-icon" :src="plusIcon" alt="" /></template>
             {{ t('review.v3.cardsPage.newCard') }}
           </t-button>
         </div>
@@ -641,7 +695,64 @@ onMounted(() => {
           <template #prefix-icon><img class="inline-hand-icon" :src="searchIcon" alt="" /></template>
         </t-input>
         <t-select v-model="filters.status" class="cards-toolbar__select" data-testid="review-v3-cards-status" :options="statusOptions" />
-        <t-select v-model="filters.groupId" class="cards-toolbar__select" data-testid="review-v3-cards-group" :options="groupOptions" />
+        <t-popup
+          v-model:visible="groupFilterOpen"
+          trigger="click"
+          placement="bottom-left"
+          :show-arrow="false"
+          overlay-inner-class-name="cards-group-filter-popup"
+          destroy-on-close
+        >
+          <template #content>
+            <div class="group-filter">
+              <button
+                type="button"
+                class="group-filter__item"
+                :class="{ 'is-active': filters.groupId === '' }"
+                @click="selectGroupFilter('')"
+              >
+                <span class="group-filter__spacer" />
+                <span class="group-filter__name">{{ t('review.v3.allGroups') }}</span>
+              </button>
+              <div
+                v-for="item in visibleGroupFilters"
+                :key="item.group.id"
+                class="group-filter__item"
+                :class="{ 'is-active': filters.groupId === item.group.id }"
+                :style="{ paddingLeft: `${8 + item.depth * 16}px` }"
+              >
+                <button
+                  v-if="groupParentIDs.has(item.group.id)"
+                  type="button"
+                  class="group-filter__expand"
+                  :aria-label="item.group.name"
+                  @click.stop="toggleGroupFilterExpand(item.group.id)"
+                >
+                  <t-icon
+                    :name="expandedGroupIds.has(item.group.id) ? 'chevron-down' : 'chevron-right'"
+                    size="14px"
+                  />
+                </button>
+                <span v-else class="group-filter__spacer" />
+                <button
+                  type="button"
+                  class="group-filter__name"
+                  @click="selectGroupFilter(item.group.id)"
+                >
+                  {{ item.group.name }}
+                </button>
+              </div>
+            </div>
+          </template>
+          <button
+            type="button"
+            class="cards-toolbar__group-trigger"
+            data-testid="review-v3-cards-group"
+          >
+            <span>{{ selectedGroupLabel }}</span>
+            <t-icon name="chevron-down" size="14px" />
+          </button>
+        </t-popup>
         <t-input
           v-model="filters.tag"
           class="cards-toolbar__tag"
@@ -968,7 +1079,8 @@ onMounted(() => {
   padding: 16px 20px 18px;
   background: var(--td-bg-color-container);
   border: 1px solid var(--td-component-stroke);
-  border-radius: var(--td-radius-medium);
+  border-top: 0;
+  border-radius: 0 0 var(--td-radius-medium) var(--td-radius-medium);
 
   &__head {
     display: flex;
@@ -1017,15 +1129,135 @@ onMounted(() => {
 
   &__search { width: 260px; }
   &__select { width: 148px; }
+  &__group-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    width: 168px;
+    height: 32px;
+    padding: 0 10px;
+    overflow: hidden;
+    border: 1px solid var(--td-component-stroke);
+    border-radius: 3px;
+    background: var(--td-bg-color-container);
+    color: var(--td-text-color-primary);
+    font: inherit;
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+
+    span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    &:hover {
+      border-color: var(--td-brand-color);
+    }
+  }
   &__tag { width: 160px; }
-  &__count {
-    font-size: 12px;
-    color: var(--td-text-color-secondary);
-    font-variant-numeric: tabular-nums;
+}
+
+.group-filter {
+  width: 168px;
+  min-width: 0;
+  max-height: 280px;
+  padding: 4px;
+  box-sizing: border-box;
+  overflow-x: auto;
+  overflow-y: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 0;
+  background: var(--td-bg-color-container);
+  box-shadow: var(--td-shadow-1);
+
+  &::-webkit-scrollbar {
+    display: none;
   }
 }
 
+:global(.cards-group-filter-popup) {
+  padding: 0;
+  margin-top: 0 !important;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.group-filter__item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: max-content;
+  min-width: 100%;
+  min-height: 32px;
+  padding-right: 8px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--td-text-color-primary);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--td-bg-color-container-hover);
+  }
+
+  &.is-active {
+    background: var(--td-brand-color-light);
+    color: var(--td-brand-color);
+
+    .group-filter__name {
+      color: var(--td-brand-color);
+    }
+  }
+}
+
+.group-filter__expand,
+.group-filter__spacer {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
+.group-filter__expand {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--td-text-color-secondary);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--td-bg-color-container-hover);
+  }
+}
+
+.group-filter__name {
+  flex: none;
+  min-width: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
 .batch-bar {
+  position: sticky;
+  top: 0;
+  z-index: 8;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1035,7 +1267,7 @@ onMounted(() => {
   font-size: 13px;
   background: var(--td-brand-color-light);
   border: 1px solid var(--td-brand-color-focus);
-  border-radius: var(--td-radius-medium);
+  border-radius: 0;
 
   &__actions {
     display: flex;
@@ -1052,7 +1284,7 @@ onMounted(() => {
   overflow: hidden;
   background: var(--td-bg-color-container);
   border: 1px solid var(--td-component-stroke);
-  border-radius: var(--td-radius-medium);
+  border-radius: 0 0 var(--td-radius-medium) var(--td-radius-medium);
 
   &__head {
     display: grid;

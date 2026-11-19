@@ -3,11 +3,10 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ReviewGroup } from '@/api/review'
 import type { ReviewFlatGroup } from './types'
-import bookIcon from '@/assets/icons/animated/book.gif'
-import folderIcon from '@/assets/icons/hand/folder.png'
-import arrowIcon from '@/assets/icons/hand/arrow-right.png'
-import moreIcon from '@/assets/icons/hand/more.png'
-import plusIcon from '@/assets/icons/hand/plus.png'
+import bookIcon from '@/assets/icons/static/book.png'
+import folderIcon from '@/assets/icons/static/folder.png'
+import arrowIcon from '@/assets/icons/static/arrow-right.png'
+import moreIcon from '@/assets/icons/static/more.png'
 
 const props = defineProps<{
   groups: ReviewFlatGroup[]
@@ -30,6 +29,9 @@ const groupMenuOptions = computed(() => [
   { content: t('review.newChildGroup'), value: 'create' },
   { content: t('review.renameGroup'), value: 'rename' },
   { content: t('review.deleteGroup'), value: 'delete', theme: 'error' },
+])
+const rootMenuOptions = computed(() => [
+  { content: t('review.newGroup'), value: 'create' },
 ])
 
 function groupMenuOptionsFor(group: ReviewGroup) {
@@ -87,11 +89,15 @@ function select(groupId: string) {
 <template>
   <aside class="group-rail" data-testid="review-v3-group-rail">
     <div class="group-rail__label"><img :src="bookIcon" alt="" />{{ t('review.groups') }}</div>
-    <button
-      type="button"
+    <div
       class="group-row group-row--root"
       :class="{ 'group-row--active': selectedGroupId === '' }"
+      role="treeitem"
+      :aria-selected="selectedGroupId === ''"
+      tabindex="0"
       @click="select('')"
+      @keydown.enter="select('')"
+      @keydown.space.prevent="select('')"
     >
       <img class="group-row__icon group-row__hand" :src="folderIcon" alt="" />
       <span class="group-row__name">{{ t('review.v3.allGroups') }}</span>
@@ -101,7 +107,24 @@ function select(groupId: string) {
           {{ allDueCount }}
         </span>
       </span>
-    </button>
+      <t-dropdown
+        :options="rootMenuOptions"
+        placement="bottom-right"
+        attach="body"
+        trigger="click"
+        @click="(data: any) => data.value === 'create' && emit('create', '')"
+      >
+        <button
+          type="button"
+          class="group-row__more"
+          :title="t('review.groupMoreActions')"
+          data-testid="review-v3-group-menu-root"
+          @click.stop
+        >
+          <img class="group-row__hand" :src="moreIcon" alt="" />
+        </button>
+      </t-dropdown>
+    </div>
 
     <div class="group-rail__tree">
       <div
@@ -156,16 +179,6 @@ function select(groupId: string) {
         </t-dropdown>
       </div>
     </div>
-
-    <button
-      type="button"
-      class="group-rail__add"
-      data-testid="review-v3-group-add"
-      @click="emit('create', '')"
-    >
-      <img class="group-row__hand" :src="plusIcon" alt="" />
-      {{ t('review.newGroup') }}
-    </button>
   </aside>
 </template>
 
@@ -184,11 +197,11 @@ function select(groupId: string) {
   padding: 10px 8px;
   background: var(--td-bg-color-container);
   border: 1px solid var(--td-component-stroke);
-  border-radius: var(--td-radius-medium);
-  align-self: flex-start;
-  position: sticky;
-  top: 16px;
-  max-height: calc(100vh - 220px);
+  border-radius: 0;
+  align-self: stretch;
+  position: static;
+  max-height: none;
+  min-height: 100%;
   overflow-y: auto;
 }
 
@@ -366,28 +379,6 @@ function select(groupId: string) {
     outline: 2px solid var(--td-brand-color-focus);
     outline-offset: 1px;
     opacity: 1;
-  }
-}
-
-.group-rail__add {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  min-height: 30px;
-  margin-top: 6px;
-  padding: 4px 8px;
-  border: 0;
-  border-radius: var(--td-radius-default);
-  background: transparent;
-  color: var(--td-text-color-placeholder);
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--td-bg-color-container-hover);
-    color: var(--td-text-color-primary);
   }
 }
 

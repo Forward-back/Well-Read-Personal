@@ -73,7 +73,7 @@ async function login(page) {
   await setInput(page, await page.$('input[type="text"]'), env.OWNER_EMAIL)
   await setInput(page, await page.$('input[type="password"]'), env.OWNER_PASSWORD)
   await Promise.all([
-    page.waitForFunction(() => location.pathname.includes('/platform'), { timeout: 20000 }),
+    page.waitForFunction(() => location.pathname === '/', { timeout: 20000 }),
     clickText(page, 'button', '登录', { exact: true }),
   ])
 }
@@ -183,7 +183,13 @@ async function main() {
       record('group', 'no custom group yet; all-groups only')
     }
 
-    await page.click('[data-testid="review-v3-group-add"]')
+    await page.click('[data-testid="review-v3-group-menu-root"]')
+    await page.waitForFunction(
+      () => [...document.querySelectorAll('.t-dropdown__item')]
+        .some((el) => (el.innerText || '').trim() === '新建卡组' && (el.offsetWidth || el.offsetHeight)),
+      { timeout: 5000 },
+    )
+    await clickText(page, '.t-dropdown__item', '新建卡组', { exact: true })
     await fillVisibleDialogInput(page, CREATED_GROUP)
     await clickVisibleDialogButton(page, '保存')
     await waitText(page, CREATED_GROUP)

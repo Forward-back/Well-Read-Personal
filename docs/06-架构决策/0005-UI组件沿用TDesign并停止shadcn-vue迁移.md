@@ -16,7 +16,7 @@ status: accepted
 2. 停止 shadcn-vue 全前端迁移；不新增 `shadcn-vue`、`reka-ui`、`class-variance-authority` 等 shadcn 相关依赖，也不新增其他第二套组件库。
 3. 现有复习页的 shadcn-vue 实现视为 V2 试点残留，保留到复习 V3 同批替换；替换完成时删除 `src/components/ui`、`components.json`、仅服务于 shadcn 的工具与依赖，并清理 `tailwind.css` 中的 shadcn 导入与语义 token。
 4. 禁止同一页面混用 TDesign 与 shadcn 组件；后续新页面直接按 TDesign 规范新建。
-5. 视觉硬规则写入[界面规范](../02-需求与设计/界面规范.md) §3 与 §6：品牌绿只用于主 CTA、选中、进度与关键数据；状态色只用于小面积语义；卡片 6px、控件 3px；图标使用 lucide；不使用 emoji。
+5. 视觉硬规则写入[界面规范](../02-需求与设计/界面规范.md) §3 与 §6：品牌绿只用于主 CTA、选中、进度与关键数据；状态色只用于小面积语义；卡片 6px、控件 3px；图标按界面规范执行：复习页与未迁移详情页使用 Icons8 手绘，共享壳层与落地页使用 TDesign 图标或自绘 SVG，不新增 lucide；不使用 emoji。
 6. 统计图使用 ECharts，颜色读取 TDesign CSS 变量；主题切换后重绘。
 7. 每个页面动工前单独确认信息密度，不跨页面默认继承；复习 V3 的密度与结构见[复习页 V3 设计与实施说明](../02-需求与设计/复习功能页面优化/优化事项.md)。
 
@@ -32,6 +32,7 @@ status: accepted
 - 删除 shadcn 目录与依赖前，必须先完成后端契约与 TDesign 页面替换，避免页面不可用。
 - 旧 TDesign 页面不受影响；不再存在「历史页 8px / 新页 6px」的圆角分叉。
 - 2026-11-17 已完成：复习 V3 替换主路由，生成/合并/重绑/JSON 导出已移植；`src/components/ui`、`components.json`、shadcn/reka 依赖与 `tailwind.css` 语义 token 已删除，Tailwind 只保留布局 utility。
+- 2026-11-19 更正：决策 5 原写「图标使用 lucide」，与界面规范、ADR 0007 及实际组件路线冲突；已改为 Icons8 手绘 + TDesign/自绘，并移除复习模式最后的 3 个 lucide 引用与 `@lucide/vue` 依赖。
 - 视觉验收仍由 owner 实机或截图确认；自动化测试只证明功能与布局，不代表审美通过。
 - [ADR 0003](0003-UI组件渐进迁移到shadcn-vue.md) 标记为 superseded；本文成为 UI 组件的长期决策。
 - 文档入口：[界面规范](../02-需求与设计/界面规范.md) §3/§6、`frontend/README.md`、`CLAUDE.md` §3。

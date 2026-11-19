@@ -129,7 +129,7 @@ async function login(page) {
   await setInput(page, email, env.OWNER_EMAIL)
   await setInput(page, pass, env.OWNER_PASSWORD)
   await Promise.all([
-    page.waitForFunction(() => location.pathname.includes('/platform'), { timeout: 20000 }),
+    page.waitForFunction(() => location.pathname === '/', { timeout: 20000 }),
     clickText(page, 'button', '登录', { exact: true }),
   ])
   await page.goto(BASE + '/platform/settings?section=integrations', { waitUntil: 'networkidle2' })

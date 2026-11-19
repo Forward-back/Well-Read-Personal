@@ -4,13 +4,13 @@ import { useI18n } from 'vue-i18n'
 import type { ReviewHeatmap, ReviewHeatmapCell, ReviewQueue, ReviewSessionState } from '@/api/review'
 import ReviewHeatmapPanel from './ReviewHeatmap.vue'
 import ReviewPriorities from './ReviewPriorities.vue'
-import goalIcon from '@/assets/icons/animated/goal.gif'
-import checklistIcon from '@/assets/icons/animated/checklist.gif'
-import bookIcon from '@/assets/icons/animated/book.gif'
-import clockIcon from '@/assets/icons/animated/clock.gif'
-import fireIcon from '@/assets/icons/animated/fire.gif'
-import rocketIcon from '@/assets/icons/animated/rocket.gif'
-import sparklesIcon from '@/assets/icons/animated/sparkles.gif'
+import goalIcon from '@/assets/icons/static/goal.png'
+import checklistIcon from '@/assets/icons/static/checklist.png'
+import bookIcon from '@/assets/icons/static/book.png'
+import clockIcon from '@/assets/icons/static/clock.png'
+import fireIcon from '@/assets/icons/static/fire.png'
+import rocketIcon from '@/assets/icons/static/rocket.png'
+import sparklesIcon from '@/assets/icons/static/sparkles.png'
 
 const props = defineProps<{
   queue: ReviewQueue | null
@@ -214,7 +214,7 @@ const canStart = computed(() => hasQueue.value || hasActiveSession.value)
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--td-brand-color) 4%, var(--td-bg-color-container)) 0%, var(--td-bg-color-container) 42%);
   border: 1px solid var(--td-component-stroke);
-  border-radius: var(--td-radius-medium);
+  border-radius: 0 0 var(--td-radius-medium) var(--td-radius-medium);
 }
 
 .task-card__head {
@@ -321,8 +321,8 @@ const canStart = computed(() => hasQueue.value || hasActiveSession.value)
 }
 
 .today-view__panels {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 16px;
   margin-top: 16px;
 }

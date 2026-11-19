@@ -12,8 +12,8 @@ import {
 } from '@/api/review'
 import { listKnowledgeBases } from '@/api/knowledge-base'
 import type { ReviewFlatGroup } from './types'
-import sparklesIcon from '@/assets/icons/animated/sparkles.gif'
-import bookIcon from '@/assets/icons/animated/book.gif'
+import sparklesIcon from '@/assets/icons/static/sparkles.png'
+import bookIcon from '@/assets/icons/static/book.png'
 
 const props = defineProps<{
   visible: boolean

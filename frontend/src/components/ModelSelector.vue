@@ -1,7 +1,8 @@
 <template>
-  <div class="model-selector">
+  <div class="model-selector" @click.capture="handleSelectorClick">
     <t-select
       :value="selectedModelId"
+      v-model:popup-visible="popupVisible"
       @change="handleModelChange"
       :placeholder="placeholderText"
       :disabled="disabled"
@@ -99,6 +100,7 @@ const emit = defineEmits<{
 
 const models = ref<ModelConfig[]>([])
 const loading = ref(false)
+const popupVisible = ref(false)
 const { t } = useI18n()
 const chatResources = useChatResourcesStore()
 
@@ -156,12 +158,22 @@ const loadModels = async () => {
 
 // 处理模型选择变化
 const handleModelChange = (value?: string) => {
+  popupVisible.value = false
   // 如果选择的是添加模型选项，触发添加事件而不更新选中值
   if (value === '__add_model__') {
     emit('add-model')
     return
   }
   emit('update:selectedModelId', value || '')
+}
+
+function handleSelectorClick(event: MouseEvent) {
+  if (!popupVisible.value) return
+  const target = event.target as HTMLElement | null
+  if (target?.closest('.t-select')) {
+    popupVisible.value = false
+    event.stopPropagation()
+  }
 }
 
 // 暴露刷新方法给父组件

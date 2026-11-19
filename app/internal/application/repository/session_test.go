@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	apperrors "gaze/internal/errors"
 	"gaze/internal/types"
@@ -12,12 +13,23 @@ import (
 	"gorm.io/gorm"
 )
 
+type testSessionMessage struct {
+	ID        string `gorm:"primaryKey"`
+	SessionID string
+	Role      string
+	Content   string
+	CreatedAt time.Time
+	DeletedAt gorm.DeletedAt
+}
+
+func (testSessionMessage) TableName() string { return "messages" }
+
 func newSessionRepositoryForTest(t *testing.T) (interfaces.SessionRepository, *gorm.DB) {
 	t.Helper()
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&types.Session{}))
+	require.NoError(t, db.AutoMigrate(&types.Session{}, &testSessionMessage{}))
 
 	return NewSessionRepository(db), db
 }
@@ -185,6 +197,33 @@ func listItemIDsForTest(items []*types.SessionListItem) []string {
 		ids = append(ids, it.ID)
 	}
 	return ids
+}
+
+func TestSessionRepositoryQueryPagedIncludesFirstUserMessage(t *testing.T) {
+	repo, db := newSessionRepositoryForTest(t)
+	require.NoError(t, db.AutoMigrate(&testIMChannelSession{}))
+	ctx := context.Background()
+	session := createSessionForTest(t, db, 1, "alice")
+	base := time.Now().Add(-time.Hour)
+
+	messages := []testSessionMessage{
+		{ID: "deleted-question", SessionID: session.ID, Role: "user", Content: "deleted", CreatedAt: base, DeletedAt: gorm.DeletedAt{Time: base, Valid: true}},
+		{ID: "assistant-1", SessionID: session.ID, Role: "assistant", Content: "answer", CreatedAt: base.Add(time.Second)},
+		{ID: "first-question", SessionID: session.ID, Role: "user", Content: "first question", CreatedAt: base.Add(2 * time.Second)},
+		{ID: "second-question", SessionID: session.ID, Role: "user", Content: "second question", CreatedAt: base.Add(3 * time.Second)},
+	}
+	require.NoError(t, db.Create(&messages).Error)
+
+	items, total, err := repo.QueryPaged(ctx, &types.SessionListQuery{
+		TenantID: 1,
+		UserID:   "alice",
+		Page:     1,
+		PageSize: 10,
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, items, 1)
+	require.Equal(t, "first question", items[0].FirstUserMessage)
 }
 
 // A /clear (or session recycling) soft-deletes the IM mapping and starts a fresh

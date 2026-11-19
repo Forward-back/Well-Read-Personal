@@ -21,12 +21,8 @@ test('referenced knowledge bases open their relevant configuration pages', () =>
   assert.match(source, /uiStore\.closeKBEditor\(\)/)
   assert.match(source, /uiStore\.closeSettings\(\)/)
   assert.match(source, /await nextTick\(\)/)
-  assert.match(
-    source,
-    /const routeName = router\.currentRoute\.value\.name[\s\S]*canFocusExistingKnowledgeBase[\s\S]*KNOWLEDGE_BASE_EDITOR_HOST_ROUTES\.has\(routeName\)[\s\S]*focusKbEditorSection\(knowledgeBaseSection\)/,
-  )
+  assert.match(source, /name: 'knowledgeBaseSettings'[\s\S]*section: knowledgeBaseSection/)
   assert.match(source, /await router\.push\(modelUsageResourceRoute\(kind, id, bindings\)\)/)
-  assert.match(source, /uiStore\.openKBSettings\(id, knowledgeBaseSection\)/)
   assert.match(knowledgeBaseEditorSource, /v-if="loading"[\s\S]*:disabled="loading"/)
   assert.match(knowledgeBaseEditorSource, /isCurrentKBLoad\(generation, kbId\)/)
   assert.match(knowledgeBaseEditorSource, /generation !== kbEditorLoadGeneration \|\| !props\.visible/)

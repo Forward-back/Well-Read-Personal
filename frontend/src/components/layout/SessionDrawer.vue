@@ -3,35 +3,40 @@
     <section
       v-if="visible"
       class="session-drawer"
+      :class="{ 'session-drawer--rail': mode === 'rail' }"
       role="dialog"
       aria-label="问答记录"
       @click.stop
     >
       <div class="session-drawer__head">
         <strong>{{ t('menu.myChats') }}</strong>
-        <button type="button" class="session-drawer__close" aria-label="关闭" @click="close">
-          <t-icon name="close" />
-        </button>
+        <div class="session-drawer__head-actions">
+          <button
+            type="button"
+            class="session-drawer__close"
+            aria-label="搜索历史对话"
+            title="搜索历史对话"
+            @click="openSearch"
+          >
+            <t-icon name="search" />
+          </button>
+          <button
+            v-if="mode !== 'rail'"
+            type="button"
+            class="session-drawer__close"
+            aria-label="关闭"
+            title="关闭"
+            @click="close"
+          >
+            <t-icon name="close" />
+          </button>
+        </div>
       </div>
 
       <button type="button" class="session-drawer__new" @click="newChat">
         <t-icon name="add" />
         <span>{{ t('menu.newChat') }}</span>
       </button>
-
-      <div class="session-drawer__sources" role="tablist" aria-label="会话来源">
-        <button
-          v-for="option in sourceOptions"
-          :key="option.value"
-          type="button"
-          role="tab"
-          :aria-selected="source === option.value"
-          :class="{ 'is-active': source === option.value }"
-          @click="source = option.value"
-        >
-          {{ option.label }}
-        </button>
-      </div>
 
       <div class="session-drawer__list">
         <div v-if="loading" class="session-drawer__state">
@@ -44,7 +49,7 @@
         </button>
 
         <template v-else>
-          <div v-for="row in sessions" :key="row.id" class="session-row">
+          <div v-for="row in sessions" :key="row.id" class="session-row" :class="{ 'is-active': isActiveSession(row) }">
             <button type="button" class="session-row__main" @click="openSession(row)">
               <t-icon v-if="row.is_pinned" name="pin" class="session-row__pin" />
               <span class="session-row__title">{{ row.title }}</span>
@@ -101,10 +106,11 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import { useI18n } from 'vue-i18n'
 import { getSessionsList } from '@/api/chat'
+import { useChatLayoutStore } from '@/stores/chatLayout'
 import {
   SESSION_MUTATION_EVENT,
   clearSession,
@@ -114,7 +120,7 @@ import {
   type SessionMutationDetail,
 } from '@/components/sessionMutations'
 
-const props = defineProps<{ visible: boolean }>()
+const props = defineProps<{ visible: boolean; mode?: 'drawer' | 'rail' }>()
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
 }>()
@@ -128,17 +134,14 @@ type SessionRow = {
 }
 
 const router = useRouter()
+const route = useRoute()
 const { t } = useI18n()
+const chatLayout = useChatLayoutStore()
 const visible = computed({
   get: () => props.visible,
   set: value => emit('update:visible', value),
 })
 
-const source = ref<'web' | 'api'>('web')
-const sourceOptions = [
-  { value: 'web' as const, label: '网页' },
-  { value: 'api' as const, label: 'API' },
-]
 const sessions = ref<SessionRow[]>([])
 const total = ref(0)
 const page = ref(1)
@@ -178,7 +181,7 @@ async function load(reset = true) {
       sessions.value = []
     }
     const nextPage = reset ? 1 : page.value + 1
-    const res: any = await getSessionsList(nextPage, PAGE_SIZE, source.value)
+    const res: any = await getSessionsList(nextPage, PAGE_SIZE)
     const rows = (res?.data || []).map(mapRow)
     sessions.value = sortRows(reset ? rows : [...sessions.value, ...rows])
     page.value = nextPage
@@ -196,10 +199,7 @@ async function load(reset = true) {
 
 watch(() => props.visible, open => {
   if (open) void load(true)
-})
-watch(source, () => {
-  void load(true)
-})
+}, { immediate: true })
 
 function close() {
   visible.value = false
@@ -207,18 +207,27 @@ function close() {
   editingId.value = ''
 }
 
+function openSearch() {
+  if (props.mode !== 'rail') close()
+  chatLayout.openSearch()
+}
+
 function newChat() {
-  close()
+  if (props.mode !== 'rail') close()
   router.push('/platform/creatChat')
 }
 
 function openSession(row: SessionRow) {
-  close()
+  if (props.mode !== 'rail') close()
   router.push(row.path)
 }
 
 function toggleMenu(id: string) {
   activeMenuId.value = activeMenuId.value === id ? '' : id
+}
+
+function isActiveSession(row: SessionRow) {
+  return route.name === 'chat' && String(route.params.chatid || '') === row.id
 }
 
 function startRename(row: SessionRow) {
@@ -364,6 +373,20 @@ onUnmounted(() => {
   color: var(--w-body);
 }
 
+.session-drawer--rail {
+  position: relative;
+  top: auto;
+  bottom: auto;
+  left: auto;
+  z-index: auto;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .session-drawer__head {
   display: flex;
   align-items: center;
@@ -371,6 +394,12 @@ onUnmounted(() => {
   color: var(--w-ink);
   font-size: 14px;
   font-weight: 700;
+}
+
+.session-drawer__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .session-drawer__close {
@@ -409,32 +438,6 @@ onUnmounted(() => {
 
   &:hover {
     filter: brightness(0.97);
-  }
-}
-
-.session-drawer__sources {
-  display: flex;
-  gap: 4px;
-  padding: 3px;
-  border: 1px solid var(--w-line);
-  border-radius: 7px;
-
-  button {
-    flex: 1;
-    padding: 5px 8px;
-    border: 0;
-    border-radius: 5px;
-    background: transparent;
-    color: var(--w-muted);
-    font: inherit;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-
-    &.is-active {
-      background: var(--w-green-soft);
-      color: var(--w-green-dark);
-    }
   }
 }
 
@@ -482,6 +485,15 @@ onUnmounted(() => {
 
   &:hover {
     background: var(--w-accent);
+  }
+
+  &.is-active {
+    background: transparent;
+  }
+
+  &.is-active .session-row__title {
+    color: var(--w-green-dark);
+    font-weight: 600;
   }
 }
 

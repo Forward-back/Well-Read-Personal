@@ -291,7 +291,6 @@ import {
 } from '@/api/model'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
-import { focusKbEditorSection } from '@/config/contextualGuides'
 import { useChatResourcesStore } from '@/stores/chatResources'
 import {
   formatContextWindow,
@@ -319,14 +318,6 @@ const loading = ref(true)
 const activeTypeFilter = ref<FilterType>('all')
 
 const MODEL_TAB_TYPES: FilterType[] = ['chat', 'embedding', 'rerank', 'vllm', 'asr']
-const KNOWLEDGE_BASE_EDITOR_HOST_ROUTES = new Set([
-  'home',
-  'knowledgeBaseList',
-  'knowledgeBaseDetail',
-  'globalCreatChat',
-  'kbCreatChat',
-  'chat',
-])
 watch(
   () => uiStore.settingsInitialSubSection,
   (sub) => {
@@ -702,37 +693,21 @@ const openUsageResource = async (
 ) => {
   showUsageDialog.value = false
   const knowledgeBaseSection = modelUsageKnowledgeBaseSection(bindings)
-  // The UI store can outlive the route component that owns the KB editor.
-  // Only focus an existing editor when the current route still mounts one;
-  // otherwise a stale visible/id pair would make a direct Settings page no-op.
-  const routeName = router.currentRoute.value.name
-  const canFocusExistingKnowledgeBase = kind === 'knowledge_base'
-    && uiStore.showKBEditorModal
-    && uiStore.currentKBId === id
-    && typeof routeName === 'string'
-    && KNOWLEDGE_BASE_EDITOR_HOST_ROUTES.has(routeName)
-
   uiStore.closeSettings()
   await nextTick()
-
-  if (canFocusExistingKnowledgeBase) {
-    // Keep unsaved edits when the referenced KB is already open underneath
-    // global Settings; only move the existing editor to the relevant section.
-    focusKbEditorSection(knowledgeBaseSection)
-    return
-  }
 
   if (kind === 'knowledge_base') {
     uiStore.closeKBEditor()
     await nextTick()
+    await router.push({
+      name: 'knowledgeBaseSettings',
+      params: { kbId: id },
+      query: knowledgeBaseSection ? { section: knowledgeBaseSection } : {},
+    })
+    return
   }
-  // Both the KB editor and global Settings can already be open underneath the
-  // usage dialog. Flush their false state before reusing either component so
-  // its visible watcher reloads the target object instead of keeping stale data.
+
   await router.push(modelUsageResourceRoute(kind, id, bindings))
-  if (kind === 'knowledge_base') {
-    uiStore.openKBSettings(id, knowledgeBaseSection)
-  }
 }
 
 // 获取模型操作菜单选项

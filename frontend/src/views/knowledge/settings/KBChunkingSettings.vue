@@ -404,17 +404,12 @@ const emitUpdate = () => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  // Stick to the top of the scrollable section so the section title remains
-  // visible while the user scrolls through a long form. Negative top and
-  // matching negative margins compensate for content-wrapper's padding
-  // (24px 32px) so the sticky band visually spans the full width when stuck.
-  position: sticky;
-  top: -24px;
-  z-index: 5;
-  background: var(--td-bg-color-container);
-  padding: 24px 32px 12px 32px;
-  margin: -24px -32px 16px -32px;
-  border-bottom: 1px solid var(--td-component-stroke);
+  position: static;
+  z-index: auto;
+  background: transparent;
+  padding: 0;
+  margin: 0 0 16px 0;
+  border-bottom: 0;
 
   .section-header-text {
     flex: 1;

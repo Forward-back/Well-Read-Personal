@@ -381,12 +381,12 @@ watch(visible, (open) => {
 }
 
 .chat-references-panel {
-  position: fixed;
+  position: absolute;
   top: 0;
   right: 0;
   bottom: 0;
-  width: min(420px, 100vw);
-  z-index: 1201;
+  width: min(420px, 100%);
+  z-index: 15;
   display: flex;
   flex-direction: column;
   background: var(--td-bg-color-container);
@@ -394,6 +394,9 @@ watch(visible, (open) => {
   box-shadow: -8px 0 24px rgba(0, 0, 0, 0.06);
 
   &.is-overlay {
+    position: fixed;
+    width: min(420px, 100vw);
+    z-index: 1201;
     box-shadow: -12px 0 32px rgba(0, 0, 0, 0.12);
   }
 }

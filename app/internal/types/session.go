@@ -224,12 +224,13 @@ type SessionListQuery struct {
 // and are empty for Web-created sessions.
 type SessionListItem struct {
 	Session
-	IMPlatform  string `json:"im_platform,omitempty"   gorm:"column:im_platform"`
-	IMChatID    string `json:"im_chat_id,omitempty"    gorm:"column:im_chat_id"`
-	IMThreadID  string `json:"im_thread_id,omitempty"  gorm:"column:im_thread_id"`
-	IMUserID    string `json:"im_user_id,omitempty"    gorm:"column:im_user_id"`
-	IMAgentID   string `json:"im_agent_id,omitempty"   gorm:"column:im_agent_id"`
-	IMChannelID string `json:"im_channel_id,omitempty" gorm:"column:im_channel_id"`
+	FirstUserMessage string `json:"first_user_message,omitempty" gorm:"column:first_user_message"`
+	IMPlatform       string `json:"im_platform,omitempty"   gorm:"column:im_platform"`
+	IMChatID         string `json:"im_chat_id,omitempty"    gorm:"column:im_chat_id"`
+	IMThreadID       string `json:"im_thread_id,omitempty"  gorm:"column:im_thread_id"`
+	IMUserID         string `json:"im_user_id,omitempty"    gorm:"column:im_user_id"`
+	IMAgentID        string `json:"im_agent_id,omitempty"   gorm:"column:im_agent_id"`
+	IMChannelID      string `json:"im_channel_id,omitempty" gorm:"column:im_channel_id"`
 }
 
 // StringArray represents a list of strings

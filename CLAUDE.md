@@ -11,7 +11,7 @@ WellRead Personal 是单 owner、本地部署的个人知识库系统，根目�
 | `app/` | Go 后端、docreader、CLI、Go SDK、Swagger、迁移 |
 | `frontend/` | Vue 3 SPA；共享壳层（顶栏 + 左功能栏 + 右辅助栏 + 中央窗）与五分区设置 |
 | `rag/` | Flask 检索/生成侧车；语料/模型/索引在 `data/rag/`（gitignore） |
-| `mcp/` | MCP 外部接入层；17 个只读工具 |
+| `mcp/` | MCP 外部接入层；17 个 MCP 工具（知识面只读，会话面仅自有会话） |
 | `deployments/` | 六服务 compose、hotreload overlay、systemd、env example |
 | `scripts/` | 跨服务构建/运维脚本 |
 | `docs/` | 01 总览、02 需求与设计、03 进度、04 历史归档、05 演示、06 架构决策 |
@@ -34,7 +34,7 @@ WellRead Personal 是单 owner、本地部署的个人知识库系统，根目�
 - **RAG 只负责索引与检索**：`/ingest` 必须携带 App 生成的 chunks；不要在 RAG 重新加文件解析、分块或元数据抽取。
 - **检索不带权限过滤**：RAG 请求不接收 `acl_scope`、部门、密级；不要恢复 fail-closed scope 逻辑。
 - **精读与技能隔离**：精读固定 `grill-with-docs`；技能只用于普通问答；两者不共享可执行工具。
-- **MCP 只读**：工具面固定 17 个只读工具；不要重新加写入、删除、建库、模型、租户或共享空间工具。
+- **MCP 知识面只读**：工具面固定 17 个；知识库、文档、分块、检索与 Agent 读取只读；会话面仅允许自有会话的创建/读取/列表/删除；不要重新加知识写入、删除、建库、模型、租户或共享空间工具。
 - **密钥不落库/不落文档**：`.env`、模型 Key、数据库口令、owner 初始密码不提交；单 Key 只显示掩码，明文只在生成/重置时出现一次。
 - **RAG 数据不进入 git/镜像**：不把 `Data/`、`models/`、`faiss_index.bin` 加进 git；本地数据放 `data/rag/`，不要删除。
 - **文档来源**：产品/需求文档只从 app 业务侧与当前产品文档获取；`rag/test/`、`data/rag/Data` 是独立测试数据，不能当作业务需求或演示数据。

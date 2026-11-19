@@ -17,12 +17,12 @@ import ReviewCardAIDialog from './ReviewCardAIDialog.vue'
 import ReviewLevelTag from './ReviewLevelTag.vue'
 import type { ReviewSourceTarget } from './types'
 import { formatIntensity, holdDays, ratingLabelKey } from './vulnerability'
-import brainIcon from '@/assets/icons/animated/brain.gif'
-import bookIcon from '@/assets/icons/animated/book.gif'
-import rocketIcon from '@/assets/icons/animated/rocket.gif'
-import sparklesIcon from '@/assets/icons/animated/sparkles.gif'
-import goalIcon from '@/assets/icons/animated/goal.gif'
-import backIcon from '@/assets/icons/hand/arrow-left.png'
+import brainIcon from '@/assets/icons/static/brain.png'
+import bookIcon from '@/assets/icons/static/book.png'
+import rocketIcon from '@/assets/icons/static/rocket.png'
+import sparklesIcon from '@/assets/icons/static/sparkles.png'
+import goalIcon from '@/assets/icons/static/goal.png'
+import backIcon from '@/assets/icons/static/arrow-left.png'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -470,7 +470,7 @@ function onAIDialogApplied() {
       </t-loading>
 
       <footer class="rv-attribution">
-        <a href="https://icons8.com" target="_blank" rel="noopener noreferrer">Animated icons by Icons8</a>
+        <a href="https://icons8.com" target="_blank" rel="noopener noreferrer">Icons by Icons8</a>
       </footer>
 
       <ReviewCardAIDialog

@@ -3,7 +3,6 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { MessagePlugin } from 'tdesign-vue-next'
-import { ExternalLink, Keyboard, ShieldAlert } from '@lucide/vue'
 
 import {
   getReviewCard,
@@ -18,8 +17,11 @@ import { createChatMarkdownRenderer, renderChatMarkdown } from '@/utils/chatMark
 import { sanitizeMarkdownHTML } from '@/utils/security'
 import ReviewLevelTag from './ReviewLevelTag.vue'
 import { fallbackVulnerability, holdDays, scheduledIntervalDays } from './vulnerability'
-import trophyIcon from '@/assets/icons/animated/trophy.gif'
-import backIcon from '@/assets/icons/hand/arrow-left.png'
+import trophyIcon from '@/assets/icons/static/trophy.png'
+import backIcon from '@/assets/icons/static/arrow-left.png'
+import arrowRightIcon from '@/assets/icons/static/arrow-right.png'
+import helpIcon from '@/assets/icons/static/help.png'
+import infoIcon from '@/assets/icons/static/info.png'
 
 const props = defineProps<{
   state: ReviewSessionState
@@ -272,7 +274,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
       <section v-else-if="currentCard" class="review-mode__card">
         <div v-if="isSevere" class="review-mode__severe" data-testid="review-v3-severe-banner">
-          <ShieldAlert :size="16" />
+          <img class="inline-hand-icon" :src="infoIcon" alt="" />
           <span>{{ severeText }}</span>
           <ReviewLevelTag level="severe" />
         </div>
@@ -311,7 +313,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
             {{ t('review.v3.showAnswerSpace') }}
           </t-button>
           <p class="review-mode__hint">
-            <Keyboard :size="13" />{{ t('review.v3.modeShortcutHint') }}
+            <img class="inline-hand-icon inline-hand-icon--13" :src="helpIcon" alt="" />{{ t('review.v3.modeShortcutHint') }}
           </p>
         </template>
 
@@ -333,7 +335,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                   :loading="sourceOpening"
                   @click="openSource"
                 >
-                  <template #icon><ExternalLink :size="13" /></template>
+                  <template #icon><img class="inline-hand-icon inline-hand-icon--13" :src="arrowRightIcon" alt="" /></template>
                   {{ t('review.v3.openSource') }}
                 </t-button>
               </div>
@@ -392,7 +394,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
             </t-button>
           </div>
           <p class="review-mode__hint">
-            <Keyboard :size="13" />{{ t('review.v3.modeShortcutHint') }}
+            <img class="inline-hand-icon inline-hand-icon--13" :src="helpIcon" alt="" />{{ t('review.v3.modeShortcutHint') }}
           </p>
         </template>
       </section>
@@ -402,6 +404,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 <style lang="less" scoped>
 .inline-hand-icon { width: 16px; height: 16px; object-fit: contain; }
+.inline-hand-icon--13 { width: 13px; height: 13px; }
 
 .review-mode,
 .review-mode *,

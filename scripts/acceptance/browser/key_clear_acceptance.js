@@ -63,7 +63,7 @@ async function clickSectionButton(page, sectionText, buttonText) {
     await pass.evaluate((e) => { e.focus() })
     await page.keyboard.type(env.OWNER_PASSWORD)
     await Promise.all([
-      page.waitForFunction(() => location.pathname.includes('/platform')),
+      page.waitForFunction(() => location.pathname === '/'),
       page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.innerText.trim() === '登录').click()),
     ])
 

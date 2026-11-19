@@ -1,5 +1,6 @@
-import { inject, provide, ref, type InjectionKey, type Ref } from 'vue'
+import { inject, onScopeDispose, provide, ref, watch, type InjectionKey, type Ref } from 'vue'
 import type { KnowledgeReferenceLike, ReferenceHighlightTarget } from '@/utils/referenceSources'
+import { useChatReferencesStore } from '@/stores/chatReferences'
 
 export type ChatReferencesFeedbackContext = {
   userQuery?: string
@@ -38,6 +39,11 @@ export function provideChatReferencesDrawer(): ChatReferencesDrawerContext {
   const messageId = ref('')
   const sourceKey = ref('')
   const feedbackContext = ref<ChatReferencesFeedbackContext>({})
+  const referencesStore = useChatReferencesStore()
+
+  referencesStore.setVisible(false)
+  watch(visible, value => referencesStore.setVisible(value), { immediate: true })
+  onScopeDispose(() => referencesStore.setVisible(false))
 
   const getFallbackSourceKey = (options: ChatReferencesDrawerOpenOptions) => {
     if (options.sourceKey) return options.sourceKey

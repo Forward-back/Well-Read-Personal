@@ -18,14 +18,14 @@ import {
   type ReviewSession,
   type ReviewStats,
 } from '@/api/review'
-import bookIcon from '@/assets/icons/animated/book.gif'
-import checklistIcon from '@/assets/icons/animated/checklist.gif'
-import goalIcon from '@/assets/icons/animated/goal.gif'
-import fireIcon from '@/assets/icons/animated/fire.gif'
-import chartIcon from '@/assets/icons/animated/chart.gif'
-import calendarIcon from '@/assets/icons/animated/calendar.gif'
-import brainIcon from '@/assets/icons/animated/brain.gif'
-import trophyIcon from '@/assets/icons/animated/trophy.gif'
+import bookIcon from '@/assets/icons/static/book.png'
+import checklistIcon from '@/assets/icons/static/checklist.png'
+import goalIcon from '@/assets/icons/static/goal.png'
+import fireIcon from '@/assets/icons/static/fire.png'
+import chartIcon from '@/assets/icons/static/chart.png'
+import calendarIcon from '@/assets/icons/static/calendar.png'
+import brainIcon from '@/assets/icons/static/brain.png'
+import trophyIcon from '@/assets/icons/static/trophy.png'
 
 const emit = defineEmits<{
   (e: 'review-group', groupId: string): void

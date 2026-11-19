@@ -11,7 +11,7 @@ WellRead 个人版的 Go 后端：HTTP API、知识库与文档、检索编排�
 | `app/` | API、会话、知识库/文档、检索、精读、技能、设置、CLI、SDK、docreader 客户端 |
 | `frontend/` | Vue 3 SPA；只消费后端 API，不加载能力契约 |
 | `rag/` | 检索与生成侧车；App 通过 `/ingest`、`/search`、`/chat/stream` 调用 |
-| `mcp/` | 外部 MCP 接入层；使用单只读 Key |
+| `mcp/` | 外部 MCP 接入层；使用单 Key（知识面只读） |
 | `deployments/` | 六服务 compose、环境变量、systemd |
 
 `app/` 不负责前端渲染、RAG 索引构建或外部部署编排。
@@ -88,7 +88,7 @@ go test ./internal/... ./docs/... -count=1
 ## 6. 认证与权限
 
 - 登录只支持邮箱 + 密码；注册、邀请、OIDC 与工作区切换已删除。
-- JWT 会话用于前端；单只读 API Key 用于 MCP/外部接入，在「设置 → 外部接入」管理。
+- JWT 会话用于前端；单 API Key（知识面只读）用于 MCP/外部接入，在「设置 → 外部接入」管理。
 - API Key 路由使用显式白名单，未声明的路由默认拒绝。
 - 没有部门、角色能力码、共享空间、ACL 或协作权限模型。
 

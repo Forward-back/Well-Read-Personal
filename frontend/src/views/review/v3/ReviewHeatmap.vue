@@ -3,10 +3,10 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ReviewHeatmap, ReviewHeatmapCell } from '@/api/review'
 import { formatIntensity, normalizeVulnerability, vulnerabilityLabelKey } from './vulnerability'
-import chartIcon from '@/assets/icons/animated/chart.gif'
-import bookIcon from '@/assets/icons/animated/book.gif'
-import helpIcon from '@/assets/icons/hand/help.png'
-import arrowIcon from '@/assets/icons/hand/arrow-right.png'
+import chartIcon from '@/assets/icons/static/chart.png'
+import bookIcon from '@/assets/icons/static/book.png'
+import helpIcon from '@/assets/icons/static/help.png'
+import arrowIcon from '@/assets/icons/static/arrow-right.png'
 
 const props = defineProps<{
   heatmap: ReviewHeatmap | null

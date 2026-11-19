@@ -6133,7 +6133,7 @@ export default {
   },
   review: {
     title: '复习',
-    subtitle: '按间隔重复复习知识点，今天只做今天该做的。',
+    subtitle: '有节奏地复习，找出薄弱点',
     groups: '卡组',
     allGroups: '全部卡片',
     newGroup: '新建卡组',

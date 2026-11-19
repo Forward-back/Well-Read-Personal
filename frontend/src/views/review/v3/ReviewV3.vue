@@ -29,7 +29,7 @@ import ReviewTodayView from './ReviewTodayView.vue'
 import type { ReviewFlatGroup } from './types'
 import './vulnerability.css'
 import './review-ui.css'
-import calendarIcon from '@/assets/icons/animated/calendar.gif'
+import calendarIcon from '@/assets/icons/static/calendar.png'
 
 const ReviewCardsView = defineAsyncComponent(() => import('./ReviewCardsView.vue'))
 const ReviewStatsView = defineAsyncComponent(() => import('./ReviewStatsView.vue'))
@@ -465,7 +465,6 @@ onMounted(() => {
         <div class="rv-page-head__main">
           <img class="rv-page-head__icon" :src="calendarIcon" alt="" />
           <div>
-            <div class="rv-page-head__eyebrow">学习 / 复习</div>
             <h1>{{ t('review.title') }}</h1>
             <p>{{ t('review.subtitle') }}</p>
           </div>
@@ -531,7 +530,7 @@ onMounted(() => {
       </t-tabs>
 
       <footer class="rv-attribution">
-        <a href="https://icons8.com" target="_blank" rel="noopener noreferrer">Animated icons by Icons8</a>
+        <a href="https://icons8.com" target="_blank" rel="noopener noreferrer">Icons by Icons8</a>
       </footer>
     </div>
 
@@ -617,7 +616,7 @@ onMounted(() => {
 .review-v3__inner {
   max-width: 1440px;
   margin: 0 auto;
-  padding: 24px 28px 48px;
+  padding: 28px 48px 48px;
 }
 
 .review-v3__head {
@@ -650,16 +649,19 @@ onMounted(() => {
 
 .review-v3__tabs {
   margin-top: 14px;
+  overflow: visible;
 
   :deep(.t-tabs__content) {
-    padding: 16px 0 0;
+    padding: 0;
+    overflow: visible;
   }
 }
 
 .review-v3__today {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 20px;
+  min-height: calc(100vh - 236px);
 }
 
 .review-v3__main {
@@ -700,7 +702,7 @@ onMounted(() => {
 
 @media (max-width: 760px) {
   .review-v3__inner {
-    padding: 16px 14px 32px;
+    padding: 16px 20px 32px;
   }
 
   .review-v3__today {

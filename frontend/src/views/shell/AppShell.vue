@@ -155,6 +155,8 @@ import Settings from '@/views/settings/Settings.vue'
 import GlobalCommandPalette from '@/components/GlobalCommandPalette.vue'
 import { useCommandPaletteStore } from '@/stores/commandPalette'
 import { useChatResourcesStore } from '@/stores/chatResources'
+import { useChatLayoutStore } from '@/stores/chatLayout'
+import { useChatReferencesStore } from '@/stores/chatReferences'
 import { useAuthStore } from '@/stores/auth'
 import { useTheme } from '@/composables/useTheme'
 import { getKnowledgeBaseById } from '@/api/knowledge-base/index'
@@ -170,6 +172,8 @@ const isDetailRoute = computed(() => route.path.startsWith('/platform'))
 const { t } = useI18n()
 const commandPaletteStore = useCommandPaletteStore()
 const authStore = useAuthStore()
+const chatLayout = useChatLayoutStore()
+const referencesStore = useChatReferencesStore()
 const { currentTheme, setTheme } = useTheme()
 
 const contentEl = ref<HTMLElement | null>(null)
@@ -275,7 +279,17 @@ function openGithub() {
 
 function handlePrimary(item: PrimaryNavItem) {
   if (item.key === 'chat') {
-    sessionDrawerVisible.value = !sessionDrawerVisible.value
+    if (referencesStore.visible) return
+    if (!isChatWorkspaceRoute.value) {
+      sessionDrawerVisible.value = false
+      router.push('/platform/creatChat')
+      return
+    }
+    if (window.innerWidth < 900) {
+      sessionDrawerVisible.value = !sessionDrawerVisible.value
+    } else {
+      chatLayout.toggleRail()
+    }
     return
   }
   if (item.path) {
@@ -287,6 +301,12 @@ function handlePrimary(item: PrimaryNavItem) {
 function handleMobilePrimary(item: PrimaryNavItem) {
   mobileNavVisible.value = false
   if (item.key === 'chat') {
+    if (referencesStore.visible) return
+    if (!isChatWorkspaceRoute.value) {
+      sessionDrawerVisible.value = false
+      router.push('/platform/creatChat')
+      return
+    }
     sessionDrawerVisible.value = true
     return
   }
@@ -305,6 +325,11 @@ const isChatRoute = computed(() => {
     route.path === '/platform/creatChat' ||
     route.path.startsWith('/platform/chat/')
   )
+})
+
+const isChatWorkspaceRoute = computed(() => {
+  const name = String(route.name || '')
+  return name === 'chat' || name === 'globalCreatChat'
 })
 
 function isPrimaryActive(item: PrimaryNavItem) {

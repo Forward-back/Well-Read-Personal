@@ -251,6 +251,14 @@ func (r *sessionRepository) QueryPaged(
 		r.db.WithContext(ctx).Table("sessions AS s").Joins(joinClause),
 	))).
 		Select(`s.*,
+			(SELECT SUBSTR(m.content, 1, 500)
+			   FROM messages m
+			  WHERE m.session_id = s.id
+			    AND m.role = 'user'
+			    AND m.deleted_at IS NULL
+			    AND m.content <> ''
+			  ORDER BY m.created_at ASC, m.id ASC
+			  LIMIT 1) AS first_user_message,
 			ics.platform       AS im_platform,
 			ics.chat_id        AS im_chat_id,
 			ics.thread_id      AS im_thread_id,

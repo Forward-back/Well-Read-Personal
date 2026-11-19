@@ -101,7 +101,7 @@ async function login(page) {
   await setInput(page, 'input[type="text"]', env.OWNER_EMAIL)
   await setInput(page, 'input[type="password"]', env.OWNER_PASSWORD)
   await Promise.all([
-    page.waitForFunction(() => location.pathname.includes('/platform'), { timeout: 20000 }),
+    page.waitForFunction(() => location.pathname === '/', { timeout: 20000 }),
     clickText(page, 'button', '登录', { exact: true }),
   ])
 }
@@ -374,49 +374,55 @@ async function cardsChecks(page, seeded) {
     { timeout: 15000 },
   )
 
-  // Immediate review from drawer.
-  await page.click('[data-testid="review-v3-card-row"]')
-  await page.waitForSelector('[data-testid="review-v3-card-review-now"]', { timeout: 15000 })
-  let reviewReady = false
-  for (let attempt = 0; attempt < 2 && !reviewReady; attempt += 1) {
-    await page.click('[data-testid="review-v3-card-review-now"]')
-    try {
-      await page.waitForFunction(
-        () => document.querySelector('[data-testid="review-v3-mode"]')
-          || document.body.innerText.includes('放弃并复习此卡')
-          || document.body.innerText.includes('已有进行中的复习'),
-        { timeout: 10000 },
-      )
-      reviewReady = true
-    } catch {
-      await sleep(500)
+  // Immediate review from drawer. Never abandon an owner session that was
+  // already active before this script started.
+  const activeBefore = await api(page, 'GET', '/api/v1/review/sessions/active')
+  if (activeBefore.data?.data?.session) {
+    record('cards-review-now-skip', `active session ${activeBefore.data.data.session.id} exists; skipped review-now`)
+  } else {
+    await page.click('[data-testid="review-v3-card-row"]')
+    await page.waitForSelector('[data-testid="review-v3-card-review-now"]', { timeout: 15000 })
+    let reviewReady = false
+    for (let attempt = 0; attempt < 2 && !reviewReady; attempt += 1) {
+      await page.click('[data-testid="review-v3-card-review-now"]')
+      try {
+        await page.waitForFunction(
+          () => document.querySelector('[data-testid="review-v3-mode"]')
+            || document.body.innerText.includes('放弃并复习此卡')
+            || document.body.innerText.includes('已有进行中的复习'),
+          { timeout: 10000 },
+        )
+        reviewReady = true
+      } catch {
+        await sleep(500)
+      }
     }
-  }
-  if (!reviewReady) {
-    const debug = await page.evaluate(() => ({
-      drawerOpen: document.querySelector('[data-testid="review-v3-card-drawer"]')?.className || '',
-      buttonDisabled: document.querySelector('[data-testid="review-v3-card-review-now"]')?.disabled,
-      body: document.body.innerText.slice(-300),
-      mode: Boolean(document.querySelector('[data-testid="review-v3-mode"]')),
-    }))
+    if (!reviewReady) {
+      const debug = await page.evaluate(() => ({
+        drawerOpen: document.querySelector('[data-testid="review-v3-card-drawer"]')?.className || '',
+        buttonDisabled: document.querySelector('[data-testid="review-v3-card-review-now"]')?.disabled,
+        body: document.body.innerText.slice(-300),
+        mode: Boolean(document.querySelector('[data-testid="review-v3-mode"]')),
+      }))
+      const active = await api(page, 'GET', '/api/v1/review/sessions/active')
+      debug.active = active.status
+      debug.activeBody = active.data
+      await page.screenshot({ path: path.join(OUT, 'review_v3_review_now_fail.png'), fullPage: true })
+      throw new Error(`review-now did not start: ${JSON.stringify(debug).slice(0, 1200)}`)
+    }
+    const conflict = await page.evaluate(() => document.body.innerText.includes('放弃并复习此卡'))
+    if (conflict) await clickText(page, '.t-dialog button', '放弃并复习此卡')
+    await page.waitForSelector('[data-testid="review-v3-mode"]', { timeout: 20000 })
+    await page.waitForSelector('[data-testid="review-v3-question"]', { timeout: 15000 })
     const active = await api(page, 'GET', '/api/v1/review/sessions/active')
-    debug.active = active.status
-    debug.activeBody = active.data
-    await page.screenshot({ path: path.join(OUT, 'review_v3_review_now_fail.png'), fullPage: true })
-    throw new Error(`review-now did not start: ${JSON.stringify(debug).slice(0, 1200)}`)
+    if ((active.data?.data?.cards?.length || 0) !== 1) throw new Error('single-card session not created')
+    await page.click('[data-testid="review-v3-suspend"]')
+    await page.waitForSelector('[data-testid="review-v3-cards"]', { timeout: 20000 })
+    if (active.data?.data?.session?.id) {
+      await api(page, 'POST', `/api/v1/review/sessions/${active.data.data.session.id}/abandon`)
+    }
+    record('cards-review-now', 'drawer starts a one-card manual session')
   }
-  const conflict = await page.evaluate(() => document.body.innerText.includes('放弃并复习此卡'))
-  if (conflict) await clickText(page, '.t-dialog button', '放弃并复习此卡')
-  await page.waitForSelector('[data-testid="review-v3-mode"]', { timeout: 20000 })
-  await page.waitForSelector('[data-testid="review-v3-question"]', { timeout: 15000 })
-  const active = await api(page, 'GET', '/api/v1/review/sessions/active')
-  if ((active.data?.data?.cards?.length || 0) !== 1) throw new Error('single-card session not created')
-  await page.click('[data-testid="review-v3-suspend"]')
-  await page.waitForSelector('[data-testid="review-v3-cards"]', { timeout: 20000 })
-  if (active.data?.data?.session?.id) {
-    await api(page, 'POST', `/api/v1/review/sessions/${active.data.data.session.id}/abandon`)
-  }
-  record('cards-review-now', 'drawer starts a one-card manual session')
 
   // Create dialog with a real knowledge document source. Reload first so the
   // closed review overlay and drawer cannot keep focus/pointer capture.

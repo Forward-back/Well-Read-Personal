@@ -19,9 +19,9 @@ WellRead 个人版的 Vue 3 单页应用：问答、知识库、精读、复习�
 
 - 视觉目标：TDesign 组件栈 + PostHog 布局语言的共享壳层 + 品牌绿强调；颜色、圆角与状态语义见 `docs/02-需求与设计/界面规范.md` §3。
 - 组件与环境边界见 `docs/02-需求与设计/界面规范.md` §6 与 `docs/06-架构决策/0005-UI组件沿用TDesign并停止shadcn-vue迁移.md`。
-- 复习页与尚未迁移的详情页使用 Icons8 手绘静态/动态图标（墨色/灰白/低饱和自然色）；共享壳层与落地页使用 TDesign 图标/自绘 SVG，不新增 lucide。统计图用 ECharts，颜色读取 TDesign CSS 变量，主题切换后重绘。
+- 复习页使用 Icons8 静态线条 PNG（背景透明）或 TDesign 组件自带图标；未迁移详情页使用 Icons8 手绘静态 PNG；不使用动态 GIF。共享壳层与落地页使用 TDesign 图标/自绘 SVG，不新增 lucide。统计图用 ECharts，颜色读取 TDesign CSS 变量，主题切换后重绘。
 - 每个页面动工前先与 owner 确认信息密度，并记录到设计说明或阶段记录。
-- 当前代码状态：`/` 为落地页，`/welcome` 重定向 `/`；`/platform/*` 详情页共用共享 `AppShell`（顶栏 + 左侧首页/问答/知识库/精读/复习/技能 + 右侧帮助/设置/主题/GitHub/回到顶部/退出登录 + 中央应用窗）。设置只走右栏并作为普通详情页；问答左栏打开会话抽屉；详情页顶栏支持全屏/退出，壳层滚动条视觉隐藏，浅色详情底 `#F7F5F0`，选中高亮亮绿 `#07c05f`。旧 Menu/AppTopBar/AppRightRail/GardenKeys 已删除，旧手绘资源保留。复习主路由 `/platform/review` 为 TDesign V3（今日/卡片/统计、独立簇页 `/platform/review/cluster/:rowGroupId`、四出口与全屏四档复习层、生成/合并/重绑/JSON 导出）；V2 页面、`src/components/ui`、shadcn/reka 依赖与 Tailwind shadcn token 已删除，不要恢复。
+- 当前代码状态：`/` 为落地页，`/welcome` 重定向 `/`；`/platform/*` 详情页共用共享 `AppShell`（顶栏 + 左侧首页/问答/知识库/精读/复习/技能 + 右侧帮助/设置/主题/GitHub/回到顶部/退出登录 + 中央应用窗）。设置只走右栏并作为普通详情页；问答桌面使用 `ChatWorkspace` 内联可折叠会话栏与历史搜索覆盖页，900px 以下回退会话抽屉；知识库新建 `/platform/knowledge-bases/new` 与设置 `/:kbId/settings` 均为详情页；复习页使用 Icons8 静态透明 PNG（TDesign 组件自带图标保留），今日页卡组栏全高直角，卡片页有树形卡组筛选与吸顶批量栏。详情页顶栏支持全屏/退出，壳层滚动条视觉隐藏，浅色详情底 `#F7F5F0`，选中高亮亮绿 `#07c05f`。旧 Menu/AppTopBar/AppRightRail/GardenKeys 已删除，旧手绘资源保留。复习主路由 `/platform/review` 为 TDesign V3（今日/卡片/统计、独立簇页 `/platform/review/cluster/:rowGroupId`、四出口与全屏四档复习层、生成/合并/重绑/JSON 导出）；V2 页面、`src/components/ui`、shadcn/reka 依赖与 Tailwind shadcn token 已删除，不要恢复。
 
 ## 目录地图
 
@@ -41,7 +41,7 @@ WellRead 个人版的 Vue 3 单页应用：问答、知识库、精读、复习�
 | `src/types/` | 前后端共享类型/视图类型 |
 | `src/utils/` | 请求、格式化、Markdown、引用、复习摘录清洗等工具 |
 | `src/views/` | 页面：auth/chat/creatChat/knowledge/reading/review/skills/settings/shell/welcome |
-| `src/assets/` | 字体、图片、主题、手绘/动态图标、草地背景；`tailwind.css` 仅保留布局 utility |
+| `src/assets/` | 字体、图片、主题、静态/手绘图标、草地背景；`tailwind.css` 仅保留布局 utility |
 | `public/` | 静态资源；登录页架构图在 `public/diagrams/` |
 | `design/` | 设计源（图标、字体），不进入生产构建 |
 | `scripts/` | 前端专项脚本（构建、图标矢量化、PR 校验） |

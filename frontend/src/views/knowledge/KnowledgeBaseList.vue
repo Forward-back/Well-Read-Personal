@@ -702,17 +702,19 @@ const goDetail = (id: string) => {
 }
 
 const goSettings = (id: string) => {
-  // 使用模态框打开设置
-  uiStore.openKBSettings(id)
+  router.push({ name: 'knowledgeBaseSettings', params: { kbId: id } })
 }
 
 // 创建知识库
 const handleCreateKnowledgeBase = () => {
   markContextualGuideDone('kbList')
-  // 无模型时仍打开创建向导，并定位到模型配置页；用户可在向导内添加模型，无需先跳转系统设置
+  // 无模型时仍进入创建页，并定位到模型配置分区；用户可在页内添加模型
   const initialSection =
     modelsReadyLoaded.value && !isReadyForDocumentKb.value ? 'models' : undefined
-  uiStore.openCreateKB('document', initialSection)
+  router.push({
+    name: 'knowledgeBaseCreate',
+    query: initialSection ? { section: initialSection } : {},
+  })
 }
 
 // 知识库编辑器成功回调（创建或编辑成功）

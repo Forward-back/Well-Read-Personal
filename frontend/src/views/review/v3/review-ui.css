@@ -20,12 +20,6 @@
   flex: 0 0 auto;
 }
 
-.rv-page-head__eyebrow {
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--td-text-color-placeholder);
-}
-
 .rv-page-head h1 {
   margin: 0;
   font-size: 20px;

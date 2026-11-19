@@ -18,19 +18,22 @@ const router = createRouter({
         },
         {
           path: 'platform',
-          redirect: '/platform/creatChat',
-        },
-        {
-          path: 'platform/creatChat',
-          name: 'globalCreatChat',
-          component: () => import('../views/creatChat/creatChat.vue'),
-          meta: { requiresAuth: true },
-        },
-        {
-          path: 'platform/chat/:chatid',
-          name: 'chat',
-          component: () => import('../views/chat/index.vue'),
-          meta: { requiresAuth: true },
+          component: () => import('../views/chat/ChatWorkspace.vue'),
+          children: [
+            { path: '', redirect: '/platform/creatChat' },
+            {
+              path: 'creatChat',
+              name: 'globalCreatChat',
+              component: () => import('../views/creatChat/creatChat.vue'),
+              meta: { requiresAuth: true },
+            },
+            {
+              path: 'chat/:chatid',
+              name: 'chat',
+              component: () => import('../views/chat/index.vue'),
+              meta: { requiresAuth: true },
+            },
+          ],
         },
         {
           path: 'platform/knowledge-bases',
@@ -39,9 +42,21 @@ const router = createRouter({
           meta: { requiresAuth: true },
         },
         {
+          path: 'platform/knowledge-bases/new',
+          name: 'knowledgeBaseCreate',
+          component: () => import('../views/knowledge/KnowledgeBaseCreate.vue'),
+          meta: { requiresAuth: true },
+        },
+        {
           path: 'platform/knowledge-bases/:kbId',
           name: 'knowledgeBaseDetail',
           component: () => import('../views/knowledge/KnowledgeBase.vue'),
+          meta: { requiresAuth: true },
+        },
+        {
+          path: 'platform/knowledge-bases/:kbId/settings',
+          name: 'knowledgeBaseSettings',
+          component: () => import('../views/knowledge/KnowledgeBaseSettings.vue'),
           meta: { requiresAuth: true },
         },
         {
@@ -152,7 +167,7 @@ router.beforeEach(async (to) => {
 
   if (to.meta.requiresAuth === false) {
     if (to.path === '/login' && authStore.isLoggedIn) {
-      return '/platform/creatChat'
+      return '/'
     }
     return true
   }

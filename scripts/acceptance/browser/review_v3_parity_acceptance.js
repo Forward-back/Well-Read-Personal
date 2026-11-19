@@ -94,7 +94,7 @@ async function login(page) {
   await setInput(page, 'input[type="text"]', env.OWNER_EMAIL)
   await setInput(page, 'input[type="password"]', env.OWNER_PASSWORD)
   await Promise.all([
-    page.waitForFunction(() => location.pathname.includes('/platform'), { timeout: 20000 }),
+    page.waitForFunction(() => location.pathname === '/', { timeout: 20000 }),
     clickText(page, 'button', '登录', { exact: true }),
   ])
 }

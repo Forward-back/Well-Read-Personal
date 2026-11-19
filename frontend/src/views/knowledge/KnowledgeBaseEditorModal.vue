@@ -1,13 +1,13 @@
 <template>
-  <Teleport to="body">
+  <Teleport to="body" :disabled="page">
     <Transition name="modal">
-      <div v-if="visible" class="settings-overlay" @click.self="handleClose">
-        <div class="settings-modal">
+      <div v-if="visible" class="settings-overlay" :class="{ 'is-page': page }" @click.self="!page && handleClose()">
+        <div class="settings-modal" :class="{ 'is-page': page }">
           <div v-if="loading" class="editor-initializing" role="status" :aria-label="$t('common.loading')">
             <t-loading size="medium" :text="$t('common.loading')" />
           </div>
           <!-- 关闭按钮 -->
-          <button class="close-btn" @click="handleClose" :aria-label="$t('general.close')">
+          <button v-if="!page" class="close-btn" @click="handleClose" :aria-label="$t('general.close')">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
               <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             </svg>
@@ -17,6 +17,9 @@
             <!-- 左侧导航 -->
             <div class="settings-sidebar">
               <div class="sidebar-header">
+                <button v-if="page" class="sidebar-back" @click="handleClose" :aria-label="$t('common.back')">
+                  <t-icon name="chevron-left" size="18px" />
+                </button>
                 <h2 class="sidebar-title">{{ editorMode === 'create' ? $t('knowledgeEditor.titleCreate') : $t('knowledgeEditor.titleEdit') }}</h2>
               </div>
               <div class="settings-nav" data-guide="kb-editor-sidebar">
@@ -418,6 +421,7 @@ const props = defineProps<{
   mode: 'create' | 'edit'
   kbId?: string
   initialType?: 'document' | 'faq'
+  page?: boolean
 }>()
 
 // Emits
@@ -1400,7 +1404,7 @@ watch(() => props.visible, async (newVal) => {
       currentSection.value = 'basic' // 重置为默认 section
     }, 300)
   }
-})
+}, { immediate: true })
 
 // 监听全局设置弹窗关闭后刷新模型列表
 watch(
@@ -1433,6 +1437,16 @@ watch(() => chatResources.allModels, (list) => {
   justify-content: center;
   z-index: 1000;
   backdrop-filter: blur(4px);
+
+  &.is-page {
+    position: relative;
+    inset: auto;
+    z-index: auto;
+    display: block;
+    height: 100%;
+    background: transparent;
+    backdrop-filter: none;
+  }
 }
 
 .settings-modal {
@@ -1447,6 +1461,40 @@ watch(() => chatResources.allModels, (list) => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+
+  &.is-page {
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+
+    .settings-sidebar {
+      background-color: transparent;
+    }
+
+    .content-wrapper {
+      padding: 32px 64px 48px;
+    }
+
+    .section-body {
+      background: transparent;
+    }
+
+    .form-item {
+      margin-bottom: 24px;
+    }
+
+    .indexing-checks {
+      gap: 16px;
+    }
+
+    .editor-initializing {
+      background: var(--td-bg-color-page);
+    }
+  }
 }
 
 .editor-initializing {
@@ -1504,6 +1552,27 @@ watch(() => chatResources.allModels, (list) => {
   padding: 16px 14px 12px;
   border-bottom: 1px solid var(--td-component-stroke);
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sidebar-back {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--td-text-color-secondary);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--td-bg-color-secondarycontainer);
+    color: var(--td-text-color-primary);
+  }
 }
 
 .sidebar-title {

@@ -2,6 +2,16 @@
 
 依赖本机 Chrome for Testing 与 `frontend/node_modules` 里的 `puppeteer-core`。脚本只读 `deployments/.env` 的 owner 账号；DeepSeek Key 从 `data/test-docs/deepseek.key`（gitignore）读取，不写日志。
 
+## 登录、壳层与路由冒烟
+
+```bash
+NODE_PATH=frontend/node_modules \
+WELLREAD_WEB=http://localhost:6151 \
+node scripts/acceptance/browser/shell_auth_acceptance.js
+```
+
+`shell_auth_acceptance.js` 只读验证：未登录业务路由跳 `/login`；登录成功进 `/`；`/welcome` 与已登录 `/login` 回 `/`；左右栏 6+6 入口、知识库/复习/首页/设置跳转；顶栏头像入口；1440 与 600px 无横向溢出；控制台 0 错误。不写复习数据、不改设置。
+
 ## 复习页验收
 
 复习主路由 `/platform/review` 已是 TDesign V3；V2 页面与 `review_v2_acceptance.js` 已随 shadcn 清理删除，历史结论只保留在文档归档。

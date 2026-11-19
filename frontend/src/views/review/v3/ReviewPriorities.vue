@@ -4,9 +4,9 @@ import { useI18n } from 'vue-i18n'
 import type { ReviewHeatmap, ReviewHeatmapCell } from '@/api/review'
 import ReviewLevelTag from './ReviewLevelTag.vue'
 import { formatIntensity } from './vulnerability'
-import goalIcon from '@/assets/icons/animated/goal.gif'
-import bookIcon from '@/assets/icons/animated/book.gif'
-import arrowIcon from '@/assets/icons/hand/arrow-right.png'
+import goalIcon from '@/assets/icons/static/goal.png'
+import bookIcon from '@/assets/icons/static/book.png'
+import arrowIcon from '@/assets/icons/static/arrow-right.png'
 
 const props = defineProps<{
   heatmap: ReviewHeatmap | null

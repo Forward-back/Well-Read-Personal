@@ -244,7 +244,11 @@ const unsupportedFileTypes = computed<string[]>(() => {
 
 const goToParserSettings = () => {
   if (kbId.value) {
-    uiStore.openKBSettings(kbId.value, 'parser')
+    router.push({
+      name: 'knowledgeBaseSettings',
+      params: { kbId: kbId.value },
+      query: { section: 'parser' },
+    })
   }
 }
 
@@ -648,6 +652,8 @@ const writeStoredFlag = (key: string, value: boolean) => {
 };
 const folderTree = ref<KnowledgeFolderTree | null>(null);
 const folderTreeLoading = ref(false);
+const dialogHostRef = ref<HTMLElement | null>(null);
+const attachToDetail = () => dialogHostRef.value || document.body;
 // The folder being browsed; ROOT_FOLDER_PATH ('') is the knowledge base top
 // level, a real node of the tree rather than a separate mode.
 const selectedFolderPath = ref<string>(ROOT_FOLDER_PATH);
@@ -2123,7 +2129,7 @@ const handleOpenKBSettings = () => {
     MessagePlugin.warning(t('knowledgeEditor.messages.missingId'));
     return;
   }
-  uiStore.openKBSettings(kbId.value);
+  router.push({ name: 'knowledgeBaseSettings', params: { kbId: kbId.value } });
 };
 
 const handleNavigateToKbList = () => {
@@ -2741,7 +2747,7 @@ async function createNewSession(value: string): Promise<void> {
 
 <template>
   <template v-if="!isFAQ">
-    <div class="knowledge-layout">
+    <div ref="dialogHostRef" class="knowledge-layout">
       <div class="document-header">
         <div class="document-header-title">
           <div class="document-title-row">
@@ -3246,6 +3252,9 @@ async function createNewSession(value: string): Promise<void> {
 
   <t-dialog
     v-model:visible="folderCreateVisible"
+    :attach="attachToDetail"
+    show-in-attached-element
+    placement="center"
     :header="folderCreateParentPath
       ? $t('knowledgeBase.folderTree.createChildTitle', { folder: folderCreateParentPath })
       : $t('knowledgeBase.folderTree.createTitle')"
@@ -3262,6 +3271,9 @@ async function createNewSession(value: string): Promise<void> {
 
   <t-dialog
     v-model:visible="folderMoveVisible"
+    :attach="attachToDetail"
+    show-in-attached-element
+    placement="center"
     :header="$t('knowledgeBase.folderTree.moveTitle', { name: folderMoveTarget?.name || '' })"
     :confirm-btn="{ content: $t('common.save'), theme: 'primary', loading: folderMoving }"
     :cancel-btn="{ content: $t('common.cancel') }"
@@ -3355,6 +3367,20 @@ async function createNewSession(value: string): Promise<void> {
   min-width: 0;
   padding: 24px 32px 0px;
   box-sizing: border-box;
+  position: relative;
+}
+
+:global(.knowledge-layout > .t-dialog__ctx) {
+  position: absolute;
+}
+
+:global(.knowledge-layout > .t-dialog__ctx .t-dialog__mask) {
+  backdrop-filter: blur(6px);
+  background: rgba(247, 245, 240, 0.45);
+}
+
+:global(html[theme-mode='dark'] .knowledge-layout > .t-dialog__ctx .t-dialog__mask) {
+  background: rgba(0, 0, 0, 0.35);
 }
 
 // Breadcrumb tab switch (文档/Gaze in breadcrumb)
