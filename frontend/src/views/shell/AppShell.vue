@@ -2,12 +2,16 @@
   <div
     ref="dropzone"
     class="app-shell"
-    :class="{ 'app-shell--detail': isDetailRoute, 'app-shell--fullscreen': isDetailRoute && fullscreen }"
+    :class="{
+      'app-shell--detail': isDetailRoute,
+      'app-shell--fullscreen': fullscreenEligible && fullscreen,
+      'app-shell--window-hidden': windowHidden,
+    }"
   >
     <div
       class="app-shell__bg"
       aria-hidden="true"
-      :style="{ backgroundImage: `url(${grassBackground})` }"
+      :style="{ backgroundImage: `url(${backgroundStore.imageUrl})` }"
     />
 
     <header class="app-topbar">
@@ -16,23 +20,23 @@
           <button
             type="button"
             class="app-topbar__menu"
-            aria-label="打开导航"
+             :aria-label="$t('shell.openNav')"
             @click="mobileNavVisible = true"
           >
             <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true">
               <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
             </svg>
           </button>
-          <button type="button" class="app-brand" aria-label="WellRead 首页" @click="goHome">
+          <button type="button" class="app-brand"  :aria-label="$t('shell.homeAria')" @click="goHome">
             <span class="app-brand__name">WellRead</span>
           </button>
         </div>
         <div class="app-topbar__right">
-          <t-tooltip v-if="isDetailRoute" :content="fullscreen ? '退出全屏' : '全屏'" placement="bottom">
+          <t-tooltip v-if="fullscreenEligible" :content="fullscreen ? $t('shell.exitFullscreen') : $t('shell.fullscreen')" placement="bottom">
             <button
               type="button"
               class="app-fullscreen-btn"
-              :aria-label="fullscreen ? '退出全屏' : '全屏'"
+              :aria-label="fullscreen ? $t('shell.exitFullscreen') : $t('shell.fullscreen')"
               @click="toggleFullscreen"
             >
               <svg v-if="!fullscreen" viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true">
@@ -43,8 +47,8 @@
               </svg>
             </button>
           </t-tooltip>
-          <t-tooltip content="个人设置" placement="bottom">
-            <button type="button" class="app-profile-btn" aria-label="个人设置" @click="goSettings">
+          <t-tooltip :content="$t('shell.personalSettings')" placement="bottom">
+            <button type="button" class="app-profile-btn"  :aria-label="$t('shell.personalSettings')" @click="goSettings">
               <img v-if="profileAvatar" class="app-profile-btn__img" :src="profileAvatar" alt="" />
               <span v-else class="app-profile-btn__initial">{{ profileInitial }}</span>
             </button>
@@ -53,7 +57,7 @@
       </div>
     </header>
 
-    <aside class="app-rail app-rail--left" aria-label="功能区">
+    <aside class="app-rail app-rail--left"  :aria-label="$t('shell.sideRail')">
       <ul class="app-rail__list">
         <li v-for="item in primaryNav" :key="item.key" class="app-rail__cell">
           <button
@@ -69,7 +73,7 @@
       </ul>
     </aside>
 
-    <aside class="app-rail app-rail--right" aria-label="辅助入口">
+    <aside class="app-rail app-rail--right"  :aria-label="$t('shell.auxRail')">
       <ul class="app-rail__list">
         <li v-for="item in rightRail" :key="item.key" class="app-rail__cell">
           <button type="button" class="app-rail__item" @click="item.action">
@@ -80,8 +84,8 @@
       </ul>
     </aside>
 
-    <main class="app-stage">
-      <section class="app-window" aria-label="WellRead 工作区">
+    <main class="app-stage" :aria-hidden="windowHidden" :inert="windowHidden || undefined">
+      <section class="app-window"  :aria-label="$t('shell.workspaceAria')">
         <div ref="contentEl" class="app-window__content">
           <RouterView v-if="isRouterAlive" />
         </div>
@@ -91,10 +95,10 @@
     <SessionDrawer v-model:visible="sessionDrawerVisible" />
 
     <Transition name="mobile-nav">
-      <div v-if="mobileNavVisible" class="app-mobile-nav" role="dialog" aria-label="导航">
+      <div v-if="mobileNavVisible" class="app-mobile-nav" role="dialog"  :aria-label="$t('shell.navTitle')">
         <div class="app-mobile-nav__head">
-          <span>导航</span>
-          <button type="button" aria-label="关闭" @click="mobileNavVisible = false">
+          <span>{{ $t('shell.navTitle') }}</span>
+          <button type="button"  :aria-label="$t('shell.close')" @click="mobileNavVisible = false">
             <CloseIcon />
           </button>
         </div>
@@ -112,7 +116,7 @@
         </nav>
         <button type="button" class="app-mobile-nav__logout" @click="handleLogout">
           <LogoutIcon />
-          <span>退出登录</span>
+          <span>{{ $t('shell.logout') }}</span>
         </button>
       </div>
     </Transition>
@@ -158,20 +162,31 @@ import { useChatResourcesStore } from '@/stores/chatResources'
 import { useChatLayoutStore } from '@/stores/chatLayout'
 import { useChatReferencesStore } from '@/stores/chatReferences'
 import { useAuthStore } from '@/stores/auth'
+import { useBackgroundStore } from '@/stores/background'
+import { useShellUiStore } from '@/stores/shellUi'
 import { useTheme } from '@/composables/useTheme'
 import { getKnowledgeBaseById } from '@/api/knowledge-base/index'
 import { logout as logoutApi } from '@/api/auth'
 import { useI18n } from 'vue-i18n'
-import grassBackground from '@/assets/img/app-bg/grass.jpg'
 
 type PrimaryNavItem = { key: string; label: string; icon: Component; path?: string }
 
 const route = useRoute()
 const router = useRouter()
 const isDetailRoute = computed(() => route.path.startsWith('/platform'))
+const fullscreenEligible = computed(() => isDetailRoute.value || route.path === '/')
+
+watch(
+  () => route.fullPath,
+  () => {
+    windowHidden.value = false
+  },
+)
 const { t } = useI18n()
 const commandPaletteStore = useCommandPaletteStore()
 const authStore = useAuthStore()
+const backgroundStore = useBackgroundStore()
+const shellUi = useShellUiStore()
 const chatLayout = useChatLayoutStore()
 const referencesStore = useChatReferencesStore()
 const { currentTheme, setTheme } = useTheme()
@@ -180,7 +195,11 @@ const contentEl = ref<HTMLElement | null>(null)
 const helpVisible = ref(false)
 const sessionDrawerVisible = ref(false)
 const mobileNavVisible = ref(false)
-const fullscreen = ref(false)
+const fullscreen = computed({
+  get: () => shellUi.fullscreen,
+  set: (value: boolean) => shellUi.setFullscreen(value),
+})
+const windowHidden = ref(false)
 const ismask = ref(false)
 const isRouterAlive = ref(true)
 const systemDark = ref(false)
@@ -213,7 +232,7 @@ const primaryNav = computed<PrimaryNavItem[]>(() => [
 const rightRail = computed(() => [
   {
     key: 'help',
-    label: '帮助',
+    label: t('shell.help'),
     icon: HelpCircleIcon,
     action: () => {
       helpVisible.value = true
@@ -221,13 +240,13 @@ const rightRail = computed(() => [
   },
   {
     key: 'settings',
-    label: '设置',
+    label: t('shell.settings'),
     icon: SettingIcon,
     action: goSettings,
   },
   {
     key: 'theme',
-    label: effectiveDark.value ? '浅色' : '深色',
+    label: effectiveDark.value ? t('shell.themeLight') : t('shell.themeDark'),
     icon: effectiveDark.value ? SunnyIcon : MoonIcon,
     action: toggleTheme,
   },
@@ -239,13 +258,13 @@ const rightRail = computed(() => [
   },
   {
     key: 'top',
-    label: '回到顶部',
+    label: t('shell.backToTop'),
     icon: ArrowUpIcon,
     action: scrollToTop,
   },
   {
     key: 'logout',
-    label: '退出登录',
+    label: t('shell.logout'),
     icon: LogoutIcon,
     action: handleLogout,
   },
@@ -263,12 +282,20 @@ function toggleFullscreen() {
   }
 }
 
+watch(fullscreen, (value) => {
+  if (!value) return
+  sessionDrawerVisible.value = false
+  mobileNavVisible.value = false
+})
+
 function goHome() {
+  windowHidden.value = false
   router.push('/')
   mobileNavVisible.value = false
 }
 
 function goSettings() {
+  windowHidden.value = false
   router.push('/platform/settings')
   mobileNavVisible.value = false
 }
@@ -277,23 +304,27 @@ function openGithub() {
   window.open('https://github.com/Forward-back', '_blank', 'noopener,noreferrer')
 }
 
+function toggleWindow() {
+  windowHidden.value = !windowHidden.value
+  sessionDrawerVisible.value = false
+  mobileNavVisible.value = false
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+  }
+}
+
 function handlePrimary(item: PrimaryNavItem) {
+  if (isPrimaryActive(item)) {
+    toggleWindow()
+    return
+  }
+  windowHidden.value = false
+  sessionDrawerVisible.value = false
   if (item.key === 'chat') {
-    if (referencesStore.visible) return
-    if (!isChatWorkspaceRoute.value) {
-      sessionDrawerVisible.value = false
-      router.push('/platform/creatChat')
-      return
-    }
-    if (window.innerWidth < 900) {
-      sessionDrawerVisible.value = !sessionDrawerVisible.value
-    } else {
-      chatLayout.toggleRail()
-    }
+    router.push('/platform/creatChat')
     return
   }
   if (item.path) {
-    sessionDrawerVisible.value = false
     router.push(item.path)
   }
 }
@@ -491,8 +522,8 @@ watch(() => route.fullPath, () => {
   sessionDrawerVisible.value = false
 })
 
-watch(isDetailRoute, detail => {
-  if (!detail) fullscreen.value = false
+watch(fullscreenEligible, eligible => {
+  if (!eligible) fullscreen.value = false
 })
 
 onMounted(() => {
@@ -510,6 +541,7 @@ onMounted(() => {
   }
   maybeOpenCmdkFromRoute()
   void useChatResourcesStore().prefetchChatInput()
+  void backgroundStore.load()
 })
 
 onUnmounted(() => {
@@ -547,7 +579,7 @@ onUnmounted(() => {
   --w-green-deep: #06b04d;
   --w-green-soft: #e9f8ec;
   --w-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  --w-font: "DM Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --w-font: var(--app-font-family, "DM Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif);
 
   --td-brand-color: var(--w-green-dark);
   --td-brand-color-hover: #08dd6e;
@@ -865,6 +897,13 @@ html[theme-mode="dark"] .app-fullscreen-btn:hover {
   align-items: center;
   justify-content: center;
   pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.app-shell--window-hidden .app-stage {
+  opacity: 0;
+  transform: translateY(18px) scale(0.985);
+  pointer-events: none;
 }
 
 .app-window {
@@ -892,19 +931,33 @@ html[theme-mode="dark"] .app-window {
   overflow: hidden;
 }
 
-/* Detail pages use a warm off-white canvas; the landing keeps the green window. */
+/* Detail pages use a configurable canvas; the landing keeps the green window.
+   The canvas is painted once on .app-window so the transparency slider stays
+   predictable instead of stacking translucent page roots. */
 .app-shell--detail {
-  --td-bg-color-page: #f7f5f0;
+  --td-bg-color-page: transparent;
 }
 
-.app-shell--detail .app-window,
+/* Font-colour overrides are light-only; dark mode keeps the TDesign white
+   grayscale. Brand, link, status and syntax colours are intentionally not
+   overridden here. */
+html[theme-mode="light"] .app-shell--detail {
+  --td-text-color-primary: var(--w-detail-text-primary, var(--td-font-gray-1));
+  --td-text-color-secondary: var(--w-detail-text-secondary, var(--td-font-gray-2));
+  --td-text-color-placeholder: var(--w-detail-text-placeholder, var(--td-font-gray-3));
+}
+
+.app-shell--detail .app-window {
+  background-color: var(--w-detail-bg, #f7f5f0);
+}
+
 .app-shell--detail .app-window__content,
 .app-shell--detail .app-window__content > * {
-  background-color: #f7f5f0;
+  background-color: transparent;
 }
 
 .app-shell--detail .app-window__content > * {
-  background-color: #f7f5f0 !important;
+  background-color: transparent !important;
 }
 
 html[theme-mode="dark"] .app-shell--detail {

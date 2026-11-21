@@ -1,226 +1,357 @@
 <template>
-  <div class="reading-page">
-    <div class="reading-header">
-      <div>
-        <h1 class="reading-title">{{ $t('reading.title') }}</h1>
-        <p class="reading-desc">{{ $t('reading.description') }}</p>
+  <div
+    ref="readingPageRef"
+    class="reading-page"
+    :class="{ 'reading-page--config': showConfigView, 'reading-page--workbench': !showConfigView, 'is-narrow': pageNarrow }"
+  >
+    <header class="rv-topbar">
+      <div class="rv-topbar__doc">
+        <span class="rv-topbar__title">{{ showConfigView ? $t('reading.createTitle') : workbenchTitle }}</span>
+        <span v-if="run && !showConfigView" class="rv-topbar__meta">{{ workbenchMeta }}</span>
       </div>
-      <div v-if="run" class="reading-header-actions">
-        <t-button v-if="canStartNewReading" theme="primary" @click="startNewReading">
-          {{ $t('reading.newReading') }}
-        </t-button>
-        <t-button v-if="showReportEditor" variant="outline" theme="default" :loading="reportLoading" @click="openReportEditor">
-          {{ $t('reading.editReport') }}
-          <span v-if="reportEdited" class="reading-edited-badge">{{ $t('reading.editedTag') }}</span>
-        </t-button>
-        <t-button variant="outline" theme="default" :loading="exporting" @click="exportReport('markdown')">
-          {{ $t('reading.exportMarkdown') }}
-        </t-button>
-        <t-button variant="outline" theme="default" :loading="exporting" @click="exportReport('json')">
-          {{ $t('reading.exportJSON') }}
-        </t-button>
-        <t-button v-if="run.status !== 'finished' && run.status !== 'stopped'" variant="outline" theme="danger" @click="stopRun">
-          {{ $t('reading.stop') }}
-        </t-button>
+      <nav v-if="run" class="rv-switch" :aria-label="$t('reading.viewSwitch')">
+        <button type="button" :class="{ on: !showConfigView }" @click="switchView('workbench')">
+          {{ $t('reading.viewWorkbench') }}
+        </button>
+        <button type="button" :class="{ on: showConfigView }" @click="switchView('config')">
+          {{ $t('reading.viewConfig') }}
+        </button>
+      </nav>
+      <div class="rv-topbar__spacer" />
+      <div v-if="run && !showConfigView" class="rv-progress">
+        <span class="rv-progress__bar"><i :style="{ width: readPercent + '%' }" /></span>
+        <span class="rv-progress__text">
+          {{ $t('reading.progressText', {
+            read: readSectionCount,
+            total: totalSectionCount,
+            minutes: remainingMinutes,
+          }) }}
+        </span>
       </div>
-    </div>
-
-    <div v-if="!run" class="reading-start">
-      <div class="reading-form">
-        <div class="reading-form-col">
-          <label class="reading-label">{{ $t('reading.kbLabel') }}</label>
-          <t-input v-model="kbSearch" clearable :placeholder="$t('reading.searchKb')" class="reading-search">
-            <template #prefix-icon><t-icon name="search" /></template>
-          </t-input>
-          <t-select v-model="kbId" :options="filteredKbOptions" filterable @change="loadDocuments" />
-          <label class="reading-label">{{ $t('reading.docsLabel') }}</label>
-          <t-input v-model="docSearch" clearable :placeholder="$t('reading.searchDocs')" class="reading-search" :disabled="!kbId">
-            <template #prefix-icon><t-icon name="search" /></template>
-          </t-input>
-          <t-select v-model="documentIds" :options="filteredDocumentOptions" multiple filterable :max="5" :disabled="!kbId" />
-        </div>
-        <div class="reading-form-col">
-          <label class="reading-label">{{ $t('reading.depthLabel') }}</label>
-          <t-radio-group v-model="depth">
-            <t-radio-button value="quick">{{ $t('reading.depth.quick') }}</t-radio-button>
-            <t-radio-button value="standard">{{ $t('reading.depth.standard') }}</t-radio-button>
-            <t-radio-button value="deep">{{ $t('reading.depth.deep') }}</t-radio-button>
-          </t-radio-group>
-          <p class="reading-depth-hint">{{ $t(`reading.depthHint.${depth}`) }}</p>
-          <label class="reading-label">{{ $t('reading.goalLabel') }}</label>
-          <t-textarea v-model="goal" :autosize="{ minRows: 2, maxRows: 4 }"
-            :placeholder="$t('reading.goalPlaceholder')" />
-        </div>
-        <div class="reading-form-footer">
-          <t-button class="reading-start-button" theme="primary" :loading="creating" :disabled="documentIds.length === 0" @click="startRun">
-            {{ $t('reading.start') }}
-          </t-button>
-        </div>
+      <div v-if="run && !showConfigView" class="rv-actions">
+        <button type="button" class="rv-mobile-toggle" @click="mobileLeftOpen = true">
+          {{ $t('reading.outline') }}
+        </button>
+        <button type="button" class="rv-mobile-toggle" @click="mobileRightOpen = true">
+          {{ $t('reading.notes') }}
+        </button>
+        <t-dropdown :options="exportOptions" @click="handleExportMenu">
+          <button type="button" class="rv-action-btn">{{ $t('reading.export') }} ▾</button>
+        </t-dropdown>
+        <button v-if="showReportEditor" type="button" class="rv-action-btn" @click="openReportEditor">
+          {{ $t('reading.reportTitleShort') }}
+        </button>
+        <button v-if="canPauseRun" type="button" class="rv-action-btn" @click="pauseRun">
+          {{ $t('reading.pause') }}
+        </button>
+        <button v-if="canPauseRun" type="button" class="rv-action-btn is-warn" @click="abandonRun">
+          {{ $t('reading.stopShort') }}
+        </button>
       </div>
-      <p class="reading-hint">{{ $t('reading.hint') }}</p>
-    </div>
+    </header>
 
-    <div v-else class="reading-body" ref="readingBodyRef"
-      :style="{ '--reading-left-width': leftWidth + 'px' }"
-      :class="{ 'notes-collapsed': notesCollapsed, 'plan-collapsed': planCollapsed }">
-      <section v-if="!planCollapsed" ref="documentPaneRef" class="reading-side reading-progress">
-        <div class="reading-side-head">
-          <span>{{ $t('reading.documentFullText') }}</span>
-          <button type="button" class="reading-collapse" @click="planCollapsed = true">«</button>
-        </div>
-        <div class="reading-meta">
-          <t-tag :theme="statusTheme" variant="light">{{ $t(`reading.status.${run.status}`) }}</t-tag>
-          <t-tag variant="outline">{{ depthLabel }}</t-tag>
-          <span>{{ $t('reading.stepCount', { count: run.step_count }) }}</span>
-        </div>
-        <p class="reading-meta-line">{{ $t('reading.policyTag') }}</p>
-        <div class="reading-doc-toolbar">
-          <t-select v-if="readingDocuments.length > 1" v-model="activeDocumentId"
-            :options="readingDocumentOptions" size="small" class="reading-doc-select" />
-          <span v-else-if="activeDocument" class="reading-doc-title">{{ activeDocument.title }}</span>
-          <span class="reading-doc-progress">{{ readSectionCount }}/{{ run.plan.sections?.length || 0 }}</span>
-        </div>
-        <p v-if="currentSection" class="reading-doc-current">
-          {{ $t('reading.currentLocation') }}：{{ currentSection.heading || currentSection.title }}
-        </p>
-        <div v-if="readingDocumentsLoading" class="reading-empty">{{ $t('reading.loadingDocument') }}</div>
-        <div v-else-if="activeDocument" class="reading-document-content">
-          <template v-if="documentRange">
-            <span>{{ documentBefore }}</span>
-            <mark ref="documentCurrentRef" class="reading-document-current">{{ documentHighlight }}</mark>
-            <span>{{ documentAfter }}</span>
-          </template>
-          <template v-else>{{ activeDocument.content }}</template>
-        </div>
-        <div v-else class="reading-empty">{{ $t('reading.noDocumentContent') }}</div>
-        <div v-if="canAddDocs" class="reading-add-docs">
-          <t-button size="small" variant="outline" @click="openAddDocs">
-            {{ $t('reading.addDocuments') }}
-          </t-button>
-        </div>
-      </section>
+    <div v-if="showConfigView" class="rv-config">
+      <div class="rv-config__inner">
+        <h1>{{ $t('reading.createTitle') }}</h1>
+        <p class="rv-config__sub">{{ $t('reading.createSub') }}</p>
 
-      <button v-else type="button" class="reading-expand reading-expand-left" @click="planCollapsed = false">
-        »
-      </button>
-
-      <div v-if="!planCollapsed" class="reading-resizer" role="separator" aria-orientation="vertical"
-        tabindex="0" :aria-label="$t('reading.resizeLeftPane')"
-        @pointerdown="startResize" @pointermove="onResize" @pointerup="endResize"
-        @pointercancel="endResize" @dblclick="resetLeftWidth" @keydown="onResizeKeydown"></div>
-
-      <section class="reading-main">
-        <div class="reading-main-head">
-          <div>
-            <span class="reading-main-kicker">{{ isStructured ? $t('reading.currentRound') : $t('reading.currentReading') }}</span>
-            <h2>{{ currentSection?.heading || currentSection?.title || $t('reading.plan') }}</h2>
-            <p v-if="isStructured && currentRound > 0" class="reading-round-line">
-              {{ $t('reading.roundLabel', { round: currentRound }) }}
-            </p>
+        <section class="rv-section">
+          <div class="rv-section__label">{{ $t('reading.documentPicker') }}</div>
+          <input v-model="docSearch" class="rv-field" :placeholder="$t('reading.searchDocsAll')" />
+          <div v-if="docSearchActive" class="rv-doc-list">
+            <button
+              v-for="doc in filteredAllDocuments"
+              :key="doc.value"
+              type="button"
+              class="rv-doc-row"
+              :class="{ on: documentIds.includes(doc.value) }"
+              @click="toggleDocument(doc.value)"
+            >
+              <span class="rv-doc-row__name">{{ doc.label }}</span>
+              <span class="rv-doc-row__meta">{{ doc.kbName }} · {{ doc.sizeLabel }}</span>
+            </button>
+            <p v-if="!filteredAllDocuments.length" class="rv-empty">{{ $t('reading.noDocuments') }}</p>
           </div>
-          <span v-if="advancing" class="reading-reading-now">{{ $t('reading.readingNow') }}</span>
+          <div v-else class="rv-doc-tree">
+            <button
+              v-for="row in documentTreeRows"
+              :key="row.key"
+              type="button"
+              class="rv-tree-row"
+              :class="{
+                'is-doc': row.kind === 'doc',
+                'is-branch': row.kind !== 'doc',
+                on: row.kind === 'doc' && row.doc && documentIds.includes(row.doc.value),
+              }"
+              :style="{ paddingLeft: 8 + row.depth * 16 + 'px' }"
+              @click="handleTreeRow(row)"
+            >
+              <span class="rv-tree-row__caret">
+                {{ row.kind === 'doc' ? '' : row.expanded ? '▾' : '▸' }}
+              </span>
+              <span class="rv-tree-row__label">{{ row.label }}</span>
+              <span v-if="row.count !== undefined" class="rv-tree-row__count">{{ row.count }}</span>
+              <span v-if="row.kind === 'doc' && row.doc && documentIds.includes(row.doc.value)" class="rv-tree-row__check">✓</span>
+            </button>
+            <p v-if="!documentTreeRows.length" class="rv-empty">{{ $t('reading.noDocuments') }}</p>
+          </div>
+          <p class="rv-hint">{{ $t('reading.documentPickerHint') }}</p>
+          <div v-if="selectedDocuments.length" class="rv-selected-docs">
+            <div class="rv-selected-docs__label">
+              {{ $t('reading.selectedDocs', { count: selectedDocuments.length }) }}
+            </div>
+            <div class="rv-selected-docs__list">
+              <button
+                v-for="doc in selectedDocuments"
+                :key="doc.value"
+                type="button"
+                class="rv-selected-doc"
+                :title="$t('reading.removeDoc')"
+                @click="toggleDocument(doc.value)"
+              >
+                <span class="rv-selected-doc__name">{{ doc.label }}</span>
+                <span class="rv-selected-doc__kb">{{ doc.kbName }}</span>
+                <span class="rv-selected-doc__remove">×</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="rv-section">
+          <div class="rv-section__label">{{ $t('reading.depthLabel') }}</div>
+          <button
+            v-for="item in depthOptions"
+            :key="item.value"
+            type="button"
+            class="rv-depth-row"
+            :class="{ on: depth === item.value }"
+            @click="depth = item.value"
+          >
+            <span class="rv-depth-row__name">{{ item.label }}</span>
+            <span class="rv-depth-row__desc">{{ item.hint }}</span>
+          </button>
+        </section>
+
+        <section class="rv-section">
+          <div class="rv-section__label">{{ $t('reading.goalLabel') }}</div>
+          <div class="rv-chips">
+            <button
+              v-for="chip in goalChips"
+              :key="chip.key"
+              type="button"
+              class="rv-chip"
+              :class="{ on: goal === chip.value }"
+              @click="selectGoalChip(chip)"
+            >
+              {{ chip.label }}
+            </button>
+          </div>
+          <textarea
+            ref="goalTextareaRef"
+            v-model="goal"
+            class="rv-textarea"
+            rows="2"
+            :placeholder="$t('reading.goalPlaceholder')"
+          />
+        </section>
+
+        <div class="rv-estimate">
+          <span>{{ $t('reading.estimateTime', { minutes: estimate.minutes }) }}</span>
+          <span>{{ $t('reading.estimateRounds', { rounds: estimate.rounds }) }}</span>
+          <span>{{ $t('reading.estimateTokens', { tokens: estimate.tokens }) }}</span>
+          <span>{{ $t('reading.estimateQuestions', { count: estimate.questions }) }}</span>
         </div>
 
-        <template v-if="isStructured">
-          <div v-if="run.status === 'planning'" class="reading-plan-confirm">
+        <div class="rv-config__actions">
+          <button
+            type="button"
+            class="rv-primary"
+            :disabled="creating || !documentIds.length"
+            @click="startRun"
+          >
+            {{ $t('reading.start') }}
+          </button>
+          <button type="button" class="rv-text-btn" :disabled="!documentIds.length" @click="saveDraft">
+            {{ $t('reading.saveDraft') }}
+          </button>
+          <span class="rv-config__note">{{ $t('reading.modelNote') }}</span>
+        </div>
+
+        <section v-if="drafts.length" class="rv-drafts">
+          <button type="button" class="rv-drafts__toggle" @click="draftsExpanded = !draftsExpanded">
+            {{ $t('reading.drafts') }} <span>{{ drafts.length }}</span>
+            <span class="rv-drafts__caret">{{ draftsExpanded ? '▾' : '▸' }}</span>
+          </button>
+          <div v-if="draftsExpanded" class="rv-drafts__list">
+            <div v-for="draft in drafts" :key="draft.id" class="rv-draft">
+              <template v-if="renamingDraftId === draft.id">
+                <input
+                  v-model="renameDraftValue"
+                  class="rv-draft__input"
+                  @keydown.enter="confirmRenameDraft(draft.id)"
+                  @keydown.esc="cancelRenameDraft"
+                />
+                <button type="button" class="rv-draft__action" @click="confirmRenameDraft(draft.id)">
+                  {{ $t('common.confirm') }}
+                </button>
+                <button type="button" class="rv-draft__action" @click="cancelRenameDraft">
+                  {{ $t('common.cancel') }}
+                </button>
+              </template>
+              <template v-else>
+                <button type="button" class="rv-draft__name" @click="loadDraft(draft)">
+                  {{ draft.name }}
+                </button>
+                <span class="rv-draft__meta">
+                  {{ $t('reading.draftMeta', {
+                    docs: draft.documentIds.length,
+                    depth: depthLabelOf(draft.depth),
+                    date: formatDraftDate(draft.updatedAt),
+                  }) }}
+                </span>
+                <button type="button" class="rv-draft__action" @click="startRenameDraft(draft)">
+                  {{ $t('reading.renameDraft') }}
+                </button>
+                <button type="button" class="rv-draft__action is-warn" @click="deleteDraft(draft.id)">
+                  {{ $t('reading.deleteDraft') }}
+                </button>
+              </template>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div v-else-if="run" class="rv-body">
+      <aside class="rv-left" :class="{ 'is-open': mobileLeftOpen }">
+        <div class="rv-left__mobile-head">
+          <span>{{ $t('reading.outline') }}</span>
+          <button type="button" @click="mobileLeftOpen = false">×</button>
+        </div>
+        <div class="rv-left__head">
+          <p>{{ depthLabel }} · {{ $t('reading.policyTag') }}</p>
+        </div>
+        <div class="rv-left__label">{{ $t('reading.chapters') }}</div>
+        <button
+          v-for="row in outlineRows"
+          :key="row.key"
+          type="button"
+          class="rv-toc-row"
+          :class="{
+            'is-root': row.kind === 'doc',
+            current: row.current,
+            preview: row.preview,
+            read: row.read,
+          }"
+          :style="{ paddingLeft: 10 + row.depth * 14 + 'px' }"
+          @click="handleOutlineRow(row)"
+        >
+          <span
+            v-if="row.hasChildren"
+            class="rv-toc-row__caret"
+            @click.stop="toggleOutlineRow(row)"
+          >{{ row.expanded ? '▾' : '▸' }}</span>
+          <span v-else class="rv-toc-row__caret" />
+          <span class="rv-toc-row__text">{{ row.label }}</span>
+          <span v-if="row.current" class="rv-toc-row__mark">{{ $t('reading.currentTag') }}</span>
+        </button>
+        <div class="rv-left__label">{{ $t('reading.sessionStats') }}</div>
+        <div class="rv-session-stats">
+          <p>{{ $t('reading.sessionRead', { read: readSectionCount, total: totalSectionCount }) }}</p>
+          <p>{{ $t('reading.sessionNotes', { count: noteTotalCount }) }}</p>
+          <p>{{ $t('reading.sessionSkipped', { count: skippedQuestionCount }) }}</p>
+        </div>
+        <div v-if="canAddDocs" class="rv-left__add">
+          <button type="button" class="rv-text-btn" @click="openAddDocs">{{ $t('reading.addDocuments') }}</button>
+        </div>
+      </aside>
+
+      <main class="rv-main">
+        <div class="rv-read">
+          <div class="rv-chapter-head">
+            <div>
+              <h2>{{ viewingSectionTitle }}</h2>
+              <p class="rv-chapter-meta">{{ viewingSectionMeta }}</p>
+            </div>
+            <div class="rv-chapter-actions">
+              <button type="button" class="rv-action-btn" @click="openOriginal">{{ $t('reading.originalText') }}</button>
+              <button
+                v-if="previewSectionId"
+                type="button"
+                class="rv-action-btn"
+                @click="clearPreview"
+              >
+                {{ $t('reading.backToCurrent') }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="run.status === 'planning'" class="rv-plan-card">
             <h3>{{ $t('reading.planConfirmTitle') }}</h3>
             <p>{{ $t('reading.planConfirmHint', { sections: run.plan.sections?.length || 0, docs: run.document_ids.length }) }}</p>
-            <div class="reading-plan-summary">
+            <div class="rv-plan-card__meta">
               <span>{{ $t('reading.reportGoal') }}：{{ run.plan.goal || '—' }}</span>
               <span>{{ $t('reading.reportDepth') }}：{{ depthLabel }}</span>
               <span>{{ $t('reading.reportPolicy') }}：{{ run.plan.policy || 'grill-with-docs' }}</span>
             </div>
-            <t-button theme="primary" :loading="acting" @click="confirmPlan">
+            <button type="button" class="rv-primary" :disabled="acting" @click="confirmPlan">
               {{ $t('reading.startReading') }}
-            </t-button>
+            </button>
           </div>
 
-          <div v-else-if="run.status === 'finished'" class="reading-final">
+          <div v-else-if="run.status === 'finished'" class="rv-final">
             <ReadingThoughtChain
               :trace="currentRoundTrace"
               :questions="roundQuestions"
               :section-title="traceSection?.title"
-              :section-heading="traceSection?.heading"
+              :section-heading="traceSectionHeading"
               :duration-label="selectedTraceDurationLabel"
               :round-options="traceRoundOptions"
               v-model:selected-round="selectedTraceRound"
             />
             <h3>{{ $t('reading.final') }}</h3>
-            <p v-if="finalSummary" class="reading-final-summary">{{ finalSummary }}</p>
-            <div class="reading-final-stats">
+            <p v-if="finalSummary" class="rv-final__summary">{{ finalSummary }}</p>
+            <div class="rv-final__stats">
               <span>{{ $t('reading.confirmedCount', { count: confirmedConclusions.length }) }}</span>
               <span>{{ $t('reading.openCount', { count: openQuestions.length }) }}</span>
               <span>{{ $t('reading.contradictionCount', { count: structuredContradictions.length }) }}</span>
             </div>
-            <p class="reading-hint">{{ $t('reading.finalHint') }}</p>
-            <div class="reading-actions">
-              <t-button theme="primary" @click="startNewReading">
-                {{ $t('reading.newReading') }}
-              </t-button>
+            <div v-for="group in finalGroups" :key="group.key" class="rv-final__group">
+              <h4>{{ group.label }}</h4>
+              <p v-if="!group.items.length" class="rv-empty">—</p>
+              <p v-for="(item, index) in group.items" :key="index" class="rv-final__item">{{ item }}</p>
             </div>
+            <button type="button" class="rv-primary" @click="switchView('config')">
+              {{ $t('reading.newReading') }}
+            </button>
           </div>
 
-          <div v-else-if="currentPendingQuestion" class="reading-question">
-            <ReadingThoughtChain
-              :trace="currentRoundTrace"
-              :questions="roundQuestions"
-              :section-title="traceSection?.title"
-              :section-heading="traceSection?.heading"
-              :duration-label="selectedTraceDurationLabel"
-              :round-options="traceRoundOptions"
-              v-model:selected-round="selectedTraceRound"
-            />
-            <div class="reading-question-meta">
-              <t-tag size="small" theme="warning" variant="light">{{ $t('reading.pendingConfirm') }}</t-tag>
-              <t-tag v-if="currentPendingQuestion.kind === 'fact'" size="small" theme="warning" variant="light">
-                {{ $t('reading.questionKind.fact') }}
-              </t-tag>
-              <t-tag v-else-if="currentPendingQuestion.kind === 'decision'" size="small" theme="primary" variant="light">
-                {{ $t('reading.questionKind.decision') }}
-              </t-tag>
-              <t-tag v-if="currentPendingQuestion.gap_type && currentPendingQuestion.gap_type !== 'unclassified'"
-                size="small" variant="outline">
-                {{ $t(`reading.gapTypes.${currentPendingQuestion.gap_type}`) }}
-              </t-tag>
-              <span>{{ $t('reading.roundLabel', { round: currentPendingQuestion.round }) }}</span>
-            </div>
-            <h3>{{ currentPendingQuestion.text }}</h3>
-            <p v-if="currentPendingQuestion.why" class="reading-why">{{ currentPendingQuestion.why }}</p>
-            <p v-if="currentPendingQuestion.recommended_answer" class="reading-recommend">
-              {{ $t('reading.recommended') }}：{{ currentPendingQuestion.recommended_answer }}
-            </p>
-            <div v-if="currentPendingQuestion.evidence?.length" class="reading-evidence-list">
-              <button v-for="evidence in currentPendingQuestion.evidence"
-                :key="evidence.chunk_id + evidence.quote" type="button"
-                class="reading-evidence-item" @click="openEvidence(evidence)">
-                <span class="reading-evidence-source">{{ evidenceLabel(evidence) }}</span>
-                <span class="reading-evidence-quote">{{ evidence.quote }}</span>
-              </button>
-            </div>
-            <div class="reading-quick-actions">
-              <t-button size="small" theme="primary" variant="outline" @click="acceptRecommendation">
-                {{ $t('reading.acceptRecommendation') }}
-              </t-button>
-              <t-button size="small" variant="outline" @click="skipQuestion">{{ $t('reading.skipQuestion') }}</t-button>
-            </div>
-            <p v-if="pendingQueueCount > 0" class="reading-queue-hint">
-              {{ $t('reading.pendingQueue', { count: pendingQueueCount }) }}
-            </p>
-            <t-textarea v-model="feedback" :autosize="{ minRows: 2, maxRows: 4 }"
-              :placeholder="$t('reading.feedbackPlaceholder')" />
-            <div class="reading-actions">
-              <t-button theme="primary" :loading="acting" @click="submitFeedback">
-                {{ $t('reading.submitFeedback') }}
-              </t-button>
-            </div>
-          </div>
-
-          <div v-else-if="run.status === 'stopped' || run.status === 'failed'" class="reading-idle">
-            <p>{{ $t('reading.pausedHint') }}</p>
-            <t-button theme="primary" :loading="acting" @click="resumeOrAdvance">
+          <div v-else-if="run.status === 'stopped' || run.status === 'failed' || run.status === 'abandoned'" class="rv-idle">
+            <p>{{ run.status === 'abandoned' ? $t('reading.abandonedHint') : $t('reading.pausedHint') }}</p>
+            <button
+              v-if="run.status !== 'abandoned'"
+              type="button"
+              class="rv-primary"
+              :disabled="acting"
+              @click="resumeOrAdvance"
+            >
               {{ run.status === 'stopped' ? $t('reading.resume') : $t('reading.continueReading') }}
-            </t-button>
-            <p class="reading-hint">{{ $t('reading.stoppedHint') }}</p>
+            </button>
+            <p v-if="run.status === 'stopped'" class="rv-hint">{{ $t('reading.stoppedHint') }}</p>
+          </div>
+
+          <div v-else-if="previewSectionId && previewSectionId !== run.current_section_id" class="rv-preview">
+            <div class="rv-prose">{{ previewSectionData?.content }}</div>
+            <div v-if="previewConclusions.length" class="rv-preview__notes">
+              <div class="rv-block-label">{{ $t('reading.sectionResults') }}</div>
+              <p v-for="item in previewConclusions" :key="item.id" class="rv-preview__note">{{ item.text }}</p>
+            </div>
+            <div class="rv-preview__actions">
+              <button type="button" class="rv-primary" @click="continueFromPreview">
+                {{ $t('reading.continueFromSection') }}
+              </button>
+              <p class="rv-hint">{{ $t('reading.previewHint') }}</p>
+            </div>
           </div>
 
           <template v-else>
@@ -228,334 +359,372 @@
               :trace="currentRoundTrace"
               :questions="roundQuestions"
               :section-title="traceSection?.title"
-              :section-heading="traceSection?.heading"
+              :section-heading="traceSectionHeading"
               :duration-label="selectedTraceDurationLabel"
               :round-options="traceRoundOptions"
               :advancing="advancing"
               v-model:selected-round="selectedTraceRound"
             />
 
-            <div class="reading-round-card">
-              <div class="reading-round-head">
-                <span>{{ $t('reading.understanding') }}</span>
-                <span class="reading-round-status">{{ advancing ? $t('reading.readingNow') : currentRoundDurationLabel }}</span>
-              </div>
-              <p v-if="currentUnderstanding" class="reading-round-understanding">{{ currentUnderstanding }}</p>
-              <p v-else class="reading-empty">{{ $t('reading.emptyUnderstanding') }}</p>
-            </div>
-
-            <div v-if="roundAutoQuestions.length" class="reading-round-questions">
-              <h4>{{ $t('reading.roundQuestions') }}</h4>
-              <div v-for="question in roundAutoQuestions" :key="question.id" class="reading-qa-card">
-                <div class="reading-qa-q">{{ question.text }}</div>
-                <div class="reading-qa-a">
-                  <t-tag size="small" :theme="question.status === 'contradicted' ? 'danger' : 'success'" variant="light">
-                    {{ question.status === 'contradicted' ? $t('reading.contradicted') : $t('reading.autoInferred') }}
-                  </t-tag>
-                  <span>{{ question.answer }}</span>
-                </div>
-                <div v-if="question.evidence?.length" class="reading-evidence-list">
-                  <button v-for="evidence in question.evidence"
-                    :key="evidence.chunk_id + evidence.quote" type="button"
-                    class="reading-evidence-item" @click="openEvidence(evidence)">
-                    <span class="reading-evidence-source">{{ evidenceLabel(evidence) }}</span>
-                    <span class="reading-evidence-quote">{{ evidence.quote }}</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div class="reading-accumulated">
-              <h4>{{ $t('reading.accumulated') }}</h4>
-              <p v-if="!confirmedConclusions.length" class="reading-empty">—</p>
-              <div v-for="conclusion in confirmedConclusions" :key="conclusion.id" class="reading-conclusion-item">
-                <p>{{ conclusion.text }}</p>
-                <div v-if="conclusion.evidence?.length" class="reading-evidence-list">
-                  <button v-for="evidence in conclusion.evidence"
-                    :key="evidence.chunk_id + evidence.quote" type="button"
-                    class="reading-evidence-item" @click="openEvidence(evidence)">
-                    <span class="reading-evidence-source">{{ evidenceLabel(evidence) }}</span>
-                    <span class="reading-evidence-quote">{{ evidence.quote }}</span>
-                  </button>
+            <section v-if="roundConclusions.length" class="rv-block">
+              <div class="rv-block-label">{{ $t('reading.roundConclusions') }}</div>
+              <div class="rv-prose">
+                <div v-for="(conclusion, index) in roundConclusions" :key="conclusion.id" class="rv-conclusion">
+                  <p :class="{ 'is-highlight': index === 0 }">
+                    {{ conclusion.text }}
+                    <button
+                      v-for="(evidence, sourceIndex) in citationSources(conclusion)"
+                      :key="evidence.chunk_id + evidence.quote"
+                      type="button"
+                      class="rv-cite"
+                      v-evidence-hover="evidence"
+                      @click="openEvidence(evidence)"
+                    >[{{ sourceIndex + 1 }}]</button>
+                  </p>
+                  <div v-if="citationSources(conclusion).length" class="rv-conclusion-sources">
+                    <span class="rv-conclusion-sources__label">{{ $t('reading.sourceLabel') }}</span>
+                    <button
+                      v-for="(evidence, sourceIndex) in citationSources(conclusion)"
+                      :key="'source-' + evidence.chunk_id + evidence.quote"
+                      type="button"
+                      class="rv-conclusion-source"
+                      v-evidence-hover="evidence"
+                      @click="openEvidence(evidence)"
+                    >
+                      [{{ sourceIndex + 1 }}] {{ evidenceLabel(evidence) }}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            </section>
 
-            <div v-if="pauseEachRound && !advancing && run.status === 'reading'" class="reading-round-continue">
-              <t-button theme="primary" :loading="acting" @click="resumeOrAdvance">
+            <section v-if="questionCard" class="rv-qcard">
+              <div class="rv-qcard__tag">
+                {{ questionKindLabel(questionCard) }}
+                <span v-if="pendingQueueCount"> · {{ $t('reading.questionIndex', { index: 1, total: pendingQueueCount + 1 }) }}</span>
+              </div>
+              <p class="rv-qcard__text">{{ questionCard.text }}</p>
+              <p v-if="questionCard.why" class="rv-qcard__hint">{{ questionCard.why }}</p>
+
+              <div v-if="!inlineAnswerSubmitted" class="rv-options">
+                <button
+                  v-for="(option, index) in answerOptions"
+                  :key="option.id"
+                  type="button"
+                  class="rv-option"
+                  :class="{ on: selectedAnswerId === option.id }"
+                  @click="selectAnswer(option.id)"
+                >
+                  <span class="rv-option__label">{{ option.label }}</span>
+                  <span class="rv-option__text">{{ option.text }}</span>
+                  <span v-if="option.recommended" class="rv-option__badge">{{ $t('reading.recommended') }}</span>
+                </button>
+                <button
+                  type="button"
+                  class="rv-option"
+                  :class="{ on: customAnswerMode }"
+                  @click="enableCustomAnswer"
+                >
+                  <span class="rv-option__label">{{ $t('reading.customAnswer') }}</span>
+                  <span class="rv-option__text">{{ $t('reading.customAnswerHint') }}</span>
+                </button>
+                <textarea
+                  v-if="customAnswerMode"
+                  ref="answerTextareaRef"
+                  v-model="answerDraft"
+                  class="rv-textarea rv-textarea--answer"
+                  rows="2"
+                  :placeholder="$t('reading.answerPlaceholder')"
+                />
+              </div>
+
+              <div v-if="!inlineAnswerSubmitted" class="rv-qcard__actions">
+                <button
+                  type="button"
+                  class="rv-primary rv-primary--small"
+                  :disabled="!answerReady || answering"
+                  @click="submitInlineAnswer"
+                >
+                  {{ $t('reading.submitAnswer') }}
+                </button>
+                <button type="button" class="rv-text-btn" :disabled="answering" @click="skipInlineQuestion">
+                  {{ $t('reading.skipQuestion') }}
+                </button>
+              </div>
+
+              <div v-else class="rv-verdict">
+                <span class="rv-verdict__state">{{ $t('reading.answerRecorded') }}</span>
+                <span>{{ $t('reading.answerPendingEvaluation') }}</span>
+                <button type="button" class="rv-text-btn" @click="continueAfterAnswer">
+                  {{ $t('reading.continueReading') }}
+                </button>
+              </div>
+            </section>
+
+            <section v-if="currentUnderstanding" class="rv-stage">
+              <div class="rv-stage__tag">{{ $t('reading.stageConfirm') }}</div>
+              <p class="rv-stage__text">
+                {{ currentUnderstanding }}
+                <span class="rv-stage__section">{{ stageSectionLabel }}</span>
+              </p>
+              <div v-if="!stageDecision" class="rv-stage__actions">
+                <button type="button" class="rv-primary rv-primary--small" @click="decideStage('confirmed')">
+                  ✓ {{ $t('reading.confirmUnderstanding') }}
+                </button>
+                <button type="button" class="rv-text-btn" @click="decideStage('corrected')">
+                  {{ $t('reading.correctUnderstanding') }}
+                </button>
+                <button type="button" class="rv-text-btn" @click="decideStage('skipped')">
+                  {{ $t('reading.skipQuestion') }}
+                </button>
+              </div>
+              <div v-else class="rv-stage__result">
+                <span v-if="stageDecision === 'confirmed'">{{ $t('reading.stageConfirmed') }}</span>
+                <span v-else-if="stageDecision === 'skipped'">{{ $t('reading.stageSkipped') }}</span>
+                <span v-else>{{ $t('reading.stageCorrected') }}</span>
+                <button type="button" class="rv-text-btn" @click="resetStageDecision">
+                  {{ $t('reading.undo') }}
+                </button>
+              </div>
+              <textarea
+                v-if="stageCorrecting"
+                v-model="stageCorrection"
+                class="rv-textarea rv-textarea--answer"
+                rows="2"
+                :placeholder="$t('reading.correctionPlaceholder')"
+              />
+              <div v-if="stageCorrecting" class="rv-stage__actions">
+                <button type="button" class="rv-primary rv-primary--small" :disabled="!stageCorrection.trim()" @click="submitStageCorrection">
+                  {{ $t('reading.submitCorrection') }}
+                </button>
+                <button type="button" class="rv-text-btn" @click="cancelStageCorrection">
+                  {{ $t('common.cancel') }}
+                </button>
+              </div>
+            </section>
+
+            <section
+              v-for="item in openContradictions"
+              :key="item.id"
+              class="rv-contra"
+              :class="{ resolved: item.status !== 'open' }"
+            >
+              <div class="rv-contra__tag">
+                {{ item.status === 'open' ? $t('reading.contradictionFound') : $t('reading.contradictionResolved') }}
+              </div>
+              <p class="rv-contra__title">{{ item.description }}</p>
+              <div class="rv-quote">
+                <div class="rv-quote__label">{{ $t('reading.sideA') }}</div>
+                <p v-for="evidence in item.evidence_a || []" :key="evidence.chunk_id + evidence.quote" class="rv-quote__text is-a">
+                  {{ evidence.quote }}
+                </p>
+              </div>
+              <div class="rv-quote">
+                <div class="rv-quote__label">{{ $t('reading.sideB') }}</div>
+                <p v-for="evidence in item.evidence_b || []" :key="evidence.chunk_id + evidence.quote" class="rv-quote__text is-b">
+                  {{ evidence.quote }}
+                </p>
+              </div>
+              <p v-if="item.status !== 'open'" class="rv-contra__resolution">
+                {{ $t('reading.resolution') }}：{{ item.resolution }}
+              </p>
+              <div v-else class="rv-contra__actions">
+                <button type="button" class="rv-primary rv-primary--small" :disabled="resolvingId === item.id" @click="resolveContradiction(item, 'a')">
+                  {{ $t('reading.resolveWithA') }}
+                </button>
+                <button type="button" class="rv-primary rv-primary--small" :disabled="resolvingId === item.id" @click="resolveContradiction(item, 'b')">
+                  {{ $t('reading.resolveWithB') }}
+                </button>
+                <button type="button" class="rv-text-btn" @click="markContradictionUncertain(item)">
+                  {{ $t('reading.markUncertain') }}
+                </button>
+                <button type="button" class="rv-text-btn" @click="toggleCustomResolution(item)">
+                  {{ $t('reading.resolveCustom') }}
+                </button>
+              </div>
+              <template v-if="customResolutionId === item.id">
+                <textarea
+                  v-model="customResolution"
+                  class="rv-textarea rv-textarea--answer"
+                  rows="2"
+                  :placeholder="$t('reading.resolutionPlaceholder')"
+                />
+                <button
+                  type="button"
+                  class="rv-primary rv-primary--small"
+                  :disabled="resolvingId === item.id"
+                  @click="resolveContradiction(item, 'custom')"
+                >
+                  {{ $t('reading.submitResolution') }}
+                </button>
+              </template>
+            </section>
+
+            <div v-if="pauseEachRound && !advancing && run.status === 'reading' && !currentPendingQuestion" class="rv-round-continue">
+              <button type="button" class="rv-primary" :disabled="acting" @click="resumeOrAdvance">
                 {{ $t('reading.continueReading') }}
-              </t-button>
-              <p class="reading-hint">{{ $t('reading.roundReviewHint') }}</p>
+              </button>
+              <p class="rv-hint">{{ $t('reading.roundReviewHint') }}</p>
             </div>
           </template>
-        </template>
-
-        <template v-else-if="currentQuestion">
-          <div class="reading-question">
-            <h3>{{ currentQuestion.text }}</h3>
-            <p v-if="currentQuestion.recommended_answer" class="reading-recommend">
-              {{ $t('reading.recommended') }}：{{ currentQuestion.recommended_answer }}
-            </p>
-            <p v-if="currentQuestion.why" class="reading-why">{{ currentQuestion.why }}</p>
-            <div class="reading-quick-actions">
-              <t-button size="small" theme="primary" variant="outline" @click="acceptRecommendation">
-                {{ $t('reading.acceptRecommendation') }}
-              </t-button>
-              <t-button size="small" variant="outline" @click="skipQuestion">{{ $t('reading.skipQuestion') }}</t-button>
-            </div>
-            <t-textarea v-model="feedback" :autosize="{ minRows: 2, maxRows: 4 }"
-              :placeholder="$t('reading.feedbackPlaceholder')" />
-            <div class="reading-actions">
-              <t-button theme="primary" :loading="acting" @click="submitFeedback">
-                {{ $t('reading.submitFeedback') }}
-              </t-button>
-            </div>
-          </div>
-        </template>
-
-        <template v-else-if="run.status === 'planning'">
-          <div class="reading-plan-confirm">
-            <h3>{{ $t('reading.planConfirmTitle') }}</h3>
-            <p>{{ $t('reading.planConfirmHint', { sections: run.plan.sections?.length || 0, docs: run.document_ids.length }) }}</p>
-            <div class="reading-plan-summary">
-              <span>{{ $t('reading.reportGoal') }}：{{ run.plan.goal || '—' }}</span>
-              <span>{{ $t('reading.reportDepth') }}：{{ depthLabel }}</span>
-              <span>{{ $t('reading.reportPolicy') }}：{{ run.plan.policy || 'grill-with-docs' }}</span>
-            </div>
-            <t-button theme="primary" :loading="acting" @click="confirmPlan">
-              {{ $t('reading.startReading') }}
-            </t-button>
-          </div>
-        </template>
-
-        <template v-else-if="run.status === 'finished'">
-          <div class="reading-final">
-            <h3>{{ $t('reading.final') }}</h3>
-            <p v-if="finalSummary" class="reading-final-summary">{{ finalSummary }}</p>
-            <div v-for="group in finalGroups" :key="group.key" class="reading-final-group">
-              <h4>{{ group.label }}</h4>
-              <p v-if="!group.items.length" class="reading-empty">—</p>
-              <p v-for="(item, index) in group.items" :key="index" class="reading-note-item">{{ item }}</p>
-            </div>
-            <div class="reading-actions">
-              <t-button theme="primary" @click="startNewReading">
-                {{ $t('reading.newReading') }}
-              </t-button>
-            </div>
-          </div>
-        </template>
-
-        <template v-else>
-          <div class="reading-idle">
-            <p>{{ advancing ? $t('reading.readingNow') : $t('reading.pausedHint') }}</p>
-            <t-button v-if="!advancing && run.status !== 'finished'" theme="primary" :loading="acting" @click="resumeOrAdvance">
-              {{ run.status === 'stopped' ? $t('reading.resume') : $t('reading.continueReading') }}
-            </t-button>
-            <p v-if="run.status === 'stopped'" class="reading-hint">{{ $t('reading.stoppedHint') }}</p>
-          </div>
-        </template>
-      </section>
-
-      <section v-if="!notesCollapsed" class="reading-side reading-notes">
-        <div class="reading-side-head">
-          <span>{{ $t('reading.notes') }}</span>
-          <button type="button" class="reading-collapse" @click="notesCollapsed = true">»</button>
         </div>
-        <template v-if="isStructured">
-          <div class="reading-tabs">
-            <button v-for="tab in structuredTabs" :key="tab.key" type="button" class="reading-tab"
-              :class="{ active: activeTab === tab.key }" @click="activeTab = tab.key">
-              {{ tab.label }}<span v-if="tab.count" class="reading-tab-count">{{ tab.count }}</span>
-            </button>
-          </div>
-          <div class="reading-tab-body">
-            <template v-if="activeTab === 'terms'">
-              <p v-if="!structuredTerms.length" class="reading-empty">{{ $t('reading.emptyTerms') }}</p>
-              <div v-for="term in structuredTerms" :key="term.id" class="reading-term-item">
-                <div class="reading-term-name">
-                  {{ term.term }}
-                  <t-tag size="small" :theme="term.status === 'confirmed' ? 'success' : 'warning'" variant="light">
-                    {{ term.status === 'confirmed' ? $t('reading.confirmedTag') : $t('reading.pendingConfirm') }}
-                  </t-tag>
-                </div>
-                <p class="reading-term-definition">{{ term.definition }}</p>
-                <div v-if="term.source?.length" class="reading-evidence-list">
-                  <button v-for="evidence in term.source" :key="evidence.chunk_id + evidence.quote"
-                    type="button" class="reading-evidence-item" v-evidence-hover="evidence" @click="openEvidence(evidence)">
-                    <span class="reading-evidence-source">{{ evidenceLabel(evidence) }}</span>
-                    <span class="reading-evidence-quote">{{ evidence.quote }}</span>
-                  </button>
-                </div>
-              </div>
-            </template>
-            <template v-else-if="activeTab === 'conclusions'">
-              <p v-if="!structuredConclusions.length" class="reading-empty">{{ $t('reading.emptyConclusions') }}</p>
-              <div v-for="conclusion in structuredConclusions" :key="conclusion.id" class="reading-conclusion-item">
-                <div class="reading-conclusion-head">
-                  <t-tag size="small" :theme="conclusionTagTheme(conclusion)" variant="light">
-                    {{ conclusionStatusLabel(conclusion) }}
-                  </t-tag>
-                  <span class="reading-round-tag">{{ $t('reading.roundLabel', { round: conclusion.round }) }}</span>
-                </div>
-                <p>{{ conclusion.text }}</p>
-                <div v-if="conclusion.evidence?.length" class="reading-evidence-list">
-                  <button v-for="evidence in conclusion.evidence" :key="evidence.chunk_id + evidence.quote"
-                    type="button" class="reading-evidence-item" v-evidence-hover="evidence" @click="openEvidence(evidence)">
-                    <span class="reading-evidence-source">{{ evidenceLabel(evidence) }}</span>
-                    <span class="reading-evidence-quote">{{ evidence.quote }}</span>
-                  </button>
-                </div>
-              </div>
-            </template>
-            <template v-else-if="activeTab === 'open'">
-              <p v-if="!openQuestions.length" class="reading-empty">{{ $t('reading.emptyOpen') }}</p>
-              <div v-for="question in openQuestions" :key="question.id" class="reading-open-item">
-                <div class="reading-open-head">
-                  <t-tag size="small" :theme="questionTagTheme(question)" variant="light">
-                    {{ questionStatusLabel(question) }}
-                  </t-tag>
-                  <t-tag v-if="question.kind === 'fact'" size="small" theme="warning" variant="light">
-                    {{ $t('reading.questionKind.fact') }}
-                  </t-tag>
-                  <t-tag v-else-if="question.kind === 'decision'" size="small" theme="primary" variant="light">
-                    {{ $t('reading.questionKind.decision') }}
-                  </t-tag>
-                  <span class="reading-round-tag">{{ $t('reading.roundLabel', { round: question.round }) }}</span>
-                </div>
-                <p>{{ question.text }}</p>
-                <p v-if="question.recommended_answer" class="reading-recommend">
-                  {{ $t('reading.recommended') }}：{{ question.recommended_answer }}
-                </p>
-                <div v-if="question.evidence?.length" class="reading-evidence-list">
-                  <button v-for="evidence in question.evidence" :key="evidence.chunk_id + evidence.quote"
-                    type="button" class="reading-evidence-item" v-evidence-hover="evidence" @click="openEvidence(evidence)">
-                    <span class="reading-evidence-source">{{ evidenceLabel(evidence) }}</span>
-                    <span class="reading-evidence-quote">{{ evidence.quote }}</span>
-                  </button>
-                </div>
+      </main>
+
+      <aside class="rv-right" :class="{ 'is-open': mobileRightOpen }">
+        <div class="rv-right__mobile-head">
+          <span>{{ $t('reading.notes') }}</span>
+          <button type="button" @click="mobileRightOpen = false">×</button>
+        </div>
+        <div class="rv-notes__head">
+          <span>{{ $t('reading.notes') }}</span>
+          <span class="rv-notes__count">{{ noteTotalCount }} {{ $t('reading.noteCountUnit') }}</span>
+        </div>
+        <div class="rv-notes__tabs">
+          <button
+            v-for="tab in noteTabs"
+            :key="tab.key"
+            type="button"
+            class="rv-notes__tab"
+            :class="{ on: activeTab === tab.key }"
+            @click="activeTab = tab.key"
+          >
+            {{ tab.label }}<span v-if="tab.count" class="rv-notes__tab-count">{{ tab.count }}</span>
+          </button>
+        </div>
+        <div class="rv-notes__list">
+          <p v-if="!visibleNotes.length" class="rv-empty">{{ $t('reading.notesEmpty') }}</p>
+          <article v-for="note in visibleNotes" :key="note.key" class="rv-note" :class="{ rejected: note.status === 'rejected' }">
+            <div class="rv-note__head">
+              <span class="rv-note__type" :class="'is-' + note.type">{{ note.typeLabel }}</span>
+              <span class="rv-note__state" :class="{ done: note.status === 'confirmed' }">{{ note.statusLabel }}</span>
+              <span v-if="note.recommended" class="rv-note__recommended">{{ $t('reading.recommended') }}</span>
+            </div>
+            <template v-if="editingNoteKey === note.key">
+              <textarea v-model="editingNoteText" class="rv-textarea rv-textarea--answer" rows="3" />
+              <div class="rv-note__actions">
+                <button type="button" class="rv-note__action is-main" @click="saveNoteEdit(note)">{{ $t('reading.save') }}</button>
+                <button type="button" class="rv-note__action" @click="cancelNoteEdit">{{ $t('common.cancel') }}</button>
               </div>
             </template>
             <template v-else>
-              <p v-if="!structuredContradictions.length" class="reading-empty">{{ $t('reading.emptyContradictions') }}</p>
-              <div v-for="item in structuredContradictions" :key="item.id" class="reading-contradiction-item">
-                <div class="reading-contradiction-head">
-                  <t-tag size="small" :theme="item.status === 'open' ? 'warning' : 'success'" variant="light">
-                    {{ item.status === 'open' ? $t('reading.contradictionOpen') : $t('reading.contradictionResolved') }}
-                  </t-tag>
-                </div>
-                <p class="reading-contradiction-desc">{{ item.description }}</p>
-                <div class="reading-contradiction-grid">
-                  <div class="reading-contradiction-column">
-                    <div class="reading-contradiction-column-head">A</div>
-                    <div class="reading-evidence-list">
-                      <button v-for="evidence in item.evidence_a || []" :key="evidence.chunk_id + evidence.quote"
-                        type="button" class="reading-evidence-item" v-evidence-hover="evidence"
-                        @click="openEvidence(evidence)">
-                        <span class="reading-evidence-source">{{ evidenceLabel(evidence) }}</span>
-                        <span class="reading-evidence-quote">{{ evidence.quote }}</span>
-                      </button>
-                    </div>
-                  </div>
-                  <div class="reading-contradiction-column">
-                    <div class="reading-contradiction-column-head">B</div>
-                    <div class="reading-evidence-list">
-                      <button v-for="evidence in item.evidence_b || []" :key="evidence.chunk_id + evidence.quote"
-                        type="button" class="reading-evidence-item" v-evidence-hover="evidence"
-                        @click="openEvidence(evidence)">
-                        <span class="reading-evidence-source">{{ evidenceLabel(evidence) }}</span>
-                        <span class="reading-evidence-quote">{{ evidence.quote }}</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <p v-if="!(item.evidence_a?.length || item.evidence_b?.length)" class="reading-empty">
-                  {{ $t('reading.legacyNoEvidence') }}
-                </p>
-                <p v-if="item.status !== 'open'" class="reading-resolution-text">
-                  {{ $t('reading.resolution') }}：{{ item.resolution }}
-                </p>
-                <div v-else class="reading-contradiction-resolve">
-                  <div class="reading-quick-actions">
-                    <t-button size="small" variant="outline" :loading="resolvingId === item.id"
-                      @click="resolveContradiction(item, 'a')">{{ $t('reading.resolveWithA') }}</t-button>
-                    <t-button size="small" variant="outline" :loading="resolvingId === item.id"
-                      @click="resolveContradiction(item, 'b')">{{ $t('reading.resolveWithB') }}</t-button>
-                    <t-button size="small" variant="outline" @click="toggleCustomResolution(item)">
-                      {{ $t('reading.resolveCustom') }}
-                    </t-button>
-                  </div>
-                  <template v-if="customResolutionId === item.id">
-                    <t-textarea v-model="customResolution" :autosize="{ minRows: 2, maxRows: 4 }"
-                      :placeholder="$t('reading.resolutionPlaceholder')" />
-                    <t-button size="small" theme="primary" :loading="resolvingId === item.id"
-                      @click="resolveContradiction(item, 'custom')">{{ $t('reading.submitResolution') }}</t-button>
-                  </template>
-                </div>
+              <p class="rv-note__text">{{ note.text }}</p>
+              <p v-if="note.cite" class="rv-note__cite">{{ note.cite }}</p>
+              <div class="rv-note__actions">
+                <button
+                  v-if="note.actions && note.status === 'candidate'"
+                  type="button"
+                  class="rv-note__action is-main"
+                  @click="confirmNote(note)"
+                >✓ {{ $t('reading.confirmNote') }}</button>
+                <button v-if="note.actions" type="button" class="rv-note__action" @click="startNoteEdit(note)">
+                  {{ $t('reading.editNote') }}
+                </button>
+                <button
+                  v-if="note.actions && note.status === 'candidate'"
+                  type="button"
+                  class="rv-note__action is-danger"
+                  @click="rejectNote(note)"
+                >{{ $t('reading.rejectNote') }}</button>
+                <button
+                  v-if="note.actions && note.status === 'rejected'"
+                  type="button"
+                  class="rv-note__action"
+                  @click="restoreNote(note)"
+                >{{ $t('reading.restoreNote') }}</button>
               </div>
             </template>
-          </div>
-        </template>
-        <template v-else>
-          <div v-for="group in noteGroups" :key="group.key" class="reading-note-group">
-            <h4>
-              {{ group.label }}
-              <span v-if="group.items.length" class="reading-note-count">{{ group.items.length }}</span>
-            </h4>
-            <p v-if="!group.items.length" class="reading-empty">—</p>
-            <p v-for="(item, index) in group.items" :key="index" class="reading-note-item">{{ item }}</p>
-          </div>
-        </template>
-      </section>
-      <button v-else type="button" class="reading-expand reading-expand-right" @click="notesCollapsed = false">
-        {{ $t('reading.notes') }} «
-      </button>
+          </article>
+        </div>
+      </aside>
+    </div>
+
+    <div v-if="originalDrawerOpen" class="rv-drawer-mask" @click.self="closeDrawerFromMask">
+      <aside class="rv-drawer" :style="{ width: drawerWidth + 'px' }">
+        <div
+          class="rv-drawer__resizer"
+          role="separator"
+          aria-orientation="vertical"
+          tabindex="0"
+          @pointerdown="startDrawerResize"
+          @keydown="onDrawerResizeKeydown"
+        />
+        <header class="rv-drawer__head">
+          <span>{{ $t('reading.originalText') }}</span>
+          <select v-if="readingDocuments.length > 1" v-model="activeDocumentId" class="rv-drawer__select">
+            <option v-for="doc in readingDocumentOptions" :key="doc.value" :value="doc.value">{{ doc.label }}</option>
+          </select>
+          <div ref="drawerToolbarRef" class="rv-drawer__toolbar" />
+          <button type="button" class="rv-drawer__close" @click="originalDrawerOpen = false">×</button>
+        </header>
+        <div ref="documentPaneRef" class="rv-drawer__body rv-drawer__body--preview">
+          <div v-if="readingDocumentsLoading" class="rv-empty">{{ $t('reading.loadingDocument') }}</div>
+          <DocumentPreview
+            v-else-if="activeDocument"
+            :source-blob="originalFileBlob"
+            file-type="md"
+            :file-name="originalFileName"
+            :active="originalDrawerOpen"
+            :toolbar-target="drawerToolbarRef"
+            fill-height
+          />
+          <div v-else class="rv-empty">{{ $t('reading.noDocumentContent') }}</div>
+        </div>
+      </aside>
     </div>
 
     <t-dialog v-model:visible="addDocDialogVisible" :header="$t('reading.addDocuments')" width="560px" :footer="false">
       <div class="reading-add-dialog">
-        <p class="reading-add-dialog-hint">{{ $t('reading.addDocumentsHint') }}</p>
-        <t-input v-model="addDocSearch" clearable :placeholder="$t('reading.searchAddDocs')">
-          <template #prefix-icon><t-icon name="search" /></template>
-        </t-input>
-        <t-select v-model="addDocIds" :options="filteredAddDocOptions" multiple filterable
-          :placeholder="$t('reading.addDocumentsPlaceholder')" />
-        <p v-if="!addDocOptions.length" class="reading-hint">{{ $t('reading.noMoreDocuments') }}</p>
-        <div class="reading-add-dialog-actions">
-          <t-button variant="outline" @click="addDocDialogVisible = false">{{ $t('common.cancel') }}</t-button>
-          <t-button theme="primary" :loading="addingDocs" :disabled="!addDocIds.length" @click="confirmAddDocs">
+        <input v-model="addDocSearch" class="rv-field" :placeholder="$t('reading.searchAddDocs')" />
+        <div class="rv-doc-list rv-doc-list--dialog">
+          <button
+            v-for="doc in filteredAddDocOptions"
+            :key="doc.value"
+            type="button"
+            class="rv-doc-row"
+            :class="{ on: addDocIds.includes(doc.value) }"
+            @click="toggleAddDoc(doc.value)"
+          >
+            <span class="rv-doc-row__name">{{ doc.label }}</span>
+            <span class="rv-doc-row__meta">{{ doc.kbName }} · {{ doc.sizeLabel }}</span>
+          </button>
+        </div>
+        <p v-if="!filteredAddDocOptions.length" class="rv-hint">{{ $t('reading.noMoreDocuments') }}</p>
+        <div class="rv-dialog-actions">
+          <button type="button" class="rv-text-btn" @click="addDocDialogVisible = false">{{ $t('common.cancel') }}</button>
+          <button type="button" class="rv-primary" :disabled="!addDocIds.length || addingDocs" @click="confirmAddDocs">
             {{ $t('common.confirm') }}
-          </t-button>
+          </button>
         </div>
       </div>
     </t-dialog>
 
     <t-dialog v-model:visible="reportDialogVisible" :header="$t('reading.editReport')" width="900px" :footer="false">
       <div class="reading-report-editor">
-        <p class="reading-add-dialog-hint">{{ $t('reading.editReportHint') }}</p>
+        <p class="rv-hint">{{ $t('reading.editReportHint') }}</p>
         <t-textarea v-model="reportDraft" :autosize="{ minRows: 20, maxRows: 32 }" />
-        <div class="reading-add-dialog-actions">
-          <t-button variant="outline" :loading="reportSaving" @click="resetReportDraft">
+        <div class="rv-dialog-actions">
+          <button type="button" class="rv-text-btn" :disabled="reportSaving" @click="resetReportDraft">
             {{ $t('reading.resetReport') }}
-          </t-button>
-          <t-button variant="outline" @click="reportDialogVisible = false">{{ $t('common.cancel') }}</t-button>
-          <t-button theme="primary" :loading="reportSaving" @click="saveReportDraft">
+          </button>
+          <button type="button" class="rv-text-btn" @click="reportDialogVisible = false">{{ $t('common.cancel') }}</button>
+          <button type="button" class="rv-primary" :disabled="reportSaving" @click="saveReportDraft">
             {{ $t('reading.saveReport') }}
-          </t-button>
+          </button>
         </div>
       </div>
     </t-dialog>
 
-    <div v-if="evidenceFloat.visible" class="reading-evidence-float"
+    <div v-if="evidenceFloat.visible" class="rv-evidence-float"
       :style="{ top: evidenceFloat.top + 'px', left: evidenceFloat.left + 'px' }"
       @mouseenter="cancelEvidenceClose" @mouseleave="hideEvidenceFloat">
-      <div class="reading-evidence-float-title">{{ evidenceFloat.title }}</div>
-      <div v-if="evidenceFloat.loading" class="reading-evidence-float-muted">{{ $t('reading.loadingOrigin') }}</div>
-      <div v-else-if="evidenceFloat.error" class="reading-evidence-float-error">{{ evidenceFloat.error }}</div>
-      <div v-else class="reading-evidence-float-body">
+      <div class="rv-evidence-float__title">{{ evidenceFloat.title }}</div>
+      <div v-if="evidenceFloat.loading" class="rv-evidence-float__muted">{{ $t('reading.loadingOrigin') }}</div>
+      <div v-else-if="evidenceFloat.error" class="rv-evidence-float__error">{{ evidenceFloat.error }}</div>
+      <div v-else class="rv-evidence-float__body">
         <span v-for="(part, index) in evidenceFloatParts" :key="index"
-          :class="{ 'reading-evidence-hit': part.hit }">{{ part.text }}</span>
+          :class="{ 'is-hit': part.hit }">{{ part.text }}</span>
       </div>
-      <div class="reading-evidence-float-hint">{{ $t('reading.clickToOpen') }}</div>
+      <div class="rv-evidence-float__hint">{{ $t('reading.clickToOpen') }}</div>
     </div>
   </div>
 </template>
@@ -564,9 +733,9 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Directive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import { createSessions } from '@/api/chat'
-import { getChunkByIdOnly, listKnowledgeBases, listKnowledgeFiles } from '@/api/knowledge-base'
+import { getChunkByIdOnly, listKnowledgeBases, listKnowledgeFiles, listKnowledgeFolders, type KnowledgeFolderNode } from '@/api/knowledge-base'
 import {
   createReadingRun,
   deleteReadingReport,
@@ -591,14 +760,89 @@ import {
   type ReadingRunStep,
 } from '@/api/reading'
 import ReadingThoughtChain from '@/components/ReadingThoughtChain.vue'
+import DocumentPreview from '@/components/document-preview.vue'
+import { useShellUiStore } from '@/stores/shellUi'
+import { hydrateProtectedFileImages } from '@/utils/security'
+
+type ReadingDocOption = {
+  value: string
+  label: string
+  kbId: string
+  kbName: string
+  folderId: string
+  fileSize: number
+  sizeLabel: string
+}
+
+type DocTreeRow = {
+  key: string
+  kind: 'kb' | 'folder' | 'doc'
+  id: string
+  label: string
+  depth: number
+  count?: number
+  expanded?: boolean
+  doc?: ReadingDocOption
+}
+
+type OutlineNode = {
+  key: string
+  label: string
+  level: number
+  sectionIds: string[]
+  children: OutlineNode[]
+}
+
+type OutlineRow = {
+  key: string
+  label: string
+  depth: number
+  kind: 'doc' | 'heading'
+  hasChildren: boolean
+  expanded: boolean
+  sectionIds: string[]
+  current: boolean
+  preview: boolean
+  read: boolean
+}
+
+type ReadingDraft = {
+  id: string
+  name: string
+  documentIds: string[]
+  depth: ReadingDepth
+  goal: string
+  updatedAt: string
+}
+
+type AnswerOption = {
+  id: string
+  label: string
+  text: string
+  recommended: boolean
+}
+
+type NoteItem = {
+  key: string
+  type: 'term' | 'conclusion' | 'open' | 'contradiction'
+  typeLabel: string
+  status: string
+  statusLabel: string
+  text: string
+  cite: string
+  recommended: boolean
+  actions: boolean
+  raw: Record<string, any>
+}
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
+const shellUi = useShellUiStore()
 const kbId = ref('')
 const kbOptions = ref<Array<{ value: string; label: string }>>([])
 const documentIds = ref<string[]>([])
-const documentOptions = ref<Array<{ value: string; label: string }>>([])
+const documentOptions = ref<ReadingDocOption[]>([])
 const kbSearch = ref('')
 const docSearch = ref('')
 const addDocSearch = ref('')
@@ -613,7 +857,7 @@ const exporting = ref(false)
 const planCollapsed = ref(false)
 const notesCollapsed = ref(false)
 const addDocDialogVisible = ref(false)
-const addDocOptions = ref<Array<{ value: string; label: string }>>([])
+const addDocOptions = ref<ReadingDocOption[]>([])
 const addDocIds = ref<string[]>([])
 const addingDocs = ref(false)
 const readingBodyRef = ref<HTMLElement | null>(null)
@@ -625,6 +869,42 @@ const documentCurrentRef = ref<HTMLElement | null>(null)
 const selectedTraceRound = ref(0)
 const leftWidth = ref(loadStoredLeftWidth())
 const storageKey = 'gaze_active_reading_run_id'
+const draftsStorageKey = 'gaze_reading_drafts'
+const configView = ref(false)
+const mobileLeftOpen = ref(false)
+const mobileRightOpen = ref(false)
+const previewSectionId = ref('')
+const originalDrawerOpen = ref(false)
+const originalSectionId = ref('')
+const drawerWidth = ref(loadStoredDrawerWidth())
+const drafts = ref<ReadingDraft[]>(loadStoredDrafts())
+const draftsExpanded = ref(true)
+const renamingDraftId = ref('')
+const renameDraftValue = ref('')
+const goalTextareaRef = ref<HTMLTextAreaElement | null>(null)
+const folderTrees = ref<Record<string, KnowledgeFolderNode[]>>({})
+const expandedTreeNodes = ref<Record<string, boolean>>({})
+const outlineExpanded = ref<Record<string, boolean>>({})
+
+const inlineAnswerSubmitted = ref(false)
+const answeredQuestionSnapshot = ref<ReadingQuestionNode | null>(null)
+const selectedAnswerId = ref('')
+const customAnswerMode = ref(false)
+const answerDraft = ref('')
+const answering = ref(false)
+const answerTextareaRef = ref<HTMLTextAreaElement | null>(null)
+
+const stageDecision = ref<'' | 'confirmed' | 'corrected' | 'skipped'>('')
+const stageCorrecting = ref(false)
+const stageCorrection = ref('')
+
+const editingNoteKey = ref('')
+const editingNoteText = ref('')
+const readingPageRef = ref<HTMLElement | null>(null)
+const pageNarrow = ref(false)
+
+let autoFullscreenApplied = false
+let readingPageObserver: ResizeObserver | null = null
 
 const currentSection = computed(() => {
   const sections = run.value?.plan.sections || []
@@ -642,7 +922,7 @@ const currentQuestion = computed(() => {
 })
 
 const isStructured = computed(() => Number(run.value?.plan?.state_version || 0) >= 2)
-const activeTab = ref<'terms' | 'conclusions' | 'open' | 'contradictions'>('conclusions')
+const activeTab = ref<'all' | 'terms' | 'conclusions' | 'open' | 'contradictions'>('all')
 const structuredTerms = computed(() => run.value?.terms || [])
 const structuredContradictions = computed(() => run.value?.contradictions || [])
 const structuredConclusions = computed(() => (run.value?.conclusions || []).slice().reverse())
@@ -696,10 +976,415 @@ const canStartNewReading = computed(() =>
   ['finished', 'stopped', 'failed'].includes(String(run.value?.status || '')),
 )
 
+const showConfigView = computed(() => !run.value || configView.value)
+const canPauseRun = computed(() =>
+  ['planning', 'reading', 'waiting_user'].includes(String(run.value?.status || '')),
+)
+const totalSectionCount = computed(() => run.value?.plan.sections?.length || 0)
+const readPercent = computed(() => {
+  if (!totalSectionCount.value) return 0
+  return Math.round((readSectionCount.value / totalSectionCount.value) * 100)
+})
+const remainingMinutes = computed(() => {
+  const remaining = Math.max(0, totalSectionCount.value - readSectionCount.value)
+  const factor = run.value?.plan.depth === 'deep' ? 3 : run.value?.plan.depth === 'quick' ? 1 : 2
+  return Math.max(1, Math.round(remaining * factor))
+})
+const workbenchTitle = computed(() =>
+  activeDocument.value?.title || currentSection.value?.title || t('reading.title'),
+)
+const workbenchMeta = computed(() => {
+  if (!run.value) return ''
+  return depthLabel.value
+})
+const exportOptions = computed(() => [
+  { content: t('reading.exportMarkdown'), value: 'markdown' },
+  { content: t('reading.exportJSON'), value: 'json' },
+])
+
+const previewSectionData = computed(() =>
+  (run.value?.plan.sections || []).find((section) => section.id === previewSectionId.value) || null,
+)
+const viewingSection = computed(() => previewSectionData.value || currentSection.value)
+const viewingSectionTitle = computed(() => {
+  const heading = cleanHeading(viewingSection.value?.heading)
+  return heading || viewingSection.value?.title || t('reading.plan')
+})
+const traceSectionHeading = computed(() => {
+  const heading = cleanHeading(traceSection.value?.heading)
+  if (!heading) return ''
+  return documentTitle(traceSection.value?.title || '') === documentTitle(heading) ? '' : heading
+})
+const stageSectionLabel = computed(() =>
+  cleanHeading(currentSection.value?.heading) || currentSection.value?.title || '',
+)
+const viewingSectionMeta = computed(() => {
+  if (!run.value) return ''
+  if (previewSectionId.value && previewSectionId.value !== run.value.current_section_id) {
+    return t('reading.previewMeta')
+  }
+  return t('reading.roundLabel', { round: currentRound.value })
+})
+const previewConclusions = computed(() =>
+  (run.value?.conclusions || []).filter((item) => item.section_id === previewSectionData.value?.id),
+)
+
+const outlineDocuments = computed<OutlineNode[]>(() => {
+  const sections = run.value?.plan.sections || []
+  const roots: OutlineNode[] = []
+  const rootByTitle = new Map<string, OutlineNode>()
+  const stacks = new Map<string, OutlineNode[]>()
+
+  for (const section of sections) {
+    const title = section.title || section.heading || section.id
+    const docBase = documentTitle(title)
+    let root = rootByTitle.get(docBase)
+    if (!root) {
+      root = { key: `doc:${docBase}`, label: docBase, level: 0, sectionIds: [], children: [] }
+      rootByTitle.set(docBase, root)
+      roots.push(root)
+    }
+
+    const segments = headingSegments(section.heading)
+      .filter((segment, index) =>
+        !(index === 0 && segment.level === 1 && documentTitle(segment.text) === docBase),
+      )
+    if (!segments.length) {
+      if (!root.sectionIds.includes(section.id)) root.sectionIds.push(section.id)
+      continue
+    }
+
+    const previousStack = stacks.get(docBase) || []
+    const stack = previousStack.filter((node) => node.level < segments[0].level)
+    for (const segment of segments) {
+      while (stack.length && stack[stack.length - 1].level >= segment.level) stack.pop()
+      const parent = stack[stack.length - 1] || root
+      let node = parent.children.find((child) =>
+        child.label === segment.text && child.level === segment.level,
+      )
+      if (!node) {
+        node = {
+          key: `${parent.key}>${segment.level}:${segment.text}`,
+          label: segment.text,
+          level: segment.level,
+          sectionIds: [],
+          children: [],
+        }
+        parent.children.push(node)
+      }
+      if (!node.sectionIds.includes(section.id)) node.sectionIds.push(section.id)
+      stack.push(node)
+    }
+    stacks.set(docBase, stack)
+  }
+  return roots
+})
+
+const outlineRows = computed<OutlineRow[]>(() => {
+  const sections = run.value?.plan.sections || []
+  const readById = new Map(sections.map((section) => [section.id, Boolean(section.read)]))
+  const rows: OutlineRow[] = []
+  const walk = (node: OutlineNode, depth: number, root: boolean) => {
+    const expanded = root
+      ? outlineExpanded.value[node.key] !== false
+      : Boolean(outlineExpanded.value[node.key])
+    rows.push({
+      key: node.key,
+      label: node.label,
+      depth,
+      kind: root ? 'doc' : 'heading',
+      hasChildren: node.children.length > 0,
+      expanded,
+      sectionIds: node.sectionIds,
+      current: node.sectionIds.includes(String(run.value?.current_section_id || '')),
+      preview: node.sectionIds.includes(previewSectionId.value),
+      read: node.sectionIds.length > 0 && node.sectionIds.every((id) => readById.get(id)),
+    })
+    if (expanded) node.children.forEach((child) => walk(child, depth + 1, false))
+  }
+  outlineDocuments.value.forEach((root) => walk(root, 0, true))
+  return rows
+})
+
+function toggleOutlineRow(row: OutlineRow) {
+  const current = row.kind === 'doc'
+    ? outlineExpanded.value[row.key] !== false
+    : Boolean(outlineExpanded.value[row.key])
+  outlineExpanded.value = { ...outlineExpanded.value, [row.key]: !current }
+}
+
+function handleOutlineRow(row: OutlineRow) {
+  if (row.kind === 'doc') {
+    if (row.hasChildren) toggleOutlineRow(row)
+    return
+  }
+  const sectionId = row.sectionIds.includes(String(run.value?.current_section_id || ''))
+    ? String(run.value?.current_section_id || '')
+    : row.sectionIds[0]
+  if (sectionId) previewSection({ id: sectionId })
+}
+const roundConclusions = computed(() => {
+  const sectionId = viewingSection.value?.id
+  const list = (run.value?.conclusions || []).filter((item) => {
+    if (sectionId && item.section_id !== sectionId) return false
+    return item.round === currentRound.value
+  })
+  return list.length ? list : (run.value?.conclusions || []).filter((item) => item.section_id === sectionId).slice(-3)
+})
+const openContradictions = computed(() => structuredContradictions.value)
+
+const filteredAllDocuments = computed(() => {
+  const q = docSearch.value.trim().toLowerCase()
+  if (!q) return documentOptions.value
+  return documentOptions.value.filter((doc) =>
+    `${doc.label} ${doc.kbName}`.toLowerCase().includes(q),
+  )
+})
+const docSearchActive = computed(() => docSearch.value.trim().length > 0)
+const selectedDocuments = computed(() =>
+  documentIds.value
+    .map((id) => documentOptions.value.find((doc) => doc.value === id))
+    .filter((doc): doc is ReadingDocOption => Boolean(doc)),
+)
+
+function docsInFolder(kbId: string, folderId: string) {
+  return documentOptions.value.filter((doc) => doc.kbId === kbId && doc.folderId === folderId)
+}
+
+const documentTreeRows = computed<DocTreeRow[]>(() => {
+  if (docSearchActive.value) return []
+  const rows: DocTreeRow[] = []
+  for (const base of kbOptions.value) {
+    const docs = documentOptions.value.filter((doc) => doc.kbId === base.value)
+    const kbKey = `kb:${base.value}`
+    const kbExpanded = expandedTreeNodes.value[kbKey] !== false
+    rows.push({
+      key: kbKey,
+      kind: 'kb',
+      id: base.value,
+      label: base.label,
+      depth: 0,
+      count: docs.length,
+      expanded: kbExpanded,
+    })
+    if (!kbExpanded) continue
+
+    const folderIds = new Set<string>()
+    const collectFolderIds = (nodes: KnowledgeFolderNode[]) => {
+      for (const node of nodes) {
+        if (node.id) folderIds.add(String(node.id))
+        collectFolderIds(node.children || [])
+      }
+    }
+    collectFolderIds(folderTrees.value[base.value] || [])
+
+    const pushDoc = (doc: ReadingDocOption, depth: number) => {
+      rows.push({
+        key: `doc:${base.value}:${doc.value}`,
+        kind: 'doc',
+        id: doc.value,
+        label: doc.label,
+        depth,
+        doc,
+      })
+    }
+
+    const walk = (nodes: KnowledgeFolderNode[], depth: number) => {
+      for (const node of nodes) {
+        const key = `folder:${base.value}:${node.id || node.path}`
+        const expanded = Boolean(expandedTreeNodes.value[key])
+        rows.push({
+          key,
+          kind: 'folder',
+          id: String(node.id || node.path),
+          label: node.name,
+          depth,
+          count: node.total_count,
+          expanded,
+        })
+        if (!expanded) continue
+        walk(node.children || [], depth + 1)
+        docsInFolder(base.value, String(node.id || '')).forEach((doc) => pushDoc(doc, depth + 1))
+      }
+    }
+
+    walk(folderTrees.value[base.value] || [], 1)
+    docs
+      .filter((doc) => !doc.folderId || !folderIds.has(doc.folderId))
+      .forEach((doc) => pushDoc(doc, 1))
+  }
+  return rows
+})
+
+function handleTreeRow(row: DocTreeRow) {
+  if (row.kind === 'doc' && row.doc) {
+    toggleDocument(row.doc.value)
+    return
+  }
+  const current = row.kind === 'kb'
+    ? expandedTreeNodes.value[row.key] !== false
+    : Boolean(expandedTreeNodes.value[row.key])
+  expandedTreeNodes.value = { ...expandedTreeNodes.value, [row.key]: !current }
+}
+
+const filteredAddDocOptions = computed(() => {
+  const q = addDocSearch.value.trim().toLowerCase()
+  if (!q) return addDocOptions.value
+  return addDocOptions.value.filter((doc) =>
+    `${doc.label} ${doc.kbName}`.toLowerCase().includes(q),
+  )
+})
+
+const depthOptions = computed(() => [
+  { value: 'quick' as ReadingDepth, label: t('reading.depth.quick'), hint: t('reading.depthHint.quick') },
+  { value: 'standard' as ReadingDepth, label: t('reading.depth.standard'), hint: t('reading.depthHint.standard') },
+  { value: 'deep' as ReadingDepth, label: t('reading.depth.deep'), hint: t('reading.depthHint.deep') },
+])
+const goalChips = computed(() => [
+  { key: 'summary', label: t('reading.goalChips.summary'), value: t('reading.goalChips.summary') },
+  { key: 'contradiction', label: t('reading.goalChips.contradiction'), value: t('reading.goalChips.contradiction') },
+  { key: 'terms', label: t('reading.goalChips.terms'), value: t('reading.goalChips.terms') },
+  { key: 'pitfalls', label: t('reading.goalChips.pitfalls'), value: t('reading.goalChips.pitfalls') },
+  { key: 'custom', label: t('reading.goalChips.custom'), value: '' },
+])
+const estimate = computed(() => {
+  const docs = documentOptions.value.filter((doc) => documentIds.value.includes(doc.value))
+  const chars = docs.reduce((sum, doc) => sum + Math.max(4000, Math.round((doc.fileSize || 0) / 3)), 0)
+  const sections = Math.max(1, Math.ceil(chars / 3200))
+  const roundsPerSection = depth.value === 'deep' ? 6 : depth.value === 'quick' ? 1 : 3
+  const rounds = sections * roundsPerSection
+  return {
+    rounds,
+    minutes: Math.max(5, Math.round(rounds * 0.25)),
+    tokens: Math.max(2, Math.round((rounds * 300) / 1000)),
+    questions: depth.value === 'deep' ? '2–4' : depth.value === 'quick' ? '0' : '1–2',
+  }
+})
+
+const noteTotalCount = computed(() =>
+  structuredTerms.value.length + structuredConclusions.value.length + openQuestions.value.length + structuredContradictions.value.length,
+)
+const skippedQuestionCount = computed(() =>
+  (run.value?.questions || []).filter((item) => item.status === 'skipped').length,
+)
+const noteTabs = computed(() => [
+  { key: 'all' as const, label: t('reading.tabs.all'), count: noteTotalCount.value },
+  { key: 'terms' as const, label: t('reading.tabs.terms'), count: structuredTerms.value.length },
+  { key: 'conclusions' as const, label: t('reading.tabs.conclusions'), count: structuredConclusions.value.length },
+  { key: 'open' as const, label: t('reading.tabs.open'), count: openQuestions.value.length },
+  { key: 'contradictions' as const, label: t('reading.tabs.contradictions'), count: structuredContradictions.value.length },
+])
+const visibleNotes = computed<NoteItem[]>(() => {
+  const notes: NoteItem[] = []
+  for (const term of structuredTerms.value) {
+    notes.push({
+      key: `term-${term.id}`,
+      type: 'term',
+      typeLabel: t('reading.tabs.terms'),
+      status: term.status,
+      statusLabel: term.status === 'confirmed' ? t('reading.confirmedTag') : t('reading.pendingConfirm'),
+      text: `${term.term}：${term.definition}`,
+      cite: term.source?.[0] ? evidenceLabel(term.source[0]) : '',
+      recommended: Boolean(term.canonical),
+      actions: true,
+      raw: term as unknown as Record<string, any>,
+    })
+  }
+  for (const conclusion of structuredConclusions.value) {
+    notes.push({
+      key: `conclusion-${conclusion.id}`,
+      type: 'conclusion',
+      typeLabel: t('reading.tabs.conclusions'),
+      status: conclusion.status,
+      statusLabel: conclusionStatusLabel(conclusion),
+      text: conclusion.text,
+      cite: conclusion.evidence?.[0] ? evidenceLabel(conclusion.evidence[0]) : '',
+      recommended: conclusion.source === 'user',
+      actions: true,
+      raw: conclusion as unknown as Record<string, any>,
+    })
+  }
+  for (const question of openQuestions.value) {
+    notes.push({
+      key: `open-${question.id}`,
+      type: 'open',
+      typeLabel: t('reading.tabs.open'),
+      status: question.status,
+      statusLabel: questionStatusLabel(question),
+      text: question.text,
+      cite: question.evidence?.[0] ? evidenceLabel(question.evidence[0]) : '',
+      recommended: Boolean(question.recommended_answer),
+      actions: false,
+      raw: question as unknown as Record<string, any>,
+    })
+  }
+  for (const item of structuredContradictions.value) {
+    notes.push({
+      key: `contra-${item.id}`,
+      type: 'contradiction',
+      typeLabel: t('reading.tabs.contradictions'),
+      status: item.status,
+      statusLabel: item.status === 'open' ? t('reading.contradictionOpen') : t('reading.contradictionResolved'),
+      text: item.description,
+      cite: '',
+      recommended: false,
+      actions: false,
+      raw: item as unknown as Record<string, any>,
+    })
+  }
+  if (activeTab.value === 'all') return notes
+  const typeMap = {
+    terms: 'term',
+    conclusions: 'conclusion',
+    open: 'open',
+    contradictions: 'contradiction',
+  } as const
+  return notes.filter((note) => note.type === typeMap[activeTab.value as keyof typeof typeMap])
+})
+
+const answerOptions = computed<AnswerOption[]>(() => {
+  const question = currentPendingQuestion.value as (ReadingQuestionNode & {
+    options?: Array<{ label?: string; text?: string; recommended?: boolean }>
+  }) | null
+  const raw = question?.options
+  if (Array.isArray(raw) && raw.length) {
+    return raw.map((option, index) => ({
+      id: String(index),
+      label: option.label || t('reading.optionLabel', { index: index + 1 }),
+      text: option.text || '',
+      recommended: Boolean(option.recommended),
+    }))
+  }
+  if (question?.recommended_answer) {
+    return [{
+      id: '0',
+      label: t('reading.optionLabel', { index: 1 }),
+      text: question.recommended_answer,
+      recommended: true,
+    }]
+  }
+  return []
+})
+const answerReady = computed(() =>
+  customAnswerMode.value ? answerDraft.value.trim().length > 0 : Boolean(selectedAnswerId.value),
+)
+const questionCard = computed(() =>
+  inlineAnswerSubmitted.value ? answeredQuestionSnapshot.value : currentPendingQuestion.value,
+)
+
 const activeDocument = computed(() => {
   const documents = readingDocuments.value
   return documents.find((doc) => doc.id === activeDocumentId.value) || documents[0] || null
 })
+const originalFileBlob = computed(() =>
+  activeDocument.value
+    ? new Blob([activeDocument.value.content || ''], { type: 'text/markdown' })
+    : undefined,
+)
+const originalFileName = computed(() =>
+  activeDocument.value?.file_name || activeDocument.value?.title || 'document.md',
+)
+const drawerToolbarRef = ref<HTMLElement | null>(null)
 const readingDocumentOptions = computed(() =>
   readingDocuments.value.map((doc) => ({
     value: doc.id,
@@ -747,8 +1432,14 @@ const currentPositionSection = computed(() =>
   (run.value?.plan.sections || [])[0] ||
   null,
 )
+const originalTargetSection = computed(() =>
+  (run.value?.plan.sections || []).find((section) => section.id === originalSectionId.value) ||
+  previewSectionData.value ||
+  currentSection.value ||
+  currentPositionSection.value,
+)
 const activeDocumentSection = computed(() => {
-  const section = currentPositionSection.value
+  const section = originalTargetSection.value
   if (!section || !activeDocument.value) return null
   return (activeDocument.value.sections || []).find((item) => item.id === section.id) || null
 })
@@ -895,18 +1586,67 @@ function onWindowResize() {
   localStorage.setItem('gaze_reading_left_width', String(next))
 }
 
+type HeadingSegment = { level: number; text: string }
+
+function headingSegments(value?: string): HeadingSegment[] {
+  const raw = String(value || '').replace(/\r/g, '').trim()
+  if (!raw) return []
+  const segments: HeadingSegment[] = []
+  const lines = raw.split('\n').map((line) => line.trim()).filter(Boolean)
+  for (const line of lines) {
+    if (!/^#{1,6}\s/.test(line)) {
+      segments.push({ level: 2, text: line })
+      continue
+    }
+    const pattern = /(#{1,6})\s+([\s\S]*?)(?=\s+#{1,6}\s+|$)/g
+    let match: RegExpExecArray | null
+    while ((match = pattern.exec(line)) !== null) {
+      const text = match[2].trim()
+      if (text) segments.push({ level: match[1].length, text })
+    }
+  }
+  return segments
+}
+
+function cleanHeading(value?: string) {
+  const segments = headingSegments(value)
+  if (segments.length) return segments[segments.length - 1].text
+  return String(value || '').replace(/^#+\s*/, '').trim()
+}
+
+function documentTitle(value?: string) {
+  return String(value || '').replace(/\.(md|markdown|txt|pdf|docx?)$/i, '').trim()
+}
+
 function evidenceLabel(evidence: ReadingEvidence) {
-  const title = evidence.document_title || ''
-  return evidence.heading ? `${title} § ${evidence.heading}` : title
+  const title = documentTitle(evidence.document_title || '')
+  const heading = cleanHeading(evidence.heading)
+  if (heading && title !== documentTitle(heading)) return `${title} · ${heading}`
+  return title || heading
+}
+
+function dedupeEvidence(evidence: ReadingEvidence[] | undefined) {
+  const seen = new Set<string>()
+  const out: ReadingEvidence[] = []
+  for (const item of evidence || []) {
+    const key = `${item.chunk_id}|${item.quote}|${item.heading || ''}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(item)
+  }
+  return out
+}
+
+function citationSources(conclusion: ReadingConclusion) {
+  return dedupeEvidence(conclusion.evidence)
 }
 
 function openEvidence(evidence: ReadingEvidence) {
-  const kbId = run.value?.plan.knowledge_base_id
-  if (!kbId || !evidence.knowledge_id) return
-  router.push({
-    path: `/platform/knowledge-bases/${kbId}`,
-    query: { knowledge_id: evidence.knowledge_id },
-  })
+  if (!evidence.knowledge_id) return
+  void ensureReadingDocuments()
+  originalSectionId.value = evidence.section_id || ''
+  activeDocumentId.value = evidence.knowledge_id
+  originalDrawerOpen.value = true
 }
 
 function conclusionStatusLabel(conclusion: ReadingConclusion) {
@@ -1235,14 +1975,6 @@ function withSelectedOptions(options: Array<{ value: string; label: string }>, s
   return [...selected, ...options.filter((option) => !selectedValues.has(option.value))]
 }
 
-const filteredKbOptions = computed(() => filterOptions(kbOptions.value, kbSearch.value))
-const filteredDocumentOptions = computed(() =>
-  withSelectedOptions(filterOptions(documentOptions.value, docSearch.value), documentIds.value),
-)
-const filteredAddDocOptions = computed(() =>
-  withSelectedOptions(filterOptions(addDocOptions.value, addDocSearch.value), addDocIds.value),
-)
-
 const loadKnowledgeBases = async () => {
   try {
     const response = await listKnowledgeBases()
@@ -1251,25 +1983,53 @@ const loadKnowledgeBases = async () => {
       value: kb.id,
       label: kb.name || kb.id,
     }))
+    return kbOptions.value
   } catch {
     kbOptions.value = []
+    return []
   }
 }
 
+function formatFileSize(bytes: number) {
+  if (!bytes) return t('reading.sizeUnknown')
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
+
 const loadDocuments = async () => {
-  documentIds.value = []
-  documentOptions.value = []
-  docSearch.value = ''
-  if (!kbId.value) return
-  try {
-    const response = await listKnowledgeFiles(kbId.value, { page: 1, page_size: 500 })
-    const list = response.data || []
-    documentOptions.value = (Array.isArray(list) ? list : [])
-      .filter((doc: any) => doc.parse_status === 'completed')
-      .map((doc: any) => ({ value: doc.id, label: doc.file_name || doc.title || doc.id }))
-  } catch {
-    documentOptions.value = []
-  }
+  const bases = kbOptions.value.length ? kbOptions.value : await loadKnowledgeBases()
+  const all: ReadingDocOption[] = []
+  const trees: Record<string, KnowledgeFolderNode[]> = {}
+  await Promise.all(bases.map(async (base) => {
+    try {
+      const [filesResponse, foldersResponse] = await Promise.all([
+        listKnowledgeFiles(base.value, { page: 1, page_size: 500 }),
+        listKnowledgeFolders(base.value),
+      ])
+      const tree = (foldersResponse as any)?.data
+      trees[base.value] = Array.isArray(tree?.folders) ? tree.folders : []
+      const list = filesResponse.data || []
+      for (const doc of Array.isArray(list) ? list : []) {
+        if (doc.parse_status !== 'completed') continue
+        all.push({
+          value: doc.id,
+          label: doc.file_name || doc.title || doc.id,
+          kbId: base.value,
+          kbName: base.label,
+          folderId: String(doc.folder_id || ''),
+          fileSize: Number(doc.file_size || 0),
+          sizeLabel: formatFileSize(Number(doc.file_size || 0)),
+        })
+      }
+    } catch {
+      // One unavailable knowledge base must not block the picker.
+    }
+  }))
+  folderTrees.value = trees
+  documentOptions.value = all.sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'))
+  documentIds.value = documentIds.value.filter((id) =>
+    documentOptions.value.some((doc) => doc.value === id),
+  )
 }
 
 const loadReadingDocuments = async () => {
@@ -1298,21 +2058,13 @@ const loadReadingDocuments = async () => {
 
 const openAddDocs = async () => {
   const current = run.value
-  const kb = current?.plan.knowledge_base_id
-  if (!current || !kb) return
-  try {
-    const response = await listKnowledgeFiles(kb, { page: 1, page_size: 500 })
-    const list = response.data || []
-    const existing = new Set(current.document_ids)
-    addDocOptions.value = (Array.isArray(list) ? list : [])
-      .filter((doc: any) => doc.parse_status === 'completed' && !existing.has(doc.id))
-      .map((doc: any) => ({ value: doc.id, label: doc.file_name || doc.title || doc.id }))
-    addDocIds.value = []
-    addDocSearch.value = ''
-    addDocDialogVisible.value = true
-  } catch (err: any) {
-    MessagePlugin.error(err?.message || t('reading.addDocumentsFailed'))
-  }
+  if (!current) return
+  if (!documentOptions.value.length) await loadDocuments()
+  const existing = new Set(current.document_ids)
+  addDocOptions.value = documentOptions.value.filter((doc) => !existing.has(doc.value))
+  addDocIds.value = []
+  addDocSearch.value = ''
+  addDocDialogVisible.value = true
 }
 
 const confirmAddDocs = async () => {
@@ -1331,16 +2083,20 @@ const confirmAddDocs = async () => {
 
 const persistRun = async (next: ReadingRun) => {
   run.value = next
-  if (next.status === 'finished' || next.status === 'stopped') {
+  if (next.status === 'finished' || next.status === 'stopped' || next.status === 'abandoned') {
     localStorage.removeItem(storageKey)
   } else {
     localStorage.setItem(storageKey, next.id)
   }
 }
 
-const startRun = async () => {
+const createRun = async () => {
   creating.value = true
   try {
+    if (run.value && canPauseRun.value) {
+      const stopped = await stopReadingRun(run.value.id)
+      await persistRun(stopped.data)
+    }
     const session = await createSessions({ title: t('reading.sessionTitle') })
     const sessionId = session.data?.id || session.data?.data?.id
     if (!sessionId) throw new Error('session create failed')
@@ -1351,11 +2107,33 @@ const startRun = async () => {
       depth: depth.value,
     })
     await persistRun(response.data)
+    configView.value = false
+    syncViewQuery(false)
   } catch (err: any) {
     MessagePlugin.error(err?.message || t('reading.startFailed'))
   } finally {
     creating.value = false
   }
+}
+
+const startRun = async () => {
+  if (!documentIds.value.length) return
+  if (run.value && canPauseRun.value) {
+    const dialog = DialogPlugin.confirm({
+      header: t('reading.replaceRunTitle'),
+      body: t('reading.replaceRunBody'),
+      theme: 'warning',
+      confirmBtn: t('common.confirm'),
+      cancelBtn: t('common.cancel'),
+      onConfirm: () => {
+        dialog.hide()
+        void createRun()
+      },
+      onClose: () => dialog.hide(),
+    })
+    return
+  }
+  await createRun()
 }
 
 const startNewReading = async () => {
@@ -1540,16 +2318,551 @@ watch(
   },
 )
 
+function loadStoredDrafts(): ReadingDraft[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(draftsStorageKey) || '[]')
+    if (!Array.isArray(raw)) return []
+    return raw.filter((item) => item && item.id && Array.isArray(item.documentIds)).slice(0, 20)
+  } catch {
+    return []
+  }
+}
+
+function persistDrafts() {
+  localStorage.setItem(draftsStorageKey, JSON.stringify(drafts.value.slice(0, 20)))
+}
+
+function depthLabelOf(value: ReadingDepth) {
+  return t(`reading.depth.${value || 'standard'}`)
+}
+
+function formatDraftDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit' }).format(date)
+}
+
+function syncViewQuery(config: boolean) {
+  const query: Record<string, string> = {}
+  for (const [key, value] of Object.entries(route.query)) {
+    if (typeof value === 'string' && value) query[key] = value
+  }
+  if (config) query.view = 'config'
+  else delete query.view
+  void router.replace({ path: route.path, query })
+}
+
+function switchView(view: 'workbench' | 'config') {
+  if (view === 'workbench' && !run.value) return
+  configView.value = view === 'config'
+  mobileLeftOpen.value = false
+  mobileRightOpen.value = false
+  if (view === 'workbench') previewSectionId.value = ''
+  syncViewQuery(view === 'config')
+}
+
+const workbenchVisible = computed(() => Boolean(run.value) && !showConfigView.value)
+
+watch(
+  workbenchVisible,
+  (visible) => {
+    if (visible && !autoFullscreenApplied) {
+      shellUi.setFullscreen(true)
+      autoFullscreenApplied = true
+    } else if (!visible && autoFullscreenApplied) {
+      autoFullscreenApplied = false
+      shellUi.setFullscreen(false)
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => currentPendingQuestion.value?.id,
+  () => {
+    if (inlineAnswerSubmitted.value) return
+    selectedAnswerId.value = ''
+    customAnswerMode.value = false
+    answerDraft.value = ''
+    answerTextareaRef.value = null
+  },
+)
+
+watch(
+  () => `${currentRound.value}:${currentUnderstanding.value}`,
+  () => {
+    stageDecision.value = ''
+    stageCorrecting.value = false
+    stageCorrection.value = ''
+  },
+)
+
+function toggleDocument(id: string) {
+  const index = documentIds.value.indexOf(id)
+  if (index >= 0) {
+    documentIds.value = documentIds.value.filter((item) => item !== id)
+    return
+  }
+  if (documentIds.value.length >= 5) {
+    MessagePlugin.warning(t('reading.maxRefsHint'))
+    return
+  }
+  const doc = documentOptions.value.find((item) => item.value === id)
+  if (doc) {
+    const kbKey = `kb:${doc.kbId}`
+    if (expandedTreeNodes.value[kbKey] === false) {
+      expandedTreeNodes.value = { ...expandedTreeNodes.value, [kbKey]: true }
+    }
+  }
+  documentIds.value = [...documentIds.value, id]
+}
+
+function toggleAddDoc(id: string) {
+  const index = addDocIds.value.indexOf(id)
+  addDocIds.value = index >= 0
+    ? addDocIds.value.filter((item) => item !== id)
+    : [...addDocIds.value, id]
+}
+
+function selectGoalChip(chip: { key: string; value: string }) {
+  if (chip.key === 'custom') {
+    goalTextareaRef.value?.focus()
+    return
+  }
+  goal.value = goal.value === chip.value ? '' : chip.value
+}
+
+function saveDraft() {
+  if (!documentIds.value.length) return
+  const first = documentOptions.value.find((doc) => doc.value === documentIds.value[0])
+  const name = t('reading.draftAutoName', {
+    name: first?.label || t('reading.title'),
+    date: formatDraftDate(new Date().toISOString()),
+  })
+  const draft: ReadingDraft = {
+    id: crypto.randomUUID(),
+    name,
+    documentIds: [...documentIds.value],
+    depth: depth.value,
+    goal: goal.value,
+    updatedAt: new Date().toISOString(),
+  }
+  drafts.value = [draft, ...drafts.value].slice(0, 20)
+  persistDrafts()
+  MessagePlugin.success(t('reading.draftSaved'))
+}
+
+function loadDraft(draft: ReadingDraft) {
+  const available = new Set(documentOptions.value.map((doc) => doc.value))
+  documentIds.value = draft.documentIds.filter((id) => available.has(id)).slice(0, 5)
+  depth.value = draft.depth
+  goal.value = draft.goal
+  MessagePlugin.success(t('reading.draftLoaded'))
+}
+
+function startRenameDraft(draft: ReadingDraft) {
+  renamingDraftId.value = draft.id
+  renameDraftValue.value = draft.name
+}
+
+function cancelRenameDraft() {
+  renamingDraftId.value = ''
+  renameDraftValue.value = ''
+}
+
+function confirmRenameDraft(id: string) {
+  const name = renameDraftValue.value.trim()
+  if (!name) return
+  const draft = drafts.value.find((item) => item.id === id)
+  if (draft) {
+    draft.name = name
+    draft.updatedAt = new Date().toISOString()
+    persistDrafts()
+    MessagePlugin.success(t('reading.draftRenamed'))
+  }
+  cancelRenameDraft()
+}
+
+function deleteDraft(id: string) {
+  const dialog = DialogPlugin.confirm({
+    header: t('reading.deleteDraft'),
+    body: t('reading.deleteDraftConfirm'),
+    theme: 'warning',
+    confirmBtn: t('common.confirm'),
+    cancelBtn: t('common.cancel'),
+    onConfirm: () => {
+      dialog.hide()
+      drafts.value = drafts.value.filter((item) => item.id !== id)
+      persistDrafts()
+      MessagePlugin.success(t('reading.draftDeleted'))
+    },
+    onClose: () => dialog.hide(),
+  })
+}
+
+function previewSection(section: { id: string }) {
+  previewSectionId.value = section.id === run.value?.current_section_id ? '' : section.id
+  mobileLeftOpen.value = false
+}
+
+function clearPreview() {
+  previewSectionId.value = ''
+}
+
+function continueFromPreview() {
+  MessagePlugin.info(t('reading.jumpPending'))
+}
+
+function ensureReadingDocuments() {
+  if (!readingDocuments.value.length && run.value && isStructured.value) {
+    void loadReadingDocuments()
+  }
+}
+
+function loadStoredDrawerWidth() {
+  const raw = Number(localStorage.getItem('gaze_reading_drawer_width') || '')
+  return Number.isFinite(raw) && raw >= 360 ? raw : 560
+}
+
+function clampDrawerWidth(value: number) {
+  const half = Math.floor((readingPageRef.value?.clientWidth || window.innerWidth) / 2)
+  const max = Math.max(280, Math.min(900, half))
+  const min = Math.min(320, max)
+  return Math.min(Math.max(min, Math.round(value)), max)
+}
+
+let drawerResizing = false
+let drawerStartX = 0
+let drawerStartWidth = 0
+let suppressDrawerMaskClick = false
+
+function startDrawerResize(event: PointerEvent) {
+  drawerResizing = true
+  drawerStartX = event.clientX
+  drawerStartWidth = drawerWidth.value
+  document.body.style.userSelect = 'none'
+  document.body.style.cursor = 'col-resize'
+  document.addEventListener('pointermove', onDrawerResize)
+  document.addEventListener('pointerup', endDrawerResize, { once: true })
+  event.preventDefault()
+}
+
+function onDrawerResize(event: PointerEvent) {
+  if (!drawerResizing) return
+  drawerWidth.value = clampDrawerWidth(drawerStartWidth + drawerStartX - event.clientX)
+}
+
+function endDrawerResize() {
+  if (!drawerResizing) return
+  drawerResizing = false
+  drawerWidth.value = clampDrawerWidth(drawerWidth.value)
+  localStorage.setItem('gaze_reading_drawer_width', String(drawerWidth.value))
+  document.body.style.userSelect = ''
+  document.body.style.cursor = ''
+  document.removeEventListener('pointermove', onDrawerResize)
+  // The pointerup that ends a drag can land on the mask and emit a click
+  // there; keep that click from closing the drawer.
+  suppressDrawerMaskClick = true
+  window.setTimeout(() => {
+    suppressDrawerMaskClick = false
+  }, 0)
+}
+
+function closeDrawerFromMask() {
+  if (suppressDrawerMaskClick) {
+    suppressDrawerMaskClick = false
+    return
+  }
+  originalDrawerOpen.value = false
+}
+
+function onDrawerResizeKeydown(event: KeyboardEvent) {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+  event.preventDefault()
+  const delta = event.key === 'ArrowLeft' ? 24 : -24
+  drawerWidth.value = clampDrawerWidth(drawerWidth.value + delta)
+  localStorage.setItem('gaze_reading_drawer_width', String(drawerWidth.value))
+}
+
+let drawerImageObserver: MutationObserver | null = null
+let drawerHydrateTimer: number | null = null
+
+function hydrateDrawerImages() {
+  if (drawerHydrateTimer) window.clearTimeout(drawerHydrateTimer)
+  drawerHydrateTimer = window.setTimeout(async () => {
+    const root = documentPaneRef.value
+    if (!root) return
+    const kbId = run.value?.plan.knowledge_base_id
+    await hydrateProtectedFileImages(
+      root,
+      kbId ? { mode: 'knowledgeBase', kbId } : undefined,
+    )
+    root.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
+      if (img.dataset.readingBound === '1') return
+      img.dataset.readingBound = '1'
+      img.addEventListener('error', () => img.classList.add('is-broken'))
+      img.addEventListener('load', () => img.classList.remove('is-broken'))
+    })
+  }, 60)
+}
+
+function startDrawerImageWatch() {
+  void nextTick(() => {
+    const root = documentPaneRef.value
+    if (!root) return
+    drawerImageObserver?.disconnect()
+    drawerImageObserver = new MutationObserver(() => hydrateDrawerImages())
+    drawerImageObserver.observe(root, { childList: true, subtree: true })
+    hydrateDrawerImages()
+  })
+}
+
+watch(originalDrawerOpen, (open) => {
+  if (open) {
+    startDrawerImageWatch()
+    return
+  }
+  drawerImageObserver?.disconnect()
+  drawerImageObserver = null
+  if (drawerHydrateTimer) {
+    window.clearTimeout(drawerHydrateTimer)
+    drawerHydrateTimer = null
+  }
+})
+
+watch(activeDocumentId, () => {
+  if (originalDrawerOpen.value) startDrawerImageWatch()
+})
+
+function openOriginal() {
+  originalSectionId.value = viewingSection.value?.id || currentSection.value?.id || ''
+  drawerWidth.value = clampDrawerWidth(drawerWidth.value)
+  ensureReadingDocuments()
+  originalDrawerOpen.value = true
+}
+
+function questionKindLabel(question: ReadingQuestionNode) {
+  if (question.kind === 'fact') return t('reading.questionKind.fact')
+  if (question.kind === 'decision') return t('reading.questionKind.decision')
+  if (question.gap_type && question.gap_type !== 'unclassified') {
+    const key = `reading.gapTypes.${question.gap_type}`
+    const translated = t(key)
+    if (translated !== key) return translated
+  }
+  return t('reading.questionCardTag')
+}
+
+function selectAnswer(id: string) {
+  selectedAnswerId.value = id
+  customAnswerMode.value = false
+  answerDraft.value = ''
+}
+
+function enableCustomAnswer() {
+  customAnswerMode.value = true
+  selectedAnswerId.value = ''
+  void nextTick(() => answerTextareaRef.value?.focus())
+}
+
+function resetAnswerState() {
+  inlineAnswerSubmitted.value = false
+  answeredQuestionSnapshot.value = null
+  selectedAnswerId.value = ''
+  customAnswerMode.value = false
+  answerDraft.value = ''
+  answerTextareaRef.value = null
+}
+
+async function submitInlineAnswer() {
+  const question = currentPendingQuestion.value
+  if (!run.value || !question || !answerReady.value || answering.value) return
+  const selected = answerOptions.value.find((option) => option.id === selectedAnswerId.value)
+  const text = customAnswerMode.value ? answerDraft.value.trim() : selected?.text || ''
+  if (!text) return
+  answering.value = true
+  try {
+    answeredQuestionSnapshot.value = question
+    const response = await feedbackReadingRun(run.value.id, {
+      feedback: text,
+      question_id: question.id,
+    })
+    await persistRun(response.data)
+    inlineAnswerSubmitted.value = true
+  } catch (err: any) {
+    answeredQuestionSnapshot.value = null
+    MessagePlugin.error(err?.message || t('reading.feedbackFailed'))
+  } finally {
+    answering.value = false
+  }
+}
+
+async function skipInlineQuestion() {
+  const question = currentPendingQuestion.value
+  if (!run.value || !question || answering.value) return
+  answering.value = true
+  try {
+    const response = await feedbackReadingRun(run.value.id, {
+      skip: true,
+      question_id: question.id,
+    })
+    await persistRun(response.data)
+    resetAnswerState()
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('reading.feedbackFailed'))
+  } finally {
+    answering.value = false
+  }
+}
+
+function continueAfterAnswer() {
+  resetAnswerState()
+  if (currentPendingQuestion.value) return
+  void advanceUntilPause()
+}
+
+function decideStage(decision: 'confirmed' | 'corrected' | 'skipped') {
+  if (decision === 'corrected') {
+    stageCorrecting.value = true
+    stageDecision.value = ''
+    return
+  }
+  stageDecision.value = decision
+  stageCorrecting.value = false
+  if (decision === 'confirmed' && run.value) {
+    for (const item of run.value.conclusions || []) {
+      if (item.round === currentRound.value && item.status === 'candidate') item.status = 'confirmed'
+    }
+    for (const item of run.value.terms || []) {
+      if (item.status === 'candidate') item.status = 'confirmed'
+    }
+  }
+}
+
+function resetStageDecision() {
+  stageDecision.value = ''
+  stageCorrecting.value = false
+  stageCorrection.value = ''
+}
+
+function submitStageCorrection() {
+  if (!stageCorrection.value.trim()) return
+  stageCorrecting.value = false
+  stageDecision.value = 'corrected'
+  MessagePlugin.success(t('reading.correctionRecorded'))
+}
+
+function cancelStageCorrection() {
+  stageCorrecting.value = false
+  stageCorrection.value = ''
+}
+
+function markContradictionUncertain(item: ReadingContradiction) {
+  ;(item as unknown as Record<string, any>).resolution = t('reading.uncertainResolution')
+  MessagePlugin.info(t('reading.markedUncertain'))
+}
+
+function confirmNote(note: NoteItem) {
+  note.raw.status = 'confirmed'
+  if (note.raw.gates && typeof note.raw.gates === 'object') {
+    note.raw.gates.user_adjudicated = true
+  }
+  MessagePlugin.success(t('reading.noteConfirmed'))
+}
+
+function rejectNote(note: NoteItem) {
+  note.raw.status = 'rejected'
+  MessagePlugin.success(t('reading.noteRejected'))
+}
+
+function restoreNote(note: NoteItem) {
+  note.raw.status = 'candidate'
+  MessagePlugin.success(t('reading.noteRestored'))
+}
+
+function startNoteEdit(note: NoteItem) {
+  editingNoteKey.value = note.key
+  editingNoteText.value = note.type === 'term'
+    ? String(note.raw.definition || '')
+    : String(note.raw.text || '')
+}
+
+function cancelNoteEdit() {
+  editingNoteKey.value = ''
+  editingNoteText.value = ''
+}
+
+function saveNoteEdit(note: NoteItem) {
+  const text = editingNoteText.value.trim()
+  if (!text) return
+  if (note.type === 'term') note.raw.definition = text
+  else note.raw.text = text
+  cancelNoteEdit()
+  MessagePlugin.success(t('reading.noteSaved'))
+}
+
+function handleExportMenu(item: { value?: string }) {
+  const format = item?.value === 'json' ? 'json' : 'markdown'
+  void exportReport(format)
+}
+
+async function pauseRun() {
+  if (!run.value) return
+  try {
+    const response = await stopReadingRun(run.value.id)
+    await persistRun(response.data)
+    MessagePlugin.success(t('reading.pausedToast'))
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('reading.stopFailed'))
+  }
+}
+
+function abandonRun() {
+  if (!run.value) return
+  const current = run.value
+  const dialog = DialogPlugin.confirm({
+    header: t('reading.abandonTitle'),
+    body: t('reading.abandonBody'),
+    theme: 'warning',
+    confirmBtn: t('reading.stop'),
+    cancelBtn: t('common.cancel'),
+    onConfirm: () => {
+      dialog.hide()
+      void (async () => {
+        try {
+          const response = await stopReadingRun(current.id)
+          run.value = { ...response.data, status: 'abandoned' } as ReadingRun
+          localStorage.removeItem(storageKey)
+          MessagePlugin.success(t('reading.abandonedToast'))
+        } catch (err: any) {
+          MessagePlugin.error(err?.message || t('reading.stopFailed'))
+        }
+      })()
+    },
+    onClose: () => dialog.hide(),
+  })
+}
+
 onMounted(async () => {
   window.addEventListener('scroll', hideEvidenceOnScroll, true)
   window.addEventListener('resize', onWindowResize)
+  if (readingPageRef.value) {
+    readingPageObserver = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width || 0
+      pageNarrow.value = width > 0 && width < 1100
+      if (width > 0) drawerWidth.value = clampDrawerWidth(drawerWidth.value)
+    })
+    readingPageObserver.observe(readingPageRef.value)
+  }
+  configView.value = queryValue(route.query.view) === 'config'
   await loadKnowledgeBases()
+  await loadDocuments()
   const runId = queryValue(route.query.run_id)
   if (runId) {
     try {
       const response = await getReadingRun(runId)
       run.value = response.data
       localStorage.setItem(storageKey, response.data.id)
+      void loadReadingDocuments()
       return
     } catch {
       localStorage.removeItem(storageKey)
@@ -1558,7 +2871,6 @@ onMounted(async () => {
   const kb = queryValue(route.query.kb)
   if (kb) {
     kbId.value = kb
-    await loadDocuments()
     const docs = queryValue(route.query.docs).split(',').map((id) => id.trim()).filter(Boolean)
     const available = new Set(documentOptions.value.map((option) => option.value))
     documentIds.value = docs.filter((id) => available.has(id)).slice(0, 5)
@@ -1569,948 +2881,1858 @@ onMounted(async () => {
   try {
     const response = await getReadingRun(activeId)
     run.value = response.data
+    void loadReadingDocuments()
   } catch {
     localStorage.removeItem(storageKey)
   }
 })
 
+watch(
+  () => run.value?.current_section_id,
+  () => {
+    if (run.value && isStructured.value) void loadReadingDocuments()
+  },
+)
+
 onBeforeUnmount(() => {
   window.removeEventListener('scroll', hideEvidenceOnScroll, true)
   window.removeEventListener('resize', onWindowResize)
+  readingPageObserver?.disconnect()
+  readingPageObserver = null
+  drawerImageObserver?.disconnect()
+  drawerImageObserver = null
+  if (drawerHydrateTimer) window.clearTimeout(drawerHydrateTimer)
   if (evidenceCloseTimer) window.clearTimeout(evidenceCloseTimer)
   document.body.style.userSelect = ''
   document.body.style.cursor = ''
+  if (autoFullscreenApplied) {
+    autoFullscreenApplied = false
+    shellUi.setFullscreen(false)
+  }
 })
 </script>
 
-<style lang="less" scoped>
+<style scoped lang="less">
 .reading-page {
-  flex: 1 1 auto;
-  width: 100%;
-  max-width: 1480px;
-  min-height: 0;
-  margin: 0 auto;
-  padding: 28px 24px 48px;
-  overflow-y: auto;
-  box-sizing: border-box;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
+  --rv-text: #37352f;
+  --rv-text-2: #787774;
+  --rv-text-3: #9b9a97;
+  --rv-bg: #ffffff;
+  --rv-side: #faf9f7;
+  --rv-hair: #ebebea;
+  --rv-hover: #f1efea;
+  --rv-green: #07c05f;
+  --rv-green-deep: #0b9e50;
+  --rv-green-bg: #e9f8ec;
+  --rv-sage: #e9efe7;
+  --rv-sage-d: #4e7a6c;
+  --rv-haze: #e7edf1;
+  --rv-haze-d: #5d7b8a;
+  --rv-oat: #f2ede3;
+  --rv-oat-d: #8a7a5c;
+  --rv-clay: #f4eae8;
+  --rv-clay-d: #a9766e;
+  --rv-clay-deep: #f8e3df;
+  --rv-mauve: #f1edf4;
+  --rv-mauve-d: #8e7396;
+  --rv-yellow: #c29343;
+  --rv-r: 3px;
+  --rv-r-pop: 4px;
+  --rv-shadow-pop: 0 4px 16px rgba(15, 15, 15, 0.13);
 
-.reading-page::-webkit-scrollbar {
-  display: none;
-}
-
-.reading-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.reading-header-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.reading-title {
-  margin: 0 0 6px;
-  font-size: 22px;
-  font-weight: 600;
-  color: var(--td-text-color-primary);
-}
-
-.reading-desc,
-.reading-hint {
-  margin: 0;
-  font-size: 13px;
-  color: var(--td-text-color-secondary);
-}
-
-.reading-start {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
-  max-width: 1120px;
-  margin: 4px auto 0;
-}
-
-.reading-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px 28px;
-  width: 100%;
-  padding: 24px;
-  background: var(--td-bg-color-container);
-  border: 1px solid var(--td-component-stroke);
-  border-radius: 10px;
-}
-
-.reading-form-col {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-}
-
-.reading-form-footer {
-  grid-column: 1 / -1;
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 4px;
-}
-
-.reading-start-button {
-  min-width: 240px;
-}
-
-@media (max-width: 900px) {
-  .reading-start {
-    max-width: 680px;
-    margin-left: 0;
-    margin-right: 0;
-  }
-
-  .reading-form {
-    grid-template-columns: minmax(0, 1fr);
-    padding: 20px;
-  }
-
-  .reading-form-footer {
-    justify-content: stretch;
-  }
-
-  .reading-start-button {
-    width: 100%;
-  }
-}
-
-.reading-label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--td-text-color-primary);
-}
-
-.reading-search {
-  margin-bottom: -4px;
-}
-
-.reading-depth-hint {
-  margin: -4px 0 2px;
-  font-size: 12px;
-  color: var(--td-text-color-secondary);
-}
-
-.reading-body {
   position: relative;
-  display: grid;
-  grid-template-columns: var(--reading-left-width, 320px) minmax(0, 1fr) 300px;
-  gap: 16px;
-  align-items: start;
-}
-
-.reading-body.notes-collapsed {
-  grid-template-columns: var(--reading-left-width, 320px) minmax(0, 1fr) 34px;
-}
-
-.reading-body.plan-collapsed {
-  grid-template-columns: 34px minmax(0, 1fr) 300px;
-}
-
-.reading-body.plan-collapsed.notes-collapsed {
-  grid-template-columns: 34px minmax(0, 1fr) 34px;
-}
-
-.reading-resizer {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: calc(var(--reading-left-width, 320px) + 8px);
-  width: 8px;
-  cursor: col-resize;
-  touch-action: none;
-  z-index: 5;
-  outline: none;
-}
-
-.reading-resizer::after {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 3px;
-  width: 2px;
-  content: '';
-  background: transparent;
-  border-radius: 1px;
-  transition: background 0.15s ease;
-}
-
-.reading-resizer:hover::after,
-.reading-resizer:focus-visible::after {
-  background: var(--td-brand-color);
-}
-
-.reading-doc-toolbar {
   display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 6px;
-}
-
-.reading-doc-select {
-  flex: 1;
-  min-width: 0;
-}
-
-.reading-doc-title {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+  height: 100%;
   overflow: hidden;
-  font-size: 12px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--rv-text);
+  background: var(--rv-bg);
+}
+
+.reading-page *,
+.reading-page *::before,
+.reading-page *::after {
+  box-sizing: border-box;
+}
+
+:where(.reading-page) button {
+  padding: 0;
+  font-family: inherit;
+  font-size: 13px;
+  color: inherit;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: var(--rv-r);
+  transition: background 0.13s ease, color 0.13s ease;
+}
+
+.rv-topbar {
+  display: flex;
+  flex: none;
+  gap: 14px;
+  align-items: center;
+  height: 48px;
+  padding: 0 16px;
+  background: var(--rv-bg);
+  border-bottom: 1px solid var(--rv-hair);
+}
+
+.rv-topbar__doc {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.rv-topbar__title {
+  overflow: hidden;
+  font-size: 13.5px;
   font-weight: 600;
-  color: var(--td-text-color-primary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.reading-doc-progress {
-  flex-shrink: 0;
-  font-size: 11px;
-  color: var(--td-text-color-secondary);
-}
-
-.reading-doc-current {
-  margin: 0 0 8px;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--td-brand-color);
-}
-
-.reading-document-content {
+.rv-topbar__meta {
+  overflow: hidden;
   font-size: 12px;
-  line-height: 1.8;
-  color: var(--td-text-color-primary);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  color: var(--rv-text-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.reading-document-current {
+.rv-switch {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  margin-left: 6px;
+}
+
+.rv-switch button {
+  padding: 3px 10px;
+  color: var(--rv-text-2);
+}
+
+.rv-switch button.on {
+  font-weight: 500;
+  color: var(--rv-text);
+  background: var(--rv-side);
+}
+
+.rv-topbar__spacer {
+  flex: 1;
+}
+
+.rv-progress {
+  display: flex;
+  flex: none;
+  gap: 10px;
+  align-items: center;
+}
+
+.rv-progress__bar {
+  display: block;
+  width: 140px;
+  height: 3px;
+  overflow: hidden;
+  background: var(--rv-side);
+  border-radius: 2px;
+}
+
+.rv-progress__bar i {
+  display: block;
+  height: 100%;
+  background: var(--rv-green);
+  transition: width 0.45s ease;
+}
+
+.rv-progress__text {
+  font-size: 12px;
+  color: var(--rv-text-3);
+  white-space: nowrap;
+}
+
+.rv-actions {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  align-items: center;
+}
+
+.rv-action-btn {
+  padding: 4px 10px;
+  color: var(--rv-text-2);
+}
+
+.rv-action-btn:hover {
+  color: var(--rv-text);
+  background: var(--rv-hover);
+}
+
+.rv-action-btn.is-warn {
+  color: #b4544d;
+}
+
+.rv-mobile-toggle {
+  display: none;
+}
+
+.rv-primary {
+  padding: 8px 22px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #fff;
+  background: var(--rv-green-deep);
+}
+
+.rv-primary:hover {
+  background: #0a8c47;
+}
+
+.rv-primary:disabled {
+  color: var(--rv-text-3);
+  cursor: default;
+  background: var(--rv-side);
+}
+
+.rv-primary--small {
+  padding: 5px 14px;
+  font-size: 12.5px;
+}
+
+.rv-text-btn {
+  padding: 5px 10px;
+  color: var(--rv-text-2);
+}
+
+.rv-text-btn:hover {
+  color: var(--rv-text);
+  background: var(--rv-hover);
+}
+
+.rv-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--rv-text-3);
+}
+
+.rv-empty {
+  margin: 4px 0;
+  font-size: 12.5px;
+  color: var(--rv-text-3);
+}
+
+.rv-field,
+.rv-textarea {
+  width: 100%;
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--rv-text);
+  background: var(--rv-side);
+  border: 0;
+  border-radius: var(--rv-r);
+  outline: none;
+  transition: background 0.13s ease;
+}
+
+.rv-field {
+  height: 34px;
+  padding: 0 12px;
+}
+
+.rv-textarea {
+  padding: 9px 12px;
+  resize: vertical;
+}
+
+.rv-field:focus,
+.rv-textarea:focus {
+  background: var(--rv-hover);
+}
+
+.rv-field::placeholder,
+.rv-textarea::placeholder {
+  color: var(--rv-text-3);
+}
+
+/* config */
+.rv-config {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--rv-bg);
+}
+
+.rv-config__inner {
+  width: min(600px, calc(100% - 48px));
+  padding: 56px 0 80px;
+  margin: 0 auto;
+}
+
+.rv-config__inner h1 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.rv-config__sub {
+  margin: 0 0 34px;
+  font-size: 13px;
+  color: var(--rv-text-3);
+}
+
+.rv-section {
+  margin-bottom: 30px;
+}
+
+.rv-section__label {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rv-doc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  margin-top: 8px;
+  overflow-y: auto;
+}
+
+.rv-doc-list--dialog {
+  max-height: 320px;
+  margin-top: 12px;
+}
+
+.rv-doc-row {
+  display: flex;
+  flex: none;
+  gap: 10px;
+  align-items: baseline;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  border-radius: var(--rv-r);
+}
+
+.rv-doc-row:hover {
+  background: var(--rv-hover);
+}
+
+.rv-doc-row.on {
+  background: var(--rv-green-bg);
+}
+
+.rv-doc-row__name {
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--rv-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-doc-row.on .rv-doc-row__name {
+  color: var(--rv-green-deep);
+}
+
+.rv-doc-row__meta {
+  margin-left: auto;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--rv-text-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-doc-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 300px;
+  margin-top: 8px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.rv-doc-tree::-webkit-scrollbar {
+  display: none;
+}
+
+.rv-tree-row {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  align-items: baseline;
+  width: 100%;
+  padding-top: 6px;
+  padding-right: 10px;
+  padding-bottom: 6px;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--rv-text-2);
+  text-align: left;
+  border-radius: var(--rv-r);
+}
+
+.rv-tree-row:hover {
+  background: var(--rv-hover);
+}
+
+.rv-tree-row.is-doc {
+  color: var(--rv-text);
+}
+
+.rv-tree-row.is-doc.on {
+  color: var(--rv-green-deep);
+  background: var(--rv-green-bg);
+}
+
+.rv-tree-row__caret {
+  flex: none;
+  width: 12px;
+  font-size: 10px;
+  color: var(--rv-text-3);
+}
+
+.rv-tree-row__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-tree-row.is-doc .rv-tree-row__label {
+  font-size: 13px;
+}
+
+.rv-tree-row__count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--rv-text-3);
+}
+
+.rv-tree-row__check {
+  flex: none;
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--rv-green-deep);
+}
+
+.rv-selected-docs {
+  padding: 12px;
+  margin-top: 12px;
+  background: var(--rv-side);
+  border-radius: var(--rv-r);
+}
+
+.rv-selected-docs__label {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--rv-text-2);
+}
+
+.rv-selected-docs__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rv-selected-doc {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+  max-width: 100%;
+  padding: 4px 8px;
+  background: var(--rv-bg);
+  border-radius: var(--rv-r);
+}
+
+.rv-selected-doc:hover {
+  background: var(--rv-hover);
+}
+
+.rv-selected-doc__name {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--rv-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-selected-doc__kb {
+  font-size: 10.5px;
+  color: var(--rv-text-3);
+  white-space: nowrap;
+}
+
+.rv-selected-doc__remove {
+  margin-left: 2px;
+  font-size: 13px;
+  color: var(--rv-text-3);
+}
+
+.rv-depth-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  border-radius: var(--rv-r);
+}
+
+.rv-depth-row:hover {
+  background: var(--rv-hover);
+}
+
+.rv-depth-row.on {
+  background: var(--rv-green-bg);
+}
+
+.rv-depth-row__name {
+  flex: none;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.rv-depth-row.on .rv-depth-row__name {
+  color: var(--rv-green-deep);
+}
+
+.rv-depth-row__desc {
+  font-size: 12px;
+  color: var(--rv-text-3);
+}
+
+.rv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.rv-chip {
+  padding: 5px 12px;
+  font-size: 13px;
+  color: var(--rv-text-2);
+  background: var(--rv-side);
+}
+
+.rv-chip:hover {
+  background: var(--rv-hover);
+}
+
+.rv-chip.on {
+  font-weight: 500;
+  color: var(--rv-green-deep);
+  background: var(--rv-green-bg);
+}
+
+.rv-estimate {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  padding: 12px 16px;
+  margin-bottom: 28px;
+  font-size: 12.5px;
+  color: var(--rv-oat-d);
+  background: var(--rv-oat);
+  border-radius: var(--rv-r);
+}
+
+.rv-config__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+}
+
+.rv-config__note {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--rv-text-3);
+}
+
+.rv-drafts {
+  margin-top: 48px;
+  border-top: 1px solid var(--rv-hair);
+}
+
+.rv-drafts__toggle {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  padding: 14px 2px;
+  font-size: 12.5px;
+  color: var(--rv-text-2);
+  text-align: left;
+}
+
+.rv-drafts__toggle span:first-of-type {
+  color: var(--rv-text-3);
+}
+
+.rv-drafts__caret {
+  margin-left: auto;
+}
+
+.rv-drafts__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 20px;
+}
+
+.rv-draft {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: var(--rv-r);
+}
+
+.rv-draft:hover {
+  background: var(--rv-hover);
+}
+
+.rv-draft__name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-draft__meta {
+  margin-left: auto;
+  overflow: hidden;
+  font-size: 11.5px;
+  color: var(--rv-text-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-draft__action {
+  flex: none;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--rv-text-2);
+}
+
+.rv-draft__action:hover {
+  color: var(--rv-text);
+  background: var(--rv-hover);
+}
+
+.rv-draft__action.is-warn {
+  color: #b4544d;
+}
+
+.rv-draft__input {
+  flex: 1;
+  height: 28px;
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--rv-text);
+  background: var(--rv-bg);
+  border: 1px solid var(--rv-hair);
+  border-radius: var(--rv-r);
+  outline: none;
+}
+
+/* workbench */
+.rv-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.rv-left {
+  flex: none;
+  width: 256px;
+  padding: 20px 12px;
+  overflow-y: auto;
+  background: var(--rv-side);
+  border-right: 1px solid var(--rv-hair);
+}
+
+.rv-left__head h2 {
+  margin: 0 0 4px;
+  overflow: hidden;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-left__head p {
+  margin: 0 0 22px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--rv-text-3);
+}
+
+.rv-left__label {
+  margin: 18px 0 8px;
+  font-size: 11.5px;
+  color: var(--rv-text-3);
+}
+
+.rv-toc-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  width: 100%;
+  padding: 6px 10px;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--rv-text-2);
+  text-align: left;
+  border-radius: var(--rv-r);
+}
+
+.rv-toc-row:hover {
+  background: var(--rv-hover);
+}
+
+.rv-toc-row.current {
+  font-weight: 500;
+  color: var(--rv-green-deep);
+  background: var(--rv-green-bg);
+}
+
+.rv-toc-row.preview {
+  box-shadow: inset 0 0 0 1px var(--rv-haze-d);
+}
+
+.rv-toc-row.read .rv-toc-row__num {
+  color: var(--rv-sage-d);
+}
+
+.rv-toc-row.is-root {
+  font-weight: 600;
+  color: var(--rv-text);
+}
+
+.rv-toc-row__caret {
+  flex: none;
+  width: 12px;
+  font-size: 10px;
+  color: var(--rv-text-3);
+  text-align: center;
+}
+
+.rv-toc-row__num {
+  flex: none;
+  font-size: 12px;
+  color: var(--rv-text-3);
+  opacity: 0.85;
+}
+
+.rv-toc-row__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-toc-row__mark {
+  flex: none;
+  margin-left: auto;
+  font-size: 10.5px;
+  opacity: 0.75;
+}
+
+.rv-session-stats {
+  padding-left: 2px;
+  font-size: 12.5px;
+  line-height: 1.9;
+  color: var(--rv-text-2);
+}
+
+.rv-session-stats p {
+  margin: 0;
+}
+
+.rv-left__add {
+  margin-top: 20px;
+  padding-left: 2px;
+}
+
+.rv-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  background: var(--rv-bg);
+}
+
+.rv-read {
+  width: 100%;
+  max-width: 680px;
+  padding: 36px 40px 120px;
+  margin: 0 auto;
+}
+
+.rv-chapter-head {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 30px;
+}
+
+.rv-chapter-head h2 {
+  margin: 0 0 6px;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.rv-chapter-meta {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--rv-text-3);
+}
+
+.rv-chapter-actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+
+.rv-block {
+  margin-bottom: 34px;
+}
+
+.rv-block-label {
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--rv-text-2);
+}
+
+.rv-prose {
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--rv-text);
+  white-space: pre-wrap;
+}
+
+.rv-prose p {
+  margin: 0 0 12px;
+  white-space: pre-wrap;
+}
+
+.rv-prose p.is-highlight {
+  padding: 7px 12px;
+  margin: -1px -12px 12px;
+  background: var(--rv-sage);
+  border-radius: var(--rv-r);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.rv-cite {
+  position: relative;
   padding: 0 2px;
-  color: inherit;
-  background: var(--td-brand-color-light);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--rv-green-deep);
+  vertical-align: super;
+}
+
+.rv-cite:hover {
+  text-decoration: underline;
+}
+
+.rv-conclusion + .rv-conclusion {
+  margin-top: 18px;
+}
+
+.rv-conclusion-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--rv-text-3);
+}
+
+.rv-conclusion-sources__label {
+  font-weight: 500;
+  color: var(--rv-text-3);
+}
+
+.rv-conclusion-source {
+  overflow: hidden;
+  font-size: 11.5px;
+  color: var(--rv-text-3);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-conclusion-source:hover {
+  color: var(--rv-text-2);
+  text-decoration: underline;
+}
+
+.rv-plan-card {
+  padding: 20px 22px;
+  margin: 26px 0;
+  background: var(--rv-oat);
+  border-radius: var(--rv-r-pop);
+}
+
+.rv-plan-card h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.rv-plan-card p {
+  margin: 0 0 12px;
+  font-size: 13.5px;
+  color: var(--rv-text-2);
+}
+
+.rv-plan-card__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 16px;
+  font-size: 12.5px;
+  color: var(--rv-text-2);
+}
+
+.rv-final {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.rv-final h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.rv-final__summary {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.75;
+  color: var(--rv-text);
+}
+
+.rv-final__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 12.5px;
+  color: var(--rv-text-3);
+}
+
+.rv-final__group h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rv-final__item {
+  margin: 0 0 6px;
+  font-size: 13.5px;
+  color: var(--rv-text-2);
+}
+
+.rv-idle {
+  padding: 36px 0;
+}
+
+.rv-idle p {
+  margin: 0 0 16px;
+  color: var(--rv-text-2);
+}
+
+.rv-preview .rv-prose {
+  font-size: 14.5px;
+}
+
+.rv-preview__notes {
+  margin-top: 28px;
+}
+
+.rv-preview__note {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  color: var(--rv-text-2);
+}
+
+.rv-preview__actions {
+  margin-top: 28px;
+}
+
+/* question card */
+.rv-qcard {
+  padding: 20px 22px;
+  margin: 26px 0;
+  background: var(--rv-haze);
+  border-radius: var(--rv-r-pop);
+}
+
+.rv-qcard__tag {
+  margin-bottom: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--rv-haze-d);
+}
+
+.rv-qcard__text {
+  margin: 0 0 6px;
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--rv-text);
+}
+
+.rv-qcard__hint {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  color: var(--rv-text-3);
+}
+
+.rv-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rv-option {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  width: 100%;
+  padding: 9px 12px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.66);
+  border-radius: var(--rv-r);
+}
+
+.rv-option:hover {
+  background: #fff;
+}
+
+.rv-option.on {
+  box-shadow: inset 0 0 0 1px var(--rv-haze-d);
+  background: #fff;
+}
+
+.rv-option__label {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--rv-haze-d);
+}
+
+.rv-option__text {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--rv-text-2);
+}
+
+.rv-option__badge {
+  flex: none;
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--rv-green-deep);
+}
+
+.rv-textarea--answer {
+  margin-top: 6px;
+  background: #fff;
+}
+
+.rv-qcard__actions,
+.rv-stage__actions,
+.rv-contra__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.rv-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 14px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--rv-text-2);
+  background: var(--rv-sage);
+  border-radius: var(--rv-r);
+}
+
+.rv-verdict__state {
+  font-weight: 600;
+  color: var(--rv-green-deep);
+}
+
+/* stage confirmation */
+.rv-stage {
+  padding: 20px 22px;
+  margin: 26px 0;
+  background: var(--rv-oat);
+  border-radius: var(--rv-r-pop);
+}
+
+.rv-stage__tag {
+  margin-bottom: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--rv-oat-d);
+}
+
+.rv-stage__text {
+  margin: 0 0 6px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.rv-stage__section {
+  margin-left: 4px;
+  font-size: 12px;
+  color: var(--rv-text-3);
+}
+
+.rv-stage__result {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--rv-sage-d);
+}
+
+/* contradiction */
+.rv-contra {
+  padding: 20px 22px;
+  margin: 26px 0;
+  background: var(--rv-clay);
+  border-radius: var(--rv-r-pop);
+}
+
+.rv-contra.resolved {
+  background: var(--rv-bg);
+  box-shadow: inset 0 0 0 1px var(--rv-hair);
+}
+
+.rv-contra__tag {
+  display: inline-block;
+  padding: 2px 8px;
+  margin-bottom: 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--rv-clay-d);
+  background: var(--rv-clay-deep);
+  border-radius: var(--rv-r);
+}
+
+.rv-contra__title {
+  margin: 0 0 14px;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.rv-quote {
+  margin-bottom: 10px;
+}
+
+.rv-quote__label {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rv-text-2);
+}
+
+.rv-quote__text {
+  padding: 8px 12px;
+  margin: 0 0 4px;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--rv-text-2);
+  border-radius: var(--rv-r);
+}
+
+.rv-quote__text.is-a {
+  background: var(--rv-haze);
+}
+
+.rv-quote__text.is-b {
+  background: var(--rv-mauve);
+}
+
+.rv-contra__resolution {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--rv-green-deep);
+}
+
+.rv-round-continue {
+  padding: 24px 0 8px;
+}
+
+/* notes */
+.rv-right {
+  flex: none;
+  width: 312px;
+  padding: 20px 16px 60px;
+  overflow-y: auto;
+  background: var(--rv-side);
+  border-left: 1px solid var(--rv-hair);
+}
+
+.rv-notes__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rv-notes__count {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--rv-text-3);
+}
+
+.rv-notes__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-bottom: 20px;
+}
+
+.rv-notes__tab {
+  padding: 3px 9px;
+  font-size: 12px;
+  color: var(--rv-text-3);
+}
+
+.rv-notes__tab:hover {
+  color: var(--rv-text-2);
+  background: var(--rv-hover);
+}
+
+.rv-notes__tab.on {
+  font-weight: 500;
+  color: var(--rv-text);
+  background: var(--rv-side);
+  box-shadow: inset 0 0 0 1px var(--rv-hair);
+}
+
+.rv-notes__tab-count {
+  margin-left: 3px;
+  font-size: 10.5px;
+  color: var(--rv-text-3);
+}
+
+.rv-notes__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.rv-note {
+  padding: 12px;
+  margin: 0 -12px;
+  border-radius: var(--rv-r);
+}
+
+.rv-note + .rv-note {
+  margin-top: 6px;
+}
+
+.rv-note:hover {
+  background: var(--rv-hover);
+}
+
+.rv-note.rejected {
+  opacity: 0.45;
+}
+
+.rv-note__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.rv-note__type {
+  display: inline-block;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--rv-r);
+}
+
+.rv-note__type.is-term {
+  color: var(--rv-mauve-d);
+  background: var(--rv-mauve);
+}
+
+.rv-note__type.is-conclusion {
+  color: var(--rv-sage-d);
+  background: var(--rv-sage);
+}
+
+.rv-note__type.is-open {
+  color: var(--rv-oat-d);
+  background: var(--rv-oat);
+}
+
+.rv-note__type.is-contradiction {
+  color: var(--rv-clay-d);
+  background: var(--rv-clay-deep);
+}
+
+.rv-note__state {
+  font-size: 11px;
+  color: var(--rv-text-3);
+}
+
+.rv-note__state.done {
+  color: var(--rv-green-deep);
+}
+
+.rv-note__recommended {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--rv-green-deep);
+}
+
+.rv-note__text {
+  margin: 0 0 6px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.rv-note__cite {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--rv-text-3);
+}
+
+.rv-note__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-top: 8px;
+}
+
+.rv-note__action {
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--rv-text-2);
+}
+
+.rv-note__action:hover {
+  color: var(--rv-text);
+  background: var(--rv-hover);
+}
+
+.rv-note__action.is-main {
+  font-weight: 500;
+  color: var(--rv-green-deep);
+}
+
+.rv-note__action.is-danger {
+  color: #b4544d;
+}
+
+.rv-mobile-head,
+.rv-left__mobile-head,
+.rv-right__mobile-head {
+  display: none;
+}
+
+/* drawer */
+.rv-drawer-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(28, 28, 24, 0.14);
+}
+
+.rv-drawer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 560px;
+  max-width: calc(100% - 48px);
+  height: 100%;
+  background: var(--rv-bg);
+  border-left: 1px solid var(--rv-hair);
+  box-shadow: -12px 0 32px rgba(15, 15, 15, 0.08);
+}
+
+.rv-drawer__resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  z-index: 2;
+  width: 8px;
+  cursor: col-resize;
+}
+
+.rv-drawer__resizer:hover,
+.rv-drawer__resizer:focus-visible {
+  background: rgba(7, 192, 95, 0.18);
+  outline: none;
+}
+
+.rv-drawer__head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  height: 48px;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--rv-hair);
+}
+
+.rv-drawer__select {
+  max-width: 260px;
+  height: 28px;
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--rv-text-2);
+  background: var(--rv-side);
+  border: 0;
+  border-radius: var(--rv-r);
+  outline: none;
+}
+
+.rv-drawer__close {
+  margin-left: 0;
+  padding: 2px 8px;
+  font-size: 18px;
+  color: var(--rv-text-3);
+}
+
+.rv-drawer__body {
+  flex: 1;
+  padding: 24px 28px 80px;
+  overflow-y: auto;
+}
+
+.rv-drawer__body--preview {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.rv-drawer__body--preview :deep(.document-preview) {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.rv-drawer__body--preview :deep(img.is-broken) {
+  display: none;
+}
+
+.rv-drawer__toolbar {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.rv-document-content {
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--rv-text-2);
+}
+
+.rv-document-content :deep(h1),
+.rv-document-content :deep(h2),
+.rv-document-content :deep(h3),
+.rv-document-content :deep(h4) {
+  margin: 24px 0 10px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--rv-text);
+}
+
+.rv-document-content :deep(h1) {
+  font-size: 20px;
+}
+
+.rv-document-content :deep(h2) {
+  font-size: 17px;
+}
+
+.rv-document-content :deep(h3) {
+  font-size: 15px;
+}
+
+.rv-document-content :deep(p) {
+  margin: 0 0 12px;
+}
+
+.rv-document-content :deep(table) {
+  width: 100%;
+  margin: 14px 0;
+  font-size: 12.5px;
+  border-collapse: collapse;
+}
+
+.rv-document-content :deep(th),
+.rv-document-content :deep(td) {
+  padding: 6px 10px;
+  text-align: left;
+  border: 1px solid var(--rv-hair);
+}
+
+.rv-document-content :deep(img) {
+  max-width: 100%;
   border-radius: 3px;
 }
 
-.reading-side,
-.reading-main {
-  padding: 16px;
-  background: var(--td-bg-color-container);
-  border: 1px solid var(--td-component-stroke);
-  border-radius: 10px;
+.rv-document-content :deep(ul),
+.rv-document-content :deep(ol) {
+  padding-left: 22px;
+  margin: 0 0 12px;
 }
 
-.reading-progress,
-.reading-notes {
-  position: sticky;
-  top: 16px;
-  max-height: calc(100vh - 120px);
-  overflow: auto;
+.rv-document-content :deep(li) {
+  margin: 2px 0;
+}
+
+.rv-document-content :deep(blockquote) {
+  padding: 4px 12px;
+  margin: 12px 0;
+  color: var(--rv-text-2);
+  border-left: 2px solid var(--rv-hair);
+}
+
+.rv-document-content :deep(pre) {
+  padding: 12px 14px;
+  margin: 12px 0;
+  overflow-x: auto;
+  font-size: 12.5px;
+  line-height: 1.6;
+  background: var(--rv-side);
+  border-radius: var(--rv-r);
+}
+
+.rv-document-content :deep(code) {
+  font-family: var(--app-font-family-mono, Consolas, monospace);
+  font-size: 0.92em;
+}
+
+.rv-document-content :deep(a) {
+  color: var(--rv-green-deep);
+}
+
+.rv-document-content :deep(hr) {
+  margin: 20px 0;
+  border: 0;
+  border-top: 1px solid var(--rv-hair);
+}
+
+/* dialogs */
+.reading-add-dialog,
+.reading-report-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rv-dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+/* evidence float */
+.rv-evidence-float {
+  position: fixed;
+  z-index: 60;
+  width: 420px;
+  max-width: calc(100vw - 24px);
+  padding: 12px 14px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--rv-text-2);
+  background: #fff;
+  border-radius: var(--rv-r-pop);
+  box-shadow: var(--rv-shadow-pop);
+}
+
+.rv-evidence-float__title {
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rv-text);
+}
+
+.rv-evidence-float__muted {
+  color: var(--rv-text-3);
+}
+
+.rv-evidence-float__error {
+  color: #b4544d;
+}
+
+.rv-evidence-float__body {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.rv-evidence-float__body .is-hit {
+  color: var(--rv-text);
+  background: var(--rv-sage);
+}
+
+.rv-evidence-float__hint {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--rv-text-3);
+}
+
+/* hide scrollbars, keep scrolling */
+.rv-left,
+.rv-right,
+.rv-main,
+.rv-config,
+.rv-drawer__body,
+.rv-doc-list,
+.rv-evidence-float__body {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
 
-.reading-progress::-webkit-scrollbar,
-.reading-notes::-webkit-scrollbar {
+.rv-left::-webkit-scrollbar,
+.rv-right::-webkit-scrollbar,
+.rv-main::-webkit-scrollbar,
+.rv-config::-webkit-scrollbar,
+.rv-drawer__body::-webkit-scrollbar,
+.rv-doc-list::-webkit-scrollbar,
+.rv-evidence-float__body::-webkit-scrollbar {
   display: none;
 }
 
-.reading-side-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  font-size: 13px;
-  font-weight: 600;
+/* dark */
+:global(html[theme-mode="dark"] .reading-page) {
+  --rv-text: #f1f0ea;
+  --rv-text-2: #b4b6b2;
+  --rv-text-3: #8b8c87;
+  --rv-bg: #171816;
+  --rv-side: #1b1c19;
+  --rv-hair: #2e2f2a;
+  --rv-hover: #23241f;
+  --rv-green: #53d98d;
+  --rv-green-deep: #3fc47c;
+  --rv-green-bg: #1d3328;
+  --rv-sage: #25312b;
+  --rv-sage-d: #9fc4b4;
+  --rv-haze: #1e2a31;
+  --rv-haze-d: #a3c2d3;
+  --rv-oat: #2d2821;
+  --rv-oat-d: #d3bd8f;
+  --rv-clay: #332523;
+  --rv-clay-d: #d9a9a1;
+  --rv-clay-deep: #412d2a;
+  --rv-mauve: #2a2431;
+  --rv-mauve-d: #c1a6ca;
+  --rv-yellow: #d8b36a;
 }
 
-.reading-add-docs {
-  display: flex;
-  justify-content: center;
-  margin-top: 12px;
+:global(html[theme-mode="dark"] .rv-doc-row.on),
+:global(html[theme-mode="dark"] .rv-depth-row.on) {
+  background: var(--rv-green-bg);
 }
 
-.reading-add-dialog {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+:global(html[theme-mode="dark"] .rv-option) {
+  background: rgba(255, 255, 255, 0.04);
 }
 
-.reading-add-dialog-hint {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--td-text-color-secondary);
+:global(html[theme-mode="dark"] .rv-option:hover),
+:global(html[theme-mode="dark"] .rv-option.on) {
+  background: rgba(255, 255, 255, 0.08);
 }
 
-.reading-add-dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 6px;
+:global(html[theme-mode="dark"] .rv-textarea--answer) {
+  background: var(--rv-bg);
 }
 
-.reading-collapse {
-  padding: 0 4px;
-  font-size: 14px;
-  line-height: 1;
-  color: var(--td-text-color-secondary);
-  cursor: pointer;
-  background: transparent;
-  border: 0;
+:global(html[theme-mode="dark"] .rv-evidence-float) {
+  background: var(--rv-side);
 }
 
-.reading-expand {
-  align-self: start;
-  padding: 10px 0;
-  font-size: 12px;
-  color: var(--td-text-color-secondary);
-  cursor: pointer;
-  background: var(--td-bg-color-container);
-  border: 1px solid var(--td-component-stroke);
-  border-radius: 10px;
-}
-
-.reading-expand-left {
-  writing-mode: vertical-rl;
-}
-
-.reading-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
-  font-size: 12px;
-  color: var(--td-text-color-secondary);
-}
-
-.reading-meta-line {
-  margin: 0 0 12px;
-  font-size: 12px;
-  color: var(--td-text-color-placeholder);
-}
-
-.reading-section {
-  display: flex;
-  gap: 8px;
-  padding: 8px;
-  border-radius: 6px;
-  color: var(--td-text-color-secondary);
-
-  &.active {
-    background: var(--td-brand-color-light);
-    color: var(--td-brand-color);
-  }
-
-  &.read {
-    opacity: 0.6;
-  }
-}
-
-.reading-section-index {
-  flex-shrink: 0;
-  font-size: 12px;
-}
-
-.reading-section-title {
-  font-size: 13px;
-}
-
-.reading-section-heading {
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--td-text-color-placeholder);
-}
-
-.reading-main {
-  min-height: 420px;
-}
-
-.reading-main-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding-bottom: 12px;
-  margin-bottom: 16px;
-  border-bottom: 1px solid var(--td-component-stroke);
-}
-
-.reading-main-head h2 {
-  margin: 4px 0 0;
-  font-size: 17px;
-}
-
-.reading-main-kicker {
-  font-size: 12px;
-  color: var(--td-text-color-secondary);
-}
-
-.reading-reading-now {
-  flex-shrink: 0;
+/* responsive: the workbench can be windowed below 1100px even on a wide screen */
+.reading-page.is-narrow .rv-mobile-toggle {
+  display: inline-block;
   padding: 4px 8px;
-  font-size: 12px;
-  color: var(--td-brand-color);
-  background: var(--td-brand-color-light);
-  border-radius: 999px;
+  color: var(--rv-text-2);
 }
 
-.reading-question h3,
-.reading-final h3,
-.reading-plan-confirm h3 {
-  margin: 0 0 12px;
-  font-size: 16px;
-}
-
-.reading-plan-confirm p {
-  margin: 0 0 12px;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--td-text-color-secondary);
-}
-
-.reading-plan-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  margin-bottom: 16px;
-  font-size: 13px;
-  color: var(--td-text-color-primary);
-  background: var(--td-bg-color-secondarycontainer);
-  border-radius: 8px;
-}
-
-.reading-note-group {
-  margin-bottom: 14px;
-}
-
-.reading-note-group h4,
-.reading-final-group h4 {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 4px;
-  font-size: 13px;
-  color: var(--td-text-color-secondary);
-}
-
-.reading-note-count {
-  padding: 0 6px;
-  font-size: 11px;
-  color: var(--td-text-color-secondary);
-  background: var(--td-bg-color-secondarycontainer);
-  border-radius: 999px;
-}
-
-.reading-note-item,
-.reading-empty,
-.reading-recommend,
-.reading-why,
-.reading-final-summary {
-  margin: 0 0 4px;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--td-text-color-primary);
-}
-
-.reading-recommend {
-  color: var(--td-brand-color);
-}
-
-.reading-why {
-  color: var(--td-text-color-secondary);
-}
-
-.reading-quick-actions,
-.reading-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin: 12px 0;
-}
-
-.reading-idle {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  align-items: flex-start;
-  font-size: 13px;
-  color: var(--td-text-color-secondary);
-}
-
-.reading-final-group {
-  margin-top: 12px;
-}
-
-.reading-round-line {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--td-text-color-placeholder);
-}
-
-.reading-question-meta,
-.reading-round-head,
-.reading-conclusion-head,
-.reading-open-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  font-size: 12px;
-  color: var(--td-text-color-secondary);
-}
-
-.reading-round-card,
-.reading-round-questions,
-.reading-accumulated {
-  margin-bottom: 18px;
-}
-
-.reading-round-continue {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: flex-start;
-  margin-top: 8px;
-}
-
-.reading-round-card {
-  padding: 12px 14px;
-  background: var(--td-bg-color-secondarycontainer);
-  border-radius: 8px;
-}
-
-.reading-round-head {
-  justify-content: space-between;
-  font-weight: 600;
-  color: var(--td-text-color-primary);
-}
-
-.reading-round-understanding {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.7;
-}
-
-.reading-round-status {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--td-brand-color);
-}
-
-.reading-round-questions h4,
-.reading-accumulated h4 {
-  margin: 0 0 8px;
-  font-size: 13px;
-  color: var(--td-text-color-secondary);
-}
-
-.reading-qa-card,
-.reading-conclusion-item,
-.reading-open-item,
-.reading-term-item,
-.reading-contradiction-item {
-  padding: 10px 12px;
-  margin-bottom: 8px;
-  border: 1px solid var(--td-component-stroke);
-  border-radius: 8px;
-}
-
-.reading-qa-q {
-  margin-bottom: 6px;
-  font-size: 13px;
-  color: var(--td-text-color-primary);
-}
-
-.reading-qa-a {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--td-text-color-primary);
-}
-
-.reading-evidence-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 6px;
-}
-
-.reading-evidence-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 6px 8px;
-  font-family: inherit;
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-  background: var(--td-bg-color-container);
-  border: 1px solid var(--td-component-stroke);
-  border-radius: 6px;
-}
-
-.reading-evidence-item:hover {
-  border-color: var(--td-brand-color);
-}
-
-.reading-evidence-source {
-  color: var(--td-brand-color);
-}
-
-.reading-evidence-quote {
-  line-height: 1.5;
-  color: var(--td-text-color-secondary);
-}
-
-.reading-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-bottom: 10px;
-}
-
-.reading-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  font-family: inherit;
-  font-size: 12px;
-  color: var(--td-text-color-secondary);
-  cursor: pointer;
-  background: var(--td-bg-color-secondarycontainer);
-  border: 0;
-  border-radius: 6px;
-}
-
-.reading-tab.active {
-  color: #fff;
-  background: var(--td-brand-color);
-}
-
-.reading-tab-count {
-  padding: 0 4px;
-  font-size: 10px;
-  background: rgb(0 0 0 / 12%);
-  border-radius: 999px;
-}
-
-.reading-tab-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.reading-term-name {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
-  color: var(--td-text-color-primary);
-}
-
-.reading-term-definition {
-  margin: 4px 0 0;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.reading-round-tag {
-  font-size: 11px;
-  color: var(--td-text-color-placeholder);
-}
-
-.reading-contradiction-desc {
-  margin: 0 0 6px;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--td-text-color-primary);
-}
-
-.reading-contradiction-side {
-  display: flex;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.reading-contradiction-label {
-  flex-shrink: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--td-text-color-secondary);
-}
-
-.reading-final-stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin: 10px 0;
-  font-size: 13px;
-  color: var(--td-text-color-secondary);
-}
-
-.reading-queue-hint {
-  margin: 6px 0;
-  font-size: 12px;
-  color: var(--td-text-color-placeholder);
-}
-
-.reading-thought-card {
-  padding: 10px 12px;
-  margin-bottom: 14px;
-  background: var(--td-bg-color-secondarycontainer);
-  border: 1px solid var(--td-component-stroke);
-  border-radius: 8px;
-}
-
-.reading-thought-loading {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  font-size: 12px;
-  color: var(--td-text-color-secondary);
-}
-
-.reading-thought-head {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  width: 100%;
-  padding: 0;
-  font-family: inherit;
-  color: var(--td-text-color-primary);
-  text-align: left;
-  cursor: pointer;
-  background: transparent;
-  border: 0;
-}
-
-.reading-thought-title {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.reading-thought-meta {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--td-text-color-secondary);
-}
-
-.reading-thought-caret {
-  font-size: 12px;
-  color: var(--td-text-color-secondary);
-}
-
-.reading-thought-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.reading-thought-phase {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.reading-thought-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--td-brand-color);
-}
-
-.reading-thought-phase p,
-.reading-thought-phase ul {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--td-text-color-primary);
-}
-
-.reading-thought-phase ul {
-  padding-left: 16px;
-}
-
-.reading-thought-reasoning {
-  max-height: 280px;
-  padding: 8px;
-  margin: 0;
-  overflow: auto;
-  font-family: inherit;
-  font-size: 12px;
-  line-height: 1.7;
-  color: var(--td-text-color-primary);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  background: var(--td-bg-color-container);
-  border-radius: 6px;
-  scrollbar-width: none;
-}
-
-.reading-thought-reasoning::-webkit-scrollbar {
+.reading-page.is-narrow .rv-right {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
   display: none;
+  width: min(320px, 88%);
+  background: var(--rv-side);
+  box-shadow: -12px 0 32px rgba(15, 15, 15, 0.08);
 }
 
-.reading-thought-why {
-  color: var(--td-text-color-secondary);
+.reading-page.is-narrow .rv-right.is-open {
+  display: block;
 }
 
-.reading-edited-badge {
-  padding: 0 5px;
-  margin-left: 4px;
-  font-size: 10px;
-  color: var(--td-brand-color);
-  background: var(--td-brand-color-light);
-  border-radius: 999px;
-}
-
-.reading-contradiction-head {
-  margin-bottom: 6px;
-}
-
-.reading-contradiction-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 8px;
-}
-
-.reading-contradiction-column {
-  min-width: 0;
-}
-
-.reading-contradiction-column-head {
-  margin-bottom: 2px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--td-text-color-secondary);
-}
-
-.reading-resolution-text {
-  padding: 6px 8px;
-  margin: 8px 0 0;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--td-text-color-primary);
-  background: var(--td-bg-color-secondarycontainer);
-  border-radius: 6px;
-}
-
-.reading-contradiction-resolve {
+.reading-page.is-narrow .rv-right__mobile-head {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.reading-report-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.reading-evidence-float {
-  position: fixed;
-  z-index: 3000;
-  width: 420px;
-  max-height: 320px;
-  padding: 12px 14px;
-  overflow: auto;
-  background: var(--td-bg-color-container);
-  border: 1px solid var(--td-component-stroke);
-  border-radius: 8px;
-  box-shadow: var(--td-shadow-2);
-}
-
-.reading-evidence-float-title {
-  margin-bottom: 6px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--td-brand-color);
+  color: var(--rv-text-2);
 }
 
-.reading-evidence-float-muted,
-.reading-evidence-float-error {
-  font-size: 12px;
-  color: var(--td-text-color-secondary);
+.reading-page.is-narrow .rv-right__mobile-head button {
+  padding: 2px 8px;
+  font-size: 18px;
+  color: var(--rv-text-3);
 }
 
-.reading-evidence-float-error {
-  color: var(--td-error-color);
-}
-
-.reading-evidence-float-body {
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--td-text-color-primary);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.reading-evidence-hit {
-  padding: 0 2px;
-  color: var(--td-text-color-primary);
-  background: var(--td-brand-color-light);
-  border-radius: 3px;
-}
-
-.reading-evidence-float-hint {
-  margin-top: 8px;
-  font-size: 11px;
-  color: var(--td-text-color-placeholder);
-}
-
-@media (max-width: 1180px) {
-  .reading-body,
-  .reading-body.notes-collapsed,
-  .reading-body.plan-collapsed,
-  .reading-body.plan-collapsed.notes-collapsed {
-    grid-template-columns: 1fr;
+@media (max-width: 1100px) {
+  .rv-mobile-toggle {
+    display: inline-block;
+    padding: 4px 8px;
+    color: var(--rv-text-2);
   }
 
-  .reading-progress,
-  .reading-notes {
-    position: static;
-    max-height: none;
+  .rv-right {
+    position: absolute;
+    top: 48px;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    display: none;
+    width: min(320px, 88%);
+    background: var(--rv-side);
+    box-shadow: -12px 0 32px rgba(15, 15, 15, 0.08);
   }
 
-  .reading-expand {
+  .rv-right.is-open {
+    display: block;
+  }
+
+  .rv-right__mobile-head,
+  .rv-left__mobile-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--rv-text-2);
+  }
+
+  .rv-right__mobile-head button,
+  .rv-left__mobile-head button {
+    padding: 2px 8px;
+    font-size: 18px;
+    color: var(--rv-text-3);
+  }
+}
+
+@media (max-width: 760px) {
+  .rv-topbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 48px;
+    padding: 6px 12px;
+  }
+
+  .rv-topbar__doc {
+    max-width: 60%;
+  }
+
+  .rv-progress {
     display: none;
   }
 
-  .reading-contradiction-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .reading-resizer {
+  .rv-left {
+    position: absolute;
+    top: 48px;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
     display: none;
+    width: min(280px, 88%);
+    background: var(--rv-side);
+    box-shadow: 12px 0 32px rgba(15, 15, 15, 0.08);
   }
 
-  .reading-evidence-float {
-    right: 12px;
-    left: 12px !important;
-    width: auto;
-    max-width: none;
+  .rv-left.is-open {
+    display: block;
+  }
+
+  .rv-read {
+    padding: 24px 20px 100px;
+  }
+
+  .rv-config__inner {
+    width: calc(100% - 32px);
+    padding-top: 32px;
+  }
+
+  .rv-chapter-head {
+    flex-direction: column;
+  }
+
+  .rv-config__note {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reading-page *,
+  .reading-page *::before,
+  .reading-page *::after {
+    transition: none !important;
   }
 }
 </style>

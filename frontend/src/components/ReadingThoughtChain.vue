@@ -1,61 +1,72 @@
 <template>
-  <div v-if="advancing" class="reading-thought-card reading-thought-loading">
-    <span class="reading-thought-title">{{ t('reading.thinkingNow') }}</span>
-    <t-loading size="small" />
+  <div v-if="advancing" class="rtc rtc--loading">
+    <span class="rtc__title">{{ t('reading.thoughtChain') }}</span>
+    <span class="rtc__meta">{{ t('reading.thinkingNow') }}</span>
   </div>
-  <div v-else class="reading-thought-card">
-    <div class="reading-thought-head">
-      <button type="button" class="reading-thought-toggle" @click="expanded = !expanded">
-        <span class="reading-thought-title">{{ t('reading.thoughtChain') }}</span>
-        <span class="reading-thought-meta">
+  <div v-else class="rtc">
+    <div class="rtc__head">
+      <button type="button" class="rtc__toggle" @click="expanded = !expanded">
+        <span class="rtc__title">{{ t('reading.thoughtChain') }}</span>
+        <span class="rtc__meta">
           {{ t('reading.thoughtMeta', {
             searches: searches.length,
             questions: questions.length,
             duration: durationLabel || '—',
           }) }}
         </span>
-        <span class="reading-thought-caret">{{ expanded ? '▾' : '▸' }}</span>
+        <span class="rtc__caret">{{ expanded ? '▾' : '▸' }}</span>
       </button>
-      <t-select v-if="roundOptions.length > 1" v-model="selectedRoundValue"
-        :options="roundOptions" size="small" class="reading-thought-round" />
+      <select
+        v-if="roundOptions.length > 1"
+        class="rtc__round"
+        :value="selectedRound"
+        @change="onRoundChange"
+      >
+        <option v-for="option in roundOptions" :key="option.value" :value="option.value">
+          {{ option.label }}
+        </option>
+      </select>
     </div>
-    <div v-if="expanded" class="reading-thought-body">
-      <div class="reading-thought-phase">
-        <span class="reading-thought-label">{{ t('reading.phaseWindow') }}</span>
+
+    <div v-if="expanded" class="rtc__body">
+      <div class="rtc__step">
+        <span class="rtc__num">01</span>
         <p>
-          {{ sectionTitle || '—' }}
-          <template v-if="sectionHeading"> · {{ sectionHeading }}</template>
+          <b>{{ t('reading.phaseWindow') }}</b>
+          {{ sectionTitle || '—' }}<template v-if="sectionHeading"> · {{ sectionHeading }}</template>
         </p>
       </div>
-      <div class="reading-thought-phase">
-        <span class="reading-thought-label">{{ t('reading.phaseReasoning') }}</span>
-        <pre v-if="reasoning" class="reading-thought-reasoning">{{ reasoning }}</pre>
-        <p v-else class="reading-empty">{{ t('reading.noReasoning') }}</p>
-      </div>
-      <div v-if="understanding" class="reading-thought-phase">
-        <span class="reading-thought-label">{{ t('reading.phaseUnderstanding') }}</span>
-        <p>{{ understanding }}</p>
-      </div>
-      <div v-if="questions.length" class="reading-thought-phase">
-        <span class="reading-thought-label">{{ t('reading.phaseQuestions') }}</span>
-        <ul>
-          <li v-for="question in questions" :key="question.id">
-            {{ question.text }}<span v-if="question.why" class="reading-thought-why">（{{ question.why }}）</span>
-          </li>
-        </ul>
-      </div>
-      <div v-if="searches.length" class="reading-thought-phase">
-        <span class="reading-thought-label">{{ t('reading.phaseSearch') }}</span>
-        <ul>
-          <li v-for="(item, index) in searches" :key="index">
+      <div v-if="searches.length" class="rtc__step">
+        <span class="rtc__num">02</span>
+        <p>
+          <b>{{ t('reading.phaseSearch') }}</b>
+          <span v-for="(item, index) in searches" :key="index" class="rtc__search">
             {{ item.query }} · {{ t('reading.searchHits', { count: item.hit_count }) }}
-          </li>
-        </ul>
+          </span>
+        </p>
       </div>
-      <div class="reading-thought-phase">
-        <span class="reading-thought-label">{{ t('reading.phaseDeposit') }}</span>
-        <p>{{ t('reading.traceCounts', counts) }}</p>
+      <div v-if="understanding" class="rtc__step">
+        <span class="rtc__num">03</span>
+        <p><b>{{ t('reading.phaseUnderstanding') }}</b>{{ understanding }}</p>
       </div>
+      <div v-if="questions.length" class="rtc__step">
+        <span class="rtc__num">04</span>
+        <p>
+          <b>{{ t('reading.phaseQuestions') }}</b>
+          <span v-for="question in questions" :key="question.id" class="rtc__question">
+            {{ question.text }}<template v-if="question.why">（{{ question.why }}）</template>
+          </span>
+        </p>
+      </div>
+      <div class="rtc__step">
+        <span class="rtc__num">05</span>
+        <p><b>{{ t('reading.phaseDeposit') }}</b>{{ t('reading.traceCounts', counts) }}</p>
+      </div>
+
+      <button type="button" class="rtc__raw-toggle" @click="rawOpen = !rawOpen">
+        {{ t('reading.rawReasoning') }} {{ rawOpen ? '▴' : '▾' }}
+      </button>
+      <pre v-if="rawOpen" class="rtc__raw">{{ reasoning || t('reading.noReasoning') }}</pre>
     </div>
   </div>
 </template>
@@ -82,6 +93,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const expanded = ref(true)
+const rawOpen = ref(false)
 const reasoning = computed(() =>
   typeof props.trace.reasoning === 'string' ? props.trace.reasoning : '',
 )
@@ -94,135 +106,153 @@ const counts = computed(() => ({
   terms: Number(props.trace.term_count || 0),
   contradictions: Number(props.trace.contradiction_count || 0),
 }))
-const selectedRoundValue = computed({
-  get: () => props.selectedRound,
-  set: (value: number) => emit('update:selectedRound', Number(value)),
-})
+
+function onRoundChange(event: Event) {
+  emit('update:selectedRound', Number((event.target as HTMLSelectElement).value))
+}
 </script>
 
 <style scoped lang="less">
-.reading-thought-card {
-  padding: 10px 12px;
-  margin-bottom: 14px;
-  background: var(--td-bg-color-secondarycontainer);
-  border: 1px solid var(--td-component-stroke);
-  border-radius: 8px;
+.rtc {
+  margin: 0 0 30px;
+  font-size: 13px;
+  color: var(--rv-text, #37352f);
 }
 
-.reading-thought-loading {
+.rtc--loading {
   display: flex;
   gap: 10px;
-  align-items: center;
-  font-size: 12px;
-  color: var(--td-text-color-secondary);
+  align-items: baseline;
+  padding: 10px 0;
+  color: var(--rv-text-3, #9b9a97);
 }
 
-.reading-thought-head {
+.rtc__head {
   display: flex;
-  gap: 8px;
-  align-items: center;
+  gap: 10px;
+  align-items: baseline;
 }
 
-.reading-thought-toggle {
+.rtc__toggle {
   display: flex;
   flex: 1;
-  gap: 8px;
-  align-items: center;
+  gap: 10px;
+  align-items: baseline;
   min-width: 0;
   padding: 0;
   font-family: inherit;
-  color: var(--td-text-color-primary);
+  color: inherit;
   text-align: left;
   cursor: pointer;
   background: transparent;
   border: 0;
 }
 
-.reading-thought-title {
-  flex-shrink: 0;
+.rtc__title {
+  flex: none;
   font-size: 13px;
   font-weight: 600;
+  color: var(--rv-text-2, #787774);
 }
 
-.reading-thought-meta {
+.rtc__meta {
   margin-left: auto;
   overflow: hidden;
-  font-size: 11px;
-  color: var(--td-text-color-secondary);
+  font-size: 11.5px;
+  color: var(--rv-text-3, #9b9a97);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.reading-thought-caret {
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--td-text-color-secondary);
-}
-
-.reading-thought-round {
-  flex-shrink: 0;
-  width: 112px;
-}
-
-.reading-thought-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.reading-thought-phase {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.reading-thought-label {
+.rtc__caret {
+  flex: none;
   font-size: 11px;
-  font-weight: 600;
-  color: var(--td-brand-color);
+  color: var(--rv-text-3, #9b9a97);
 }
 
-.reading-thought-phase p,
-.reading-thought-phase ul {
-  margin: 0;
+.rtc__round {
+  flex: none;
+  max-width: 110px;
+  height: 24px;
+  padding: 0 6px;
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--rv-text-3, #9b9a97);
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+
+.rtc__body {
+  padding-top: 14px;
+}
+
+.rtc__step {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.rtc__num {
+  flex: none;
+  width: 20px;
+  padding-top: 1px;
   font-size: 12px;
-  line-height: 1.6;
-  color: var(--td-text-color-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--rv-haze-d, #5d7b8a);
 }
 
-.reading-thought-phase ul {
-  padding-left: 16px;
-}
-
-.reading-thought-reasoning {
-  max-height: 280px;
-  padding: 8px;
+.rtc__step p {
+  flex: 1;
   margin: 0;
-  overflow: auto;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--rv-text-2, #787774);
+}
+
+.rtc__step b {
+  margin-right: 4px;
+  font-weight: 500;
+  color: var(--rv-text, #37352f);
+}
+
+.rtc__search,
+.rtc__question {
+  display: block;
+}
+
+.rtc__raw-toggle {
+  padding: 3px 0;
+  margin: 8px 0 0 32px;
   font-family: inherit;
   font-size: 12px;
+  color: var(--rv-text-3, #9b9a97);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+}
+
+.rtc__raw-toggle:hover {
+  color: var(--rv-text-2, #787774);
+}
+
+.rtc__raw {
+  max-height: 280px;
+  padding: 12px 14px;
+  margin: 8px 0 0 32px;
+  overflow-y: auto;
+  font-family: inherit;
+  font-size: 12.5px;
   line-height: 1.7;
-  color: var(--td-text-color-primary);
+  color: var(--rv-text-2, #787774);
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  background: var(--td-bg-color-container);
-  border-radius: 6px;
+  background: var(--rv-side, #faf9f7);
+  border-radius: 3px;
   scrollbar-width: none;
 }
 
-.reading-thought-reasoning::-webkit-scrollbar {
+.rtc__raw::-webkit-scrollbar {
   display: none;
-}
-
-.reading-thought-why {
-  color: var(--td-text-color-secondary);
-}
-
-.reading-empty {
-  margin: 0;
-  font-size: 12px;
-  color: var(--td-text-color-placeholder);
 }
 </style>

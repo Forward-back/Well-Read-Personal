@@ -5,6 +5,7 @@ import { userInfoFromApi } from '@/api/auth'
 import i18n from '@/i18n'
 import { reloadFontFromStorage } from '@/composables/useFont'
 import { reloadThemeFromStorage } from '@/composables/useTheme'
+import { reloadDetailAppearanceFromStorage } from '@/composables/useDetailAppearance'
 import { resetMigrationLatch } from '@/composables/preferenceStorage'
 import { useChatResourcesStore } from '@/stores/chatResources'
 import { useEditorResourcesStore } from '@/stores/editorResources'
@@ -18,6 +19,7 @@ function reloadUserPreferences() {
   resetMigrationLatch()
   reloadFontFromStorage()
   reloadThemeFromStorage()
+  reloadDetailAppearanceFromStorage()
 }
 
 // Personal edition auth state: one owner, one internal workspace.

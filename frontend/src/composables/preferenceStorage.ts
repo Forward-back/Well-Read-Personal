@@ -19,6 +19,11 @@ const PREFERENCE_SUFFIXES = [
   'font_sans',
   'font_mono',
   'font_size',
+  'detail_color',
+  'detail_transparency',
+  'detail_text_primary',
+  'detail_text_secondary',
+  'detail_text_placeholder',
 ] as const
 
 export function readUserId(): string {

@@ -493,6 +493,224 @@ const docTemplate = `{
                 }
             }
         },
+        "/auth/me/background": {
+            "put": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "保存选中的背景：default、builtin:1..5 或 upload:\u003cid\u003e。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "背景"
+                ],
+                "summary": "选择背景",
+                "parameters": [
+                    {
+                        "description": "背景选择",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "choice": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "保存成功",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "选择不合法",
+                        "schema": {
+                            "$ref": "#/definitions/gaze_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/me/backgrounds": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "返回当前选中的背景（default / builtin:N / upload:\u003cid\u003e）与已上传背景元数据，不含文件内容。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "背景"
+                ],
+                "summary": "获取当前用户的背景列表",
+                "responses": {
+                    "200": {
+                        "description": "背景列表",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "未登录",
+                        "schema": {
+                            "$ref": "#/definitions/gaze_internal_errors.AppError"
+                        }
+                    },
+                    "500": {
+                        "description": "读取失败",
+                        "schema": {
+                            "$ref": "#/definitions/gaze_internal_errors.AppError"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "原图上传，支持 JPEG/PNG/WebP，单张不超过 10MB，最多 10 张；上传成功后自动选中该背景。",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "背景"
+                ],
+                "summary": "上传背景图片",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "背景图片",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "上传结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "格式、大小或数量不合法",
+                        "schema": {
+                            "$ref": "#/definitions/gaze_internal_errors.AppError"
+                        }
+                    },
+                    "401": {
+                        "description": "未登录",
+                        "schema": {
+                            "$ref": "#/definitions/gaze_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/me/backgrounds/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "删除指定上传背景及其文件；若该背景正在使用，则回退到默认草地背景。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "背景"
+                ],
+                "summary": "删除上传的背景",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "背景 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除成功",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "背景不存在",
+                        "schema": {
+                            "$ref": "#/definitions/gaze_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/me/backgrounds/{id}/file": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "需要 Bearer 登录；SVG 不支持，仅返回 JPEG/PNG/WebP 原图。",
+                "produces": [
+                    "image/jpeg"
+                ],
+                "tags": [
+                    "背景"
+                ],
+                "summary": "读取上传的背景文件",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "背景 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "图片内容",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "背景不存在",
+                        "schema": {
+                            "$ref": "#/definitions/gaze_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/refresh": {
             "post": {
                 "description": "使用刷新令牌获取新的访问令牌",

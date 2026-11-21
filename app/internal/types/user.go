@@ -94,6 +94,10 @@ type User struct {
 	// AvatarData stores an uploaded avatar as a small data URL. API responses
 	// expose it through UserInfo.Avatar; the raw field never leaks in JSON.
 	AvatarData string `json:"-" gorm:"column:avatar_data;type:text"`
+	// BackgroundChoice selects the shared-shell background: "default",
+	// "builtin:N" or "upload:<id>". It is read by the background API instead
+	// of being embedded in every user response.
+	BackgroundChoice string `json:"-" gorm:"column:background_choice;type:varchar(64);not null;default:'default'"`
 	// Workspace ID that the user belongs to
 	TenantID uint64 `json:"tenant_id"  gorm:"index"`
 	// Whether the user is active

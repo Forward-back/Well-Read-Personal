@@ -27,11 +27,16 @@
               <div class="content-wrapper">
                 <template v-if="currentSection === 'account'">
                   <div class="section"><UserProfile /></div>
-                  <div class="section"><GeneralSettings /></div>
                   <div class="section"><AnswerModeSettings /></div>
                   <div class="section"><WebSearchSettings /></div>
                   <div class="section"><GlobalPromptSettings /></div>
                   <div class="section"><ChatHistorySettings /></div>
+                </template>
+
+                <template v-else-if="currentSection === 'ui'">
+                  <div class="section"><GeneralSettings /></div>
+                  <div class="section"><DetailAppearanceSettings /></div>
+                  <div class="section"><BackgroundSettings /></div>
                 </template>
 
                 <template v-else-if="currentSection === 'models'">
@@ -67,9 +72,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useUIStore } from '@/stores/ui'
 import UserProfile from './UserProfile.vue'
 import GeneralSettings from './GeneralSettings.vue'
+import DetailAppearanceSettings from './DetailAppearanceSettings.vue'
+import BackgroundSettings from './BackgroundSettings.vue'
 import AnswerModeSettings from './AnswerModeSettings.vue'
 import WebSearchSettings from './WebSearchSettings.vue'
 import GlobalPromptSettings from './GlobalPromptSettings.vue'
@@ -85,27 +93,29 @@ import RuntimeQueues from '@/views/system/RuntimeQueues.vue'
 import PersonalIntegrationSettings from './PersonalIntegrationSettings.vue'
 import AboutSettings from './AboutSettings.vue'
 
-type SectionKey = 'account' | 'models' | 'integrations' | 'health' | 'about'
+type SectionKey = 'account' | 'ui' | 'models' | 'integrations' | 'health' | 'about'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const uiStore = useUIStore()
 
 const currentSection = ref<SectionKey>('account')
 
 const navItems = computed(() => [
-  { key: 'account' as const, icon: 'user', label: '账户与助手' },
-  { key: 'models' as const, icon: 'control-platform', label: '模型与引擎' },
-  { key: 'integrations' as const, icon: 'secured', label: '外部接入' },
-  { key: 'health' as const, icon: 'info-circle', label: '系统健康与队列' },
-  { key: 'about' as const, icon: 'info-circle', label: '关于' },
+  { key: 'account' as const, icon: 'user', label: t('settingsNav.account') },
+  { key: 'ui' as const, icon: 'image', label: t('settingsNav.ui') },
+  { key: 'models' as const, icon: 'control-platform', label: t('settingsNav.models') },
+  { key: 'integrations' as const, icon: 'secured', label: t('settingsNav.integrations') },
+  { key: 'health' as const, icon: 'info-circle', label: t('settingsNav.health') },
+  { key: 'about' as const, icon: 'info-circle', label: t('settingsNav.about') },
 ])
 
-const SECTIONS = new Set<SectionKey>(['account', 'models', 'integrations', 'health', 'about'])
+const SECTIONS = new Set<SectionKey>(['account', 'ui', 'models', 'integrations', 'health', 'about'])
 
 // Legacy section keys (bookmarks, menu deep links) map onto the five panes.
 const LEGACY_SECTION_MAP: Record<string, SectionKey> = {
-  general: 'account',
+  general: 'ui',
   userprofile: 'account',
   chathistory: 'account',
   models: 'models',
@@ -204,7 +214,7 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   min-height: 0;
-  background: #f7f5f0;
+  background: transparent;
 }
 
 .settings-page__inner {
@@ -212,7 +222,7 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #f7f5f0;
+  background: transparent;
 }
 
 html[theme-mode="dark"] .settings-page,

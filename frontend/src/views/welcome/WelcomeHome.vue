@@ -1,311 +1,318 @@
 <template>
-  <div ref="pageEl" class="welcome-home">
-    <div ref="scrollEl" class="welcome-home__scroll">
-          <article class="w-article">
-            <section id="hero" class="w-hero" data-reveal>
-              <div class="w-hero__copy">
-                <p class="w-eyebrow">WellRead Personal</p>
-                <h1 class="w-hero__title">能用起来的，才叫知识</h1>
-                <p class="w-hero__sub">WellRead，让知识流动起来</p>
+  <div ref="pageEl" class="landing">
+    <div ref="scrollEl" class="landing__scroll">
+      <div class="landing__flow" aria-hidden="true">
+        <svg viewBox="0 0 1440 2200" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="flow-gradient" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#07c05f" stop-opacity="0" />
+              <stop offset="35%" stop-color="#07c05f" stop-opacity="0.45" />
+              <stop offset="70%" stop-color="#8fdcc0" stop-opacity="0.35" />
+              <stop offset="100%" stop-color="#07c05f" stop-opacity="0" />
+            </linearGradient>
+            <linearGradient id="flow-gradient-2" x1="0" y1="1" x2="1" y2="0">
+              <stop offset="0%" stop-color="#e8b86d" stop-opacity="0" />
+              <stop offset="50%" stop-color="#e8b86d" stop-opacity="0.28" />
+              <stop offset="100%" stop-color="#07c05f" stop-opacity="0" />
+            </linearGradient>
+          </defs>
+          <path
+            class="landing__flow-line"
+            d="M-80 260 C 220 80, 430 430, 720 270 S 1180 70, 1520 330"
+            stroke="url(#flow-gradient)"
+          />
+          <path
+            class="landing__flow-line landing__flow-line--slow"
+            d="M-100 640 C 250 460, 520 780, 820 560 S 1250 420, 1540 700"
+            stroke="url(#flow-gradient-2)"
+          />
+          <path
+            class="landing__flow-line landing__flow-line--faint"
+            d="M-120 1500 C 300 1300, 520 1720, 860 1480 S 1280 1300, 1560 1560"
+            stroke="url(#flow-gradient)"
+          />
+        </svg>
+      </div>
 
-                <div class="w-hero__actions">
-                  <t-button class="w-btn" theme="primary" size="medium" @click="goChat">开始提问</t-button>
-                  <t-button class="w-btn" theme="default" variant="outline" size="medium" @click="scrollToSection('how')">
-                    看看怎么用
-                  </t-button>
+      <div class="landing__inner">
+        <section class="hero" data-reveal>
+          <h1 class="hero__title">
+            {{ $t('welcomeHome.titlePrefix') }}<span>{{ $t('welcomeHome.titleAccent') }}</span>
+          </h1>
+          <p class="hero__sub">{{ $t('welcomeHome.subtitle') }}</p>
+
+          <div class="hero__actions">
+            <t-button class="landing-btn landing-btn--primary" theme="primary" size="large" @click="goChat">
+              {{ $t('welcomeHome.primaryCta') }}
+            </t-button>
+            <t-button class="landing-btn" theme="default" variant="outline" size="large" @click="scrollToSection('features')">
+              {{ $t('welcomeHome.secondaryCta') }}
+            </t-button>
+          </div>
+
+          <form class="hero__ask" @submit.prevent="submitAsk">
+            <span class="hero__ask-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" fill="none">
+                <circle cx="9" cy="9" r="5.5" stroke="currentColor" stroke-width="1.6" />
+                <path d="M13 13l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+              </svg>
+            </span>
+            <input
+              ref="inputEl"
+              v-model="askQuery"
+              type="text"
+              class="hero__ask-input"
+              :placeholder="$t('welcomeHome.askPlaceholder')"
+              :aria-label="$t('welcomeHome.askAria')"
+              autocomplete="off"
+            />
+            <button type="submit" class="hero__ask-send" :aria-label="$t('welcomeHome.sendAria')">
+              <SendIcon />
+            </button>
+          </form>
+
+          <div class="hero__chips">
+            <button
+              v-for="q in suggestions"
+              :key="q"
+              type="button"
+              class="hero__chip"
+              @click="useSuggestion(q)"
+            >
+              {{ q }}
+            </button>
+          </div>
+
+          <div class="hero__stage">
+            <svg class="hero__stage-lines" viewBox="0 0 1100 520" aria-hidden="true">
+              <path d="M70 410 C 210 300, 330 420, 470 320 S 760 190, 1010 300" />
+              <path d="M130 180 C 300 260, 380 120, 560 210 S 830 320, 980 180" />
+            </svg>
+
+            <div class="product">
+              <aside class="product__side">
+                <div class="product__brand">
+                  <span>WellRead</span>
                 </div>
-
-                <form class="w-ask" @submit.prevent="submitAsk">
-                  <input
-                    ref="inputEl"
-                    v-model="askQuery"
-                    class="w-ask__input"
-                    type="text"
-                    placeholder="问点什么，比如「总结我某篇论文」"
-                    aria-label="向 WellRead 提问"
-                    autocomplete="off"
-                  />
-                  <button type="submit" class="w-ask__send" aria-label="发送问题">
-                    <SendIcon />
-                  </button>
-                </form>
-
-                <div class="w-chips" aria-label="建议问题">
-                  <button
-                    v-for="q in suggestions"
-                    :key="q"
-                    type="button"
-                    class="w-chip"
-                    @click="useSuggestion(q)"
-                  >
-                    {{ q }}
-                  </button>
+                <div class="product__nav">
+                  <span class="product__nav-row is-active"><ChatIcon /> {{ $t('menu.chat') }}</span>
+                  <span class="product__nav-row"><FolderIcon /> {{ $t('menu.knowledgeBase') }}</span>
+                  <span class="product__nav-row"><BookOpenIcon /> {{ $t('menu.reading') }}</span>
+                  <span class="product__nav-row"><ChartIcon /> {{ $t('menu.review') }}</span>
+                  <span class="product__nav-row"><StarIcon /> {{ $t('menu.skills') }}</span>
                 </div>
-
-                <div class="w-hero__proof">
-                  <span>本地部署</span>
-                  <span>单 owner</span>
-                  <span>引用可回原文</span>
-                </div>
-              </div>
-
-              <aside class="w-setup-card">
-                <p class="w-eyebrow">三步开始</p>
-                <h2 class="w-setup-card__title">把资料交给它</h2>
-                <ul class="w-check-list">
-                  <li><CheckCircleIcon /> 把文档、网页、代码收进知识库</li>
-                  <li><CheckCircleIcon /> 提问时给出可追溯的引用</li>
-                  <li><CheckCircleIcon /> 学过的内容按节奏复习</li>
-                </ul>
-                <div class="w-setup-card__actions">
-                  <t-button class="w-btn" theme="primary" size="medium" @click="goChat">进入问答</t-button>
-                  <t-button class="w-btn" theme="default" variant="outline" size="medium" @click="go('/platform/knowledge-bases')">
-                    创建知识库
-                  </t-button>
+                <div class="product__side-foot">
+                  <LockOnIcon />
+                  <span>{{ $t('welcomeHome.preview.localNote') }}</span>
                 </div>
               </aside>
-            </section>
 
-            <section id="demo" class="w-demo" data-reveal>
-              <div class="w-demo__tabs" role="tablist" aria-label="功能演示">
-                <button
-                  v-for="(tab, index) in tabs"
-                  :key="tab.key"
-                  type="button"
-                  class="w-demo__tab"
-                  role="tab"
-                  :aria-selected="activeTab === tab.key"
-                  :tabindex="activeTab === tab.key ? 0 : -1"
-                  @click="activeTab = tab.key"
-                  @keydown="onTabKeydown($event, index)"
-                >
-                  {{ tab.label }}
-                </button>
-              </div>
-
-              <div class="w-demo__card" role="tabpanel" :aria-label="activeTabData.title">
-                <div :key="activeTab" class="w-demo__body">
-                  <div class="w-demo__visual">
-                    <div class="w-paper">
-                      <template v-if="activeTab === 'ask'">
-                        <div class="w-mock">
-                          <div class="w-mock__bar">
-                            <span class="w-mock__dot" />
-                            <span>问答</span>
-                            <span class="w-mock__badge">引用 2</span>
-                          </div>
-                          <div class="w-bubble w-bubble--user">帮我找出「注意力机制」在论文里的定义</div>
-                          <div class="w-bubble w-bubble--ai">
-                            <p>论文把注意力描述为对输入加权求和：每个位置根据相关性获得权重。</p>
-                            <span class="w-cite"><LinkIcon /> 论文.pdf · 第 3 页 · 分块 12</span>
-                          </div>
-                          <div class="w-mock__input">
-                            <span>继续追问…</span>
-                            <SendIcon />
-                          </div>
-                        </div>
-                      </template>
-                      <template v-else-if="activeTab === 'ingest'">
-                        <div class="w-mock">
-                          <div class="w-mock__bar">
-                            <span class="w-mock__dot" />
-                            <span>知识库入库</span>
-                            <span class="w-mock__badge">3 个来源</span>
-                          </div>
-                          <div v-for="file in ingestFiles" :key="file.name" class="w-file-row">
-                            <span class="w-file-row__icon"><FileIcon /></span>
-                            <span class="w-file-row__name">{{ file.name }}</span>
-                            <span class="w-file-row__meta">{{ file.meta }}</span>
-                            <span class="w-file-row__state">{{ file.state }}</span>
-                          </div>
-                          <div class="w-chunk-row">
-                            <span>分块索引</span>
-                            <span class="w-chunk-row__bars">
-                              <i v-for="n in 8" :key="n" :class="{ on: n <= 6 }" />
-                            </span>
-                            <strong>6 / 8</strong>
-                          </div>
-                        </div>
-                      </template>
-                      <template v-else>
-                        <div class="w-mock">
-                          <div class="w-mock__bar">
-                            <span class="w-mock__dot" />
-                            <span>今日复习 · 漏洞补强</span>
-                            <span class="w-mock__badge">3 / 12</span>
-                          </div>
-                          <div class="w-review-card">
-                            <span class="w-review-card__tag">严重</span>
-                            <p>注意力机制的核心作用是什么？</p>
-                            <div class="w-rate-row">
-                              <span>忘记</span>
-                              <span>想得慢</span>
-                              <span>想起来</span>
-                              <span>秒答</span>
-                            </div>
-                          </div>
-                          <div class="w-review-foot">今天还有 9 张</div>
-                        </div>
-                      </template>
-                    </div>
+              <div class="product__main">
+                <div class="product__head">
+                  <span class="product__title">{{ $t('welcomeHome.preview.chatTitle') }}</span>
+                  <span class="product__status">{{ $t('welcomeHome.preview.cite') }}</span>
+                </div>
+                <div class="product__chat">
+                  <div class="product__bubble product__bubble--user">
+                    {{ $t('welcomeHome.preview.question') }}
                   </div>
-
-                  <div class="w-demo__copy">
-                    <p class="w-eyebrow">能力</p>
-                    <h2>{{ activeTabData.title }}</h2>
-                    <p class="w-demo__desc">{{ activeTabData.desc }}</p>
-                    <ul class="w-check-list">
-                      <li v-for="bullet in activeTabData.bullets" :key="bullet">
-                        <CheckCircleIcon /> {{ bullet }}
-                      </li>
-                    </ul>
-                    <t-button class="w-btn" theme="primary" size="medium" @click="go(activeTabData.path)">
-                      {{ activeTabData.cta }}
-                    </t-button>
+                  <div class="product__bubble product__bubble--ai">
+                    <p>{{ $t('welcomeHome.preview.answer') }}</p>
+                    <span class="product__cite"><LinkIcon /> {{ $t('welcomeHome.preview.cite') }}</span>
+                  </div>
+                  <div class="product__composer">
+                    <span>{{ $t('welcomeHome.preview.composer') }}</span>
+                    <SendIcon />
                   </div>
                 </div>
               </div>
-            </section>
+            </div>
 
-            <section id="sources" class="w-section" data-reveal>
-              <div class="w-section__head">
-                <p class="w-eyebrow">使用场景</p>
-                <h2 class="w-section__title">一个人也能用得起来</h2>
+            <div class="float-card float-card--kb">
+              <span class="float-card__icon float-card__icon--green"><FolderIcon /></span>
+              <div>
+                <strong>{{ $t('welcomeHome.preview.kbTitle') }}</strong>
+                <small>{{ $t('welcomeHome.preview.kbMeta') }}</small>
               </div>
-              <div class="w-scenario-grid">
-                <article v-for="scenario in scenarios" :key="scenario.title" class="w-scenario-card">
-                  <span class="w-scenario-card__icon"><component :is="scenario.icon" /></span>
-                  <h3>{{ scenario.title }}</h3>
-                  <p>{{ scenario.desc }}</p>
-                </article>
+              <span class="float-card__dots"><i class="on" /><i class="on" /><i class="on" /><i /></span>
+            </div>
+
+            <div class="float-card float-card--review">
+              <span class="float-card__icon float-card__icon--amber"><ChartIcon /></span>
+              <div>
+                <strong>{{ $t('welcomeHome.preview.reviewTitle') }}</strong>
+                <small>{{ $t('welcomeHome.preview.reviewMeta') }}</small>
               </div>
-            </section>
+              <span class="float-card__heat">
+                <i v-for="n in 12" :key="n" :class="'heat-' + ((n * 5) % 4)" />
+              </span>
+            </div>
+          </div>
+        </section>
 
-            <section id="how" class="w-section" data-reveal>
-              <div class="w-section__head">
-                <p class="w-eyebrow">工作方式</p>
-                <h2 class="w-section__title">不是把整本书丢给模型</h2>
+        <section id="features" class="bento-section" data-reveal>
+          <header class="section-head">
+            <h2>{{ $t('welcomeHome.features.title') }}</h2>
+          </header>
+
+          <div class="bento">
+            <article
+              v-for="feature in features"
+              :key="feature.key"
+              class="bento__card"
+              :class="`bento__card--${feature.key}`"
+            >
+              <div class="bento__head">
+                <span class="bento__icon" :class="`bento__icon--${feature.tone}`">
+                  <component :is="feature.icon" />
+                </span>
+                <span class="bento__tag">{{ feature.tag }}</span>
               </div>
-              <div class="w-how">
-                <ol class="w-steps">
-                  <li v-for="(step, index) in steps" :key="step.title" class="w-steps__item">
-                    <button
-                      type="button"
-                      class="w-steps__button"
-                      :class="{ 'is-active': activeStep === index }"
-                      :aria-pressed="activeStep === index"
-                      @click="activeStep = index"
-                    >
-                      <span class="w-steps__num">0{{ index + 1 }}</span>
-                      <span class="w-steps__text">
-                        <strong>{{ step.title }}</strong>
-                        <small>{{ step.desc }}</small>
-                      </span>
-                    </button>
-                  </li>
-                </ol>
+              <h3>{{ feature.title }}</h3>
+              <p class="bento__desc">{{ feature.desc }}</p>
 
-                <div class="w-how__visual">
-                  <div class="w-paper w-paper--how">
-                    <div :key="activeStep" class="w-mock">
-                      <div class="w-mock__bar">
-                        <span class="w-mock__dot" />
-                        <span>{{ steps[activeStep].mockTitle }}</span>
-                        <span class="w-mock__badge">{{ steps[activeStep].mockBadge }}</span>
-                      </div>
-
-                      <template v-if="activeStep === 0">
-                        <div v-for="file in ingestFiles" :key="file.name" class="w-file-row">
-                          <span class="w-file-row__icon"><FileIcon /></span>
-                          <span class="w-file-row__name">{{ file.name }}</span>
-                          <span class="w-file-row__meta">{{ file.meta }}</span>
-                          <span class="w-file-row__state">{{ file.state }}</span>
-                        </div>
-                      </template>
-
-                      <template v-else-if="activeStep === 1">
-                        <div class="w-chunk-list">
-                          <div v-for="chunk in chunks" :key="chunk.id" class="w-chunk">
-                            <span class="w-chunk__id">{{ chunk.id }}</span>
-                            <span class="w-chunk__text">{{ chunk.text }}</span>
-                          </div>
-                        </div>
-                      </template>
-
-                      <template v-else-if="activeStep === 2">
-                        <div class="w-search-row">注意力机制的定义</div>
-                        <div v-for="hit in searchHits" :key="hit.title" class="w-hit">
-                          <span class="w-hit__score">{{ hit.score }}</span>
-                          <span class="w-hit__body">
-                            <strong>{{ hit.title }}</strong>
-                            <small>{{ hit.snippet }}</small>
-                          </span>
-                        </div>
-                      </template>
-
-                      <template v-else>
-                        <div class="w-bubble w-bubble--user">注意力机制在论文里怎么定义？</div>
-                        <div class="w-bubble w-bubble--ai">
-                          <p>它把输入看作一组键值对，按相关性给每个位置分配权重，再加权求和。</p>
-                          <span class="w-cite"><LinkIcon /> 论文.pdf · 第 3 页 · 分块 12</span>
-                        </div>
-                      </template>
-                    </div>
-                  </div>
+              <div v-if="feature.key === 'ask'" class="bento-visual bento-visual--ask">
+                <div class="mini-chat">
+                  <span class="mini-chat__user">{{ $t('welcomeHome.preview.question') }}</span>
+                  <span class="mini-chat__ai">
+                    {{ $t('welcomeHome.preview.answer') }}
+                    <em><LinkIcon /> {{ $t('welcomeHome.preview.cite') }}</em>
+                  </span>
                 </div>
               </div>
-            </section>
 
-            <section id="stats" class="w-stats" data-reveal>
-              <div class="w-section__head">
-                <p class="w-eyebrow">它现在就能做到</p>
-                <h2 class="w-section__title">一套本地知识库，闭环到你每天的使用</h2>
+              <div v-else-if="feature.key === 'kb'" class="bento-visual bento-visual--kb">
+                <span class="mini-file"><FileIcon /> paper.pdf <em>42p</em></span>
+                <span class="mini-file"><FileIcon /> notes.md <em>18c</em></span>
+                <span class="mini-file"><CodeIcon /> /src <em>96f</em></span>
+                <span class="mini-index">
+                  <i v-for="n in 10" :key="n" :class="{ on: n <= 7 }" />
+                  <em>7 / 10</em>
+                </span>
               </div>
-              <div class="w-stats__grid">
-                <div v-for="stat in stats" :key="stat.label" class="w-stat">
-                  <strong>{{ stat.value }}</strong>
-                  <span>{{ stat.label }}</span>
+
+              <div v-else-if="feature.key === 'review'" class="bento-visual bento-visual--review">
+                <div class="mini-heat">
+                  <i v-for="n in 28" :key="n" :class="'heat-' + ((n * 7) % 4)" />
+                </div>
+                <div class="mini-review-foot">
+                  <span>1</span><span>2</span><span>3</span><span>4</span>
                 </div>
               </div>
-            </section>
 
-            <section id="start" class="w-cta" data-reveal>
-              <div class="w-cta__joke">
-                <span class="w-cta__badge">WellRead Personal</span>
-                <strong class="w-cta__number">1</strong>
-                <p>一个 owner，一套知识库，一台自己的机器。</p>
+              <div v-else-if="feature.key === 'reading'" class="bento-visual bento-visual--reading">
+                <span class="mini-chapter"><em>01</em><i style="width: 100%" /></span>
+                <span class="mini-chapter"><em>02</em><i style="width: 82%" /></span>
+                <span class="mini-chapter"><em>03</em><i style="width: 46%" /></span>
+                <span class="mini-chapter-note">{{ feature.meta }}</span>
               </div>
-              <div class="w-cta__action">
-                <h2>现在就把资料变成第二大脑</h2>
-                <p>本地部署，单 owner，数据留在自己的机器上。</p>
-                <div class="w-cta__actions">
-                  <t-button class="w-btn" theme="primary" size="medium" @click="goChat">进入问答</t-button>
-                  <t-button class="w-btn" theme="default" variant="outline" size="medium" @click="go('/platform/knowledge-bases')">
-                    创建知识库
-                  </t-button>
-                </div>
-              </div>
-            </section>
 
-            <footer class="w-footer">
-              <div class="w-footer__brand">
-                <strong>WellRead</strong>
-                <span>Personal · 本地部署</span>
+              <div v-else class="bento-visual bento-visual--mcp">
+                <span class="mini-code">GET /api/v1/sessions</span>
+                <span class="mini-code mini-code--dim">authorization: Bearer ••••</span>
+                <span class="mini-badge"><LockOnIcon /> {{ feature.meta }}</span>
               </div>
-              <nav class="w-footer__nav" aria-label="产品入口">
-                <button type="button" @click="goChat">问答</button>
-                <button type="button" @click="go('/platform/knowledge-bases')">知识库</button>
-                <button type="button" @click="go('/platform/reading')">精读</button>
-                <button type="button" @click="go('/platform/review')">复习</button>
-                <button type="button" @click="go('/platform/skills')">技能</button>
-                <button type="button" @click="go('/platform/settings')">设置</button>
-              </nav>
-              <div class="w-footer__meta">
-                <button type="button" @click="go('/platform/settings')">系统健康</button>
-                <span>v{{ version }}</span>
-              </div>
-            </footer>
-          </article>
+            </article>
+          </div>
+        </section>
+
+        <section id="architecture" class="architecture" data-reveal>
+          <header class="section-head">
+            <h2>{{ $t('welcomeHome.arch.title') }}</h2>
+          </header>
+
+          <div class="architecture__switch" role="tablist" :aria-label="$t('welcomeHome.arch.title')">
+            <button
+              type="button"
+              role="tab"
+              class="architecture__tab"
+              :class="{ 'is-active': activeDiagram === 'platform' }"
+              :aria-selected="activeDiagram === 'platform'"
+              @click="activeDiagram = 'platform'"
+            >
+              {{ $t('welcomeHome.arch.platform') }}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              class="architecture__tab"
+              :class="{ 'is-active': activeDiagram === 'rag' }"
+              :aria-selected="activeDiagram === 'rag'"
+              @click="activeDiagram = 'rag'"
+            >
+              {{ $t('welcomeHome.arch.rag') }}
+            </button>
+          </div>
+
+          <div class="architecture__frame">
+            <iframe
+              ref="diagramFrame"
+              :key="`${activeDiagram}-${diagramTheme}`"
+              :src="diagramSrc"
+              :title="activeDiagram === 'platform' ? $t('welcomeHome.arch.platform') : $t('welcomeHome.arch.rag')"
+              loading="lazy"
+              allowtransparency="true"
+              :style="{ height: `${diagramHeight}px` }"
+              @load="handleDiagramLoad"
+            />
+          </div>
+        </section>
+
+        <section id="how" class="how-section" data-reveal>
+          <header class="section-head">
+            <h2>{{ $t('welcomeHome.how.title') }}</h2>
+          </header>
+
+          <div class="how">
+            <svg class="how__line" viewBox="0 0 960 120" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M80 60 C 220 0, 300 120, 480 60 S 740 0, 880 60" />
+            </svg>
+            <article v-for="(step, index) in steps" :key="step.key" class="how__step">
+              <span class="how__num">0{{ index + 1 }}</span>
+              <span class="how__icon" :class="`how__icon--${step.tone}`"><component :is="step.icon" /></span>
+              <h3>{{ step.title }}</h3>
+              <p>{{ step.desc }}</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="scenarios" data-reveal>
+          <header class="section-head">
+            <h2>{{ $t('welcomeHome.scenarios.title') }}</h2>
+          </header>
+          <div class="scenarios__grid">
+            <button
+              v-for="scenario in scenarios"
+              :key="scenario.key"
+              type="button"
+              class="scenario"
+              @click="go(scenario.path)"
+            >
+              <span class="scenario__icon" :class="`scenario__icon--${scenario.tone}`">
+                <component :is="scenario.icon" />
+              </span>
+              <span class="scenario__copy">
+                <strong>{{ scenario.title }}</strong>
+                <small>{{ scenario.desc }}</small>
+              </span>
+              <span class="scenario__arrow"><ChevronRightIcon /></span>
+            </button>
+          </div>
+        </section>
+
+        <section class="final-cta" data-reveal>
+          <span class="final-cta__brand">WellRead</span>
+          <h2>{{ $t('welcomeHome.finalCta.title') }}</h2>
+          <div class="final-cta__actions">
+            <t-button class="landing-btn landing-btn--primary" theme="primary" size="large" @click="goChat">
+              {{ $t('welcomeHome.finalCta.primary') }}
+            </t-button>
+            <t-button class="landing-btn" theme="default" variant="outline" size="large" @click="go('/platform/knowledge-bases')">
+              {{ $t('welcomeHome.finalCta.secondary') }}
+            </t-button>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 </template>
@@ -313,106 +320,134 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import {
   BookOpenIcon,
-  CheckCircleIcon,
+  ChartIcon,
+  ChatIcon,
+  ChevronRightIcon,
+  CodeIcon,
   FileIcon,
   FolderIcon,
   LinkIcon,
+  LockOnIcon,
   SendIcon,
   StarIcon,
 } from 'tdesign-icons-vue-next'
 import { useMenuStore } from '@/stores/menu'
+import { useTheme } from '@/composables/useTheme'
 
 const router = useRouter()
 const menuStore = useMenuStore()
+const { t } = useI18n()
+const { currentTheme } = useTheme()
 
 const pageEl = ref<HTMLElement | null>(null)
 const scrollEl = ref<HTMLElement | null>(null)
 const inputEl = ref<HTMLInputElement | null>(null)
 const askQuery = ref('')
-const activeTab = ref<'ask' | 'ingest' | 'review'>('ask')
-const activeStep = ref(0)
+const activeDiagram = ref<'platform' | 'rag'>('platform')
+const systemDark = ref(false)
+const media = window.matchMedia('(prefers-color-scheme: dark)')
+const updateSystemDark = () => { systemDark.value = media.matches }
+updateSystemDark()
+const diagramTheme = computed(() =>
+  currentTheme.value === 'dark' || (currentTheme.value === 'system' && systemDark.value) ? 'dark' : 'light',
+)
+const diagramSrc = computed(
+  () => `/diagrams/${activeDiagram.value}-architecture.html?embed=1&theme=${diagramTheme.value}`,
+)
+const diagramFrame = ref<HTMLIFrameElement | null>(null)
+const diagramHeight = ref(620)
+let diagramResizeObserver: ResizeObserver | null = null
+
+function syncDiagramHeight() {
+  const win = diagramFrame.value?.contentWindow
+  const doc = win?.document
+  if (!win || !doc) return
+  const container = doc.querySelector<HTMLElement>('.container')
+  const measured = Math.ceil(container?.getBoundingClientRect().height || doc.body.scrollHeight || 0)
+  if (measured > 0) {
+    diagramHeight.value = Math.max(560, measured + 16)
+  }
+}
+
+function handleDiagramLoad() {
+  syncDiagramHeight()
+  window.setTimeout(syncDiagramHeight, 350)
+  diagramResizeObserver?.disconnect()
+  diagramResizeObserver = null
+  const win = diagramFrame.value?.contentWindow
+  const container = win?.document.querySelector<HTMLElement>('.container')
+  const ResizeObserverCtor = (win as unknown as { ResizeObserver?: typeof ResizeObserver } | null)?.ResizeObserver
+  if (win && container && ResizeObserverCtor) {
+    diagramResizeObserver = new ResizeObserverCtor(syncDiagramHeight)
+    diagramResizeObserver.observe(container)
+  }
+}
+
 let revealObserver: IntersectionObserver | null = null
 const reducedMotion = ref(false)
 
-const suggestions = [
-  '总结我最近读过的文档',
-  '找出我复习里最薄弱的知识块',
-  '对比两篇论文的方法差异',
-]
-
-const tabs = [
+const suggestions = computed(() => [
+  t('welcomeHome.suggestions.0'),
+  t('welcomeHome.suggestions.1'),
+  t('welcomeHome.suggestions.2'),
+])
+const features = computed(() => [
   {
     key: 'ask',
-    label: '提问',
-    title: '问你的知识库',
-    desc: '带着引用回答。检索增强与直连双模式，回答里的引用可以回到原文。',
-    bullets: ['知识库检索 + 直连模型', '流式回答，引用可定位', '建议问题一键填入'],
-    cta: '去问答',
-    path: '/platform/creatChat',
+    tag: t('welcomeHome.features.askTag'),
+    title: t('welcomeHome.features.askTitle'),
+    desc: t('welcomeHome.features.askDesc'),
+    tone: 'green',
+    icon: ChatIcon,
   },
   {
-    key: 'ingest',
-    label: '入库',
-    title: '先把资料收进来',
-    desc: '上传文档、网页或代码项目，解析、分块并建立向量与关键词索引。',
-    bullets: ['文档、网页、Markdown、代码项目', '自动解析与分块', '向量 + BM25 双路索引'],
-    cta: '创建知识库',
-    path: '/platform/knowledge-bases',
+    key: 'kb',
+    tag: t('welcomeHome.features.kbTag'),
+    title: t('welcomeHome.features.kbTitle'),
+    desc: t('welcomeHome.features.kbDesc'),
+    tone: 'blue',
+    icon: FolderIcon,
   },
   {
     key: 'review',
-    label: '复习',
-    title: '让知识定期回来',
-    desc: '四档评分与漏洞热力图，每天补强最该补的那几张。',
-    bullets: ['间隔重复与每日队列', '四档评分与漏洞视图', '卡片、统计与会话记录'],
-    cta: '去复习',
-    path: '/platform/review',
+    tag: t('welcomeHome.features.reviewTag'),
+    title: t('welcomeHome.features.reviewTitle'),
+    desc: t('welcomeHome.features.reviewDesc'),
+    tone: 'amber',
+    icon: ChartIcon,
   },
-] as const
-
-const activeTabData = computed(() => tabs.find(tab => tab.key === activeTab.value) ?? tabs[0])
-
-const steps = [
-  { title: '收进来', desc: '上传文档、网页或代码项目。', mockTitle: '入库', mockBadge: '3 个来源' },
-  { title: '切开来', desc: '解析、分块，建立向量与关键词索引。', mockTitle: '分块', mockBadge: '6 块' },
-  { title: '查得到', desc: '提问时先检索到最相关的分块。', mockTitle: '检索', mockBadge: 'Top 3' },
-  { title: '说得清', desc: '回答附带可定位的引用，能回到原文。', mockTitle: '回答', mockBadge: '引用 1' },
-] as const
-
-const ingestFiles = [
-  { name: '论文.pdf', meta: '42 页', state: '已解析' },
-  { name: '课程笔记.md', meta: '18 块', state: '已索引' },
-  { name: '项目文档', meta: '96 文件', state: '已索引' },
-]
-
-const chunks = [
-  { id: '#12', text: '注意力机制对输入序列的每个位置计算相关性权重…' },
-  { id: '#13', text: '权重经过 softmax 归一化后，与值向量加权求和…' },
-  { id: '#14', text: '多头注意力把表示空间拆成多个子空间并行计算…' },
-]
-
-const searchHits = [
-  { score: '0.92', title: '论文.pdf · 第 3 页', snippet: '注意力机制把输入看作键值对…' },
-  { score: '0.87', title: '课程笔记.md · 第 6 块', snippet: '注意力权重反映位置之间的相关性…' },
-  { score: '0.61', title: '项目文档 · 检索说明', snippet: '向量召回与 BM25 合并排序…' },
-]
-
-const scenarios = [
-  { title: '读论文', desc: '先精读方法，再把关键细节放进复习队列。', icon: BookOpenIcon },
-  { title: '写代码', desc: '把项目文档和代码库收进知识库，随时可查。', icon: FolderIcon },
-  { title: '长期学习', desc: '把每次问答沉淀成卡片，隔几天再见一次。', icon: StarIcon },
-]
-
-const stats = [
-  { value: '6', label: '个功能区' },
-  { value: '17', label: '个只读 MCP 工具' },
-  { value: '2', label: '路召回：向量 + BM25' },
-  { value: '1', label: '个 owner，本地部署' },
-]
-
-const version = typeof __FRONTEND_VERSION__ !== 'undefined' ? __FRONTEND_VERSION__ : 'dev'
+  {
+    key: 'reading',
+    tag: t('welcomeHome.features.readingTag'),
+    title: t('welcomeHome.features.readingTitle'),
+    desc: t('welcomeHome.features.readingDesc'),
+    meta: t('welcomeHome.features.readingMeta'),
+    tone: 'lilac',
+    icon: BookOpenIcon,
+  },
+  {
+    key: 'mcp',
+    tag: t('welcomeHome.features.mcpTag'),
+    title: t('welcomeHome.features.mcpTitle'),
+    desc: t('welcomeHome.features.mcpDesc'),
+    meta: t('welcomeHome.features.mcpMeta'),
+    tone: 'ink',
+    icon: LockOnIcon,
+  },
+])
+const steps = computed(() => [
+  { key: 'capture', title: t('welcomeHome.how.step1Title'), desc: t('welcomeHome.how.step1Desc'), tone: 'green', icon: FileIcon },
+  { key: 'find', title: t('welcomeHome.how.step2Title'), desc: t('welcomeHome.how.step2Desc'), tone: 'blue', icon: ChatIcon },
+  { key: 'remember', title: t('welcomeHome.how.step3Title'), desc: t('welcomeHome.how.step3Desc'), tone: 'amber', icon: ChartIcon },
+])
+const scenarios = computed(() => [
+  { key: 'paper', title: t('welcomeHome.scenarios.paperTitle'), desc: t('welcomeHome.scenarios.paperDesc'), tone: 'green', icon: BookOpenIcon, path: '/platform/reading' },
+  { key: 'code', title: t('welcomeHome.scenarios.codeTitle'), desc: t('welcomeHome.scenarios.codeDesc'), tone: 'blue', icon: CodeIcon, path: '/platform/knowledge-bases' },
+  { key: 'learn', title: t('welcomeHome.scenarios.learnTitle'), desc: t('welcomeHome.scenarios.learnDesc'), tone: 'amber', icon: StarIcon, path: '/platform/review' },
+])
 
 function go(path: string) {
   router.push(path)
@@ -442,34 +477,18 @@ function submitAsk() {
   router.push('/platform/creatChat')
 }
 
-function onTabKeydown(event: KeyboardEvent, index: number) {
-  const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End']
-  if (!keys.includes(event.key)) return
-  event.preventDefault()
-  let nextIndex = index
-  if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length
-  if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length
-  if (event.key === 'Home') nextIndex = 0
-  if (event.key === 'End') nextIndex = tabs.length - 1
-  activeTab.value = tabs[nextIndex].key
-  nextTick(() => {
-    const tablist = (event.currentTarget as HTMLElement | null)?.parentElement
-    tablist?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]?.focus()
-  })
-}
-
 function setupReveal() {
   reducedMotion.value = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const items = pageEl.value?.querySelectorAll<HTMLElement>('[data-reveal]')
   if (!items?.length) return
   if (reducedMotion.value || !scrollEl.value) {
-    items.forEach(item => item.classList.add('is-visible'))
+    items.forEach((item) => item.classList.add('is-visible'))
     return
   }
   pageEl.value?.classList.add('reveal-ready')
   revealObserver = new IntersectionObserver(
-    entries => {
-      entries.forEach(entry => {
+    (entries) => {
+      entries.forEach((entry) => {
         if (entry.isIntersecting) {
           entry.target.classList.add('is-visible')
           revealObserver?.unobserve(entry.target)
@@ -478,32 +497,24 @@ function setupReveal() {
     },
     { root: scrollEl.value, rootMargin: '0px 0px -8% 0px', threshold: 0.08 },
   )
-  items.forEach(item => revealObserver?.observe(item))
+  items.forEach((item) => revealObserver?.observe(item))
 }
 
 onMounted(() => {
-  nextTick(setupReveal)
+  setupReveal()
+  media.addEventListener('change', updateSystemDark)
 })
 
 onBeforeUnmount(() => {
   revealObserver?.disconnect()
   revealObserver = null
+  media.removeEventListener('change', updateSystemDark)
+  diagramResizeObserver?.disconnect()
+  diagramResizeObserver = null
 })
 </script>
 
 <style lang="less" scoped>
-.welcome-home {
-  height: 100%;
-  min-height: 0;
-}
-
-.welcome-home__scroll {
-  height: 100%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scroll-behavior: smooth;
-}
-
 @font-face {
   font-family: "DM Sans";
   font-style: normal;
@@ -524,1402 +535,1431 @@ onBeforeUnmount(() => {
     U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
-.welcome-page {
-  --w-base: #eeefe9;
-  --w-topbar: #cbd5b9;
-  --w-window: #d3dac6;
-  --w-cream: #fdfdf8;
-  --w-paper: #ffffff;
-  --w-accent: #e5e7e0;
-  --w-ink: #111827;
-  --w-body: #374151;
-  --w-muted: #5f6b5f;
-  --w-line: #bfc1b7;
-  --w-green: #07c05f;
-  --w-green-dark: #07c05f;
-  --w-green-deep: #06b04d;
-  --w-green-soft: #e9f8ec;
-  --w-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  --w-font: "DM Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
-
-  --td-brand-color: var(--w-green-dark);
-  --td-brand-color-hover: #06b04d;
-  --td-brand-color-active: var(--w-green-deep);
-  --td-brand-color-focus: rgba(7, 192, 95, 0.18);
-  --td-brand-color-light: var(--w-green-soft);
-  --td-brand-color-disabled: #8ce0af;
-
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  overflow: hidden;
-  color: var(--w-body);
-  font-family: var(--w-font);
-  background: var(--w-base);
-  -webkit-font-smoothing: antialiased;
-}
-
-.welcome-page *,
-.welcome-page *::before,
-.welcome-page *::after {
-  box-sizing: border-box;
-}
-
-.welcome-page__bg {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  background-color: var(--w-base);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover;
-}
-
-.w-topbar {
-  position: fixed;
-  top: 8px;
-  left: 8px;
-  right: 8px;
-  z-index: 50;
-  height: 40px;
-  background: var(--w-topbar);
-  border-radius: 4px;
-  box-shadow: var(--w-shadow);
-  transition: box-shadow 0.2s ease, background 0.2s ease;
-
-  &.is-scrolled {
-    box-shadow: 0 18px 40px -14px rgba(0, 0, 0, 0.35);
-    background: #c6d2b2;
-  }
-}
-
-.w-topbar__inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+.landing {
   height: 100%;
-  padding: 0 8px;
-}
-
-.w-topbar__left,
-.w-topbar__right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.w-brand {
-  display: inline-flex;
-  align-items: center;
-  height: 32px;
-  padding: 0 4px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: #23251d;
-  cursor: pointer;
-
-  &:hover {
-    background: rgba(35, 37, 29, 0.07);
-  }
-}
-
-.w-brand__name {
-  font-family: "WellReadSerif", Georgia, serif;
-  font-size: 24px;
-  font-weight: 400;
-  letter-spacing: 0;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.w-btn {
-  border-radius: 6px;
-  font-weight: 600;
-}
-
-.w-profile-btn {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  overflow: hidden;
-  border: 1px solid rgba(35, 37, 29, 0.25);
-  border-radius: 8px;
-  background: var(--w-cream);
-  cursor: pointer;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-
-  &:hover {
-    border-color: var(--w-green-dark);
-    box-shadow: 0 0 0 2px rgba(7, 192, 95, 0.16);
-  }
-}
-
-.w-profile-btn__img {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: cover;
-}
-
-.w-profile-btn__initial {
-  color: var(--w-green-dark);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.w-rail {
-  position: fixed;
-  top: 66px;
-  bottom: 8px;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 112px;
-}
-
-.w-rail--left {
-  left: 4px;
-}
-
-.w-rail--right {
-  right: 4px;
-}
-
-.w-rail__list {
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.w-rail__cell {
-  width: 100%;
-}
-
-.w-rail__item {
+  min-height: 0;
   position: relative;
-  top: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 112px;
-  min-height: 84px;
-  padding: 8px 4px;
-  border: 0;
-  background: transparent;
-  color: #fff;
-  font: inherit;
-  cursor: pointer;
-  transition: top 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-
-  &::before {
-    content: "";
-    position: absolute;
-    inset: 8px 18px 20px;
-    border-radius: 40%;
-    background: radial-gradient(circle at 50% 45%, rgba(7, 192, 95, 0.62), rgba(4, 79, 39, 0.22) 58%, transparent 76%);
-    filter: blur(12px);
-    opacity: 0;
-    transition: opacity 0.2s ease;
-    pointer-events: none;
-  }
-
-  &:hover {
-    top: -0.5px;
-
-    &::before {
-      opacity: 1;
-    }
-  }
-
-  &:active {
-    top: 0.5px;
-  }
-}
-
-.w-rail__item--bottom {
-  margin-top: auto;
-  min-height: 76px;
-}
-
-.w-rail__icon {
-  display: grid;
-  place-items: center;
-  font-size: 36px;
-  line-height: 1;
-  filter: drop-shadow(0 1px 2px rgba(20, 30, 15, 0.35));
-
-  :deep(svg) {
-    width: 1em;
-    height: 1em;
-  }
-}
-
-.w-rail__label {
-  max-width: 96px;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 16px;
-  text-align: center;
-  text-shadow: 0 1px 3px rgba(15, 24, 10, 0.65);
-}
-
-.w-stage {
-  position: fixed;
-  top: 48px;
-  right: 8px;
-  bottom: 0;
-  left: 8px;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.w-window {
-  width: 80%;
-  max-width: 1200px;
-  height: 95%;
+  background: #fbfaf8;
+  color: #191918;
+  font-family: "DM Sans", var(--app-font-family);
   overflow: hidden;
-  border-radius: 20px;
-  background: var(--w-window);
-  box-shadow:
-    0 30px 60px -20px rgba(31, 41, 26, 0.36),
-    0 0 0 1px rgba(158, 160, 150, 0.35);
-  pointer-events: auto;
 }
 
-.w-window__scroll {
+.landing__scroll {
+  position: relative;
   height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
   scroll-behavior: smooth;
+}
 
-  &::-webkit-scrollbar {
-    width: 10px;
-  }
+.landing__flow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
 
-  &::-webkit-scrollbar-thumb {
-    border: 3px solid transparent;
-    border-radius: 999px;
-    background: rgba(35, 48, 28, 0.28);
-    background-clip: padding-box;
-  }
-
-  &::-webkit-scrollbar-thumb:hover {
-    background: rgba(35, 48, 28, 0.4);
-    background-clip: padding-box;
+  svg {
+    width: 100%;
+    height: 1700px;
+    display: block;
   }
 }
 
-.w-article {
-  display: flex;
-  flex-direction: column;
-  gap: 48px;
-  padding: 48px 80px 16px;
-  color: var(--w-body);
-  font-size: 18px;
-  font-weight: 500;
-  line-height: 32px;
+.landing__flow-line {
+  fill: none;
+  stroke-width: 1.4;
+  stroke-dasharray: 12 18;
+  animation: landing-flow 16s linear infinite;
+}
 
-  > section {
-    scroll-margin-top: 16px;
+.landing__flow-line--slow {
+  stroke-dasharray: 4 22;
+  animation-duration: 24s;
+  animation-direction: reverse;
+}
+
+.landing__flow-line--faint {
+  opacity: 0.45;
+  animation-duration: 30s;
+}
+
+@keyframes landing-flow {
+  to {
+    stroke-dashoffset: -300;
   }
 }
 
-.w-eyebrow {
-  margin: 0 0 8px;
-  color: var(--w-muted);
-  font-size: 12px;
+.landing__inner {
+  position: relative;
+  z-index: 1;
+  width: min(1160px, calc(100% - 96px));
+  margin: 0 auto;
+  padding: 76px 0 48px;
+}
+
+:global(.app-shell--fullscreen .landing__inner) {
+  width: min(1600px, calc(100% - 48px));
+}
+
+:global(.app-shell--fullscreen .hero__stage) {
+  width: min(1240px, 100%);
+}
+
+.hero {
+  position: relative;
+  text-align: center;
+  padding: 24px 0 0;
+}
+
+.hero__title {
+  max-width: 920px;
+  margin: 0 auto;
+  font-size: clamp(52px, 7vw, 92px);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
   font-weight: 600;
-  letter-spacing: 0.12em;
-  line-height: 18px;
-  text-transform: uppercase;
+  color: #171716;
+
+  span {
+    position: relative;
+    white-space: nowrap;
+
+    &::after {
+      content: "";
+      position: absolute;
+      left: 1%;
+      right: 1%;
+      bottom: 0.09em;
+      height: 0.13em;
+      border-radius: 99px;
+      background: rgba(7, 192, 95, 0.28);
+      z-index: -1;
+    }
+  }
 }
 
-.w-hero {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 32px;
-  align-items: start;
-  padding-top: 8px;
-}
-
-.w-hero__title {
-  margin: 0;
-  color: var(--w-ink);
-  font-size: 36px;
-  font-weight: 800;
-  letter-spacing: -0.9px;
-  line-height: 40px;
-}
-
-.w-hero__sub {
-  margin: 12px 0 0;
-  color: var(--w-body);
+.hero__sub {
+  max-width: 640px;
+  margin: 26px auto 0;
+  color: #6f6d66;
   font-size: 17px;
-  font-weight: 500;
-  line-height: 25.5px;
+  line-height: 1.65;
 }
 
-.w-hero__actions {
+.hero__actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 20px;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 30px;
 }
 
-.w-ask {
+.landing-btn {
+  border-radius: 10px !important;
+  font-weight: 500;
+}
+
+.landing-btn--primary {
+  box-shadow: 0 10px 24px -12px rgba(7, 192, 95, 0.7);
+}
+
+.hero__ask {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-top: 20px;
-  padding: 4px;
-  border: 1px solid var(--w-line);
-  border-radius: 8px;
-  background: var(--w-cream);
-  box-shadow: 0 8px 18px -14px rgba(31, 41, 26, 0.45);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  gap: 8px;
+  width: min(620px, 100%);
+  margin: 30px auto 0;
+  padding: 7px 8px 7px 16px;
+  border: 1px solid #e4e1da;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 14px 40px -24px rgba(25, 25, 24, 0.28);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 
   &:focus-within {
-    border-color: var(--w-green-dark);
-    box-shadow: 0 0 0 3px rgba(7, 192, 95, 0.14);
+    border-color: rgba(7, 192, 95, 0.55);
+    box-shadow: 0 16px 40px -24px rgba(7, 192, 95, 0.4);
   }
 }
 
-.w-ask__input {
+.hero__ask-icon {
+  display: flex;
+  color: #a5a39b;
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.hero__ask-input {
   flex: 1;
   min-width: 0;
-  height: 36px;
-  padding: 0 10px;
   border: 0;
   outline: none;
   background: transparent;
-  color: var(--w-ink);
+  color: #191918;
   font: inherit;
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 14px;
 
   &::placeholder {
-    color: #8a948a;
+    color: #a5a39b;
   }
 }
 
-.w-ask__send {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
+.hero__ask-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
   border: 0;
-  border-radius: 6px;
-  background: var(--w-green-dark);
+  border-radius: 9px;
+  background: #07c05f;
   color: #fff;
-  font-size: 18px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.2s ease, transform 0.2s ease;
 
   &:hover {
     background: #06b04d;
+    transform: translateY(-1px);
   }
 }
 
-.w-chips {
+.hero__chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
-}
-
-.w-chip {
-  padding: 4px 10px;
-  border: 1px solid #c9d1c0;
-  border-radius: 999px;
-  background: rgba(253, 253, 248, 0.62);
-  color: #4b5563;
-  font: inherit;
-  font-size: 12px;
-  line-height: 18px;
-  cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
-
-  &:hover {
-    border-color: var(--w-green-dark);
-    background: var(--w-cream);
-    color: var(--w-green-dark);
-  }
-}
-
-.w-hero__proof {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-top: 18px;
-  color: var(--w-muted);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 18px;
-
-  span {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-
-    &::before {
-      content: "";
-      width: 5px;
-      height: 5px;
-      border-radius: 50%;
-      background: var(--w-green-dark);
-    }
-  }
-}
-
-.w-setup-card {
-  width: 100%;
-  max-width: 448px;
-  justify-self: end;
-  padding: 24px;
-  border: 1px solid var(--w-line);
-  border-radius: 6px;
-  background: var(--w-cream);
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.18);
-}
-
-.w-setup-card__title {
-  margin: 0 0 14px;
-  color: var(--w-ink);
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.6px;
-  line-height: 32px;
-}
-
-.w-check-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-
-  li {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    color: var(--w-body);
-    font-size: 14px;
-    font-weight: 500;
-    line-height: 22px;
-  }
-
-  :deep(svg) {
-    flex: none;
-    margin-top: 3px;
-    color: var(--w-green-dark);
-    font-size: 16px;
-  }
-}
-
-.w-setup-card__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 20px;
-}
-
-.w-demo__tabs {
-  display: flex;
-  gap: 2px;
-  border-bottom: 1px solid var(--w-line);
-}
-
-.w-demo__tab {
-  padding: 10px 16px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: var(--w-muted);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 20px;
-  cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
-
-  &:hover {
-    color: var(--w-ink);
-  }
-
-  &[aria-selected="true"] {
-    border-bottom-color: var(--w-green-dark);
-    background: rgba(253, 253, 248, 0.65);
-    color: var(--w-ink);
-  }
-}
-
-.w-demo__card {
-  overflow: hidden;
-  border: 1px solid var(--w-line);
-  border-top: 0;
-  border-radius: 0 0 6px 6px;
-  background: var(--w-cream);
-  box-shadow: var(--w-shadow);
-}
-
-.w-demo__body {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  min-height: 420px;
-  animation: w-fade-up 0.24s ease both;
-}
-
-.w-demo__visual {
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  border-right: 1px solid rgba(191, 193, 183, 0.6);
-}
-
-.w-demo__copy {
-  display: flex;
-  flex-direction: column;
   justify-content: center;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 28px;
+  gap: 8px;
+  margin-top: 14px;
+}
 
-  h2 {
-    margin: 0;
-    color: var(--w-ink);
-    font-size: 24px;
-    font-weight: 700;
-    letter-spacing: -0.6px;
-    line-height: 32px;
+.hero__chip {
+  padding: 6px 11px;
+  border: 1px solid #e9e6df;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #77746c;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+
+  &:hover {
+    border-color: #cfccc3;
+    color: #191918;
+    background: #fff;
   }
 }
 
-.w-demo__desc {
-  margin: 0;
-  color: var(--w-body);
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 24px;
+.hero__stage {
+  position: relative;
+  width: min(1020px, 100%);
+  margin: 58px auto 0;
+  padding: 0 46px;
 }
 
-.w-paper {
+.hero__stage-lines {
+  position: absolute;
+  inset: -24px 0 0;
+  width: 100%;
+  height: 120%;
+  pointer-events: none;
+  overflow: visible;
+
+  path {
+    fill: none;
+    stroke: #e5e3dc;
+    stroke-width: 1;
+    stroke-dasharray: 6 10;
+    animation: landing-flow 22s linear infinite;
+  }
+}
+
+.product {
   position: relative;
   display: flex;
-  flex-direction: column;
   width: 100%;
-  min-height: 360px;
-  padding: 18px;
-  border: 1px solid var(--w-line);
-  border-radius: 4px;
-  background-color: #eef0e7;
-  background-image:
-    radial-gradient(72% 72% at 50% 38%, rgba(7, 192, 95, 0.07), transparent 70%),
-    radial-gradient(rgba(18, 18, 18, 0.055) 1.4px, transparent 0);
-  background-size: auto, 14px 14px;
+  min-height: 370px;
+  overflow: hidden;
+  border: 1px solid #e7e4dd;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow:
+    0 40px 90px -40px rgba(25, 25, 24, 0.35),
+    0 2px 0 rgba(255, 255, 255, 0.8) inset;
+  text-align: left;
 }
 
-.w-paper--how {
-  min-height: 420px;
-}
-
-.w-mock {
+.product__side {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  width: 100%;
-  animation: w-fade-up 0.22s ease both;
+  width: 188px;
+  flex-shrink: 0;
+  padding: 18px 14px;
+  border-right: 1px solid #efede7;
+  background: #f8f7f4;
 }
 
-.w-mock__bar {
+.product__brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: var(--w-ink);
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 18px;
+  color: #282722;
+  font-family: "WellReadSerif", Georgia, serif;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1;
+  padding: 0 8px 16px;
 }
 
-.w-mock__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--w-green-dark);
-  box-shadow: 0 0 0 3px rgba(7, 192, 95, 0.14);
-}
-
-.w-mock__badge {
-  margin-left: auto;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: var(--w-green-soft);
-  color: var(--w-green-dark);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 18px;
-}
-
-.w-bubble {
-  max-width: 92%;
-  padding: 10px 12px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 20px;
-
-  p {
-    margin: 0;
-  }
-}
-
-.w-bubble--user {
-  align-self: flex-end;
-  background: #dfe7d4;
-  color: #26331f;
-}
-
-.w-bubble--ai {
-  align-self: flex-start;
-  border: 1px solid #d9dfd0;
-  background: var(--w-paper);
-  color: var(--w-body);
-}
-
-.w-cite {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 8px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--w-green-soft);
-  color: var(--w-green-dark);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 18px;
-}
-
-.w-mock__input {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: auto;
-  padding: 8px 10px;
-  border: 1px solid #d9dfd0;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.72);
-  color: #8a948a;
-  font-size: 12px;
-  line-height: 18px;
-
-  :deep(svg) {
-    color: var(--w-green-dark);
-    font-size: 16px;
-  }
-}
-
-.w-file-row {
-  display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid #d9dfd0;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.7);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 18px;
-}
-
-.w-file-row__icon {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  background: var(--w-green-soft);
-  color: var(--w-green-dark);
-  font-size: 15px;
-}
-
-.w-file-row__name {
-  overflow: hidden;
-  color: var(--w-ink);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.w-file-row__meta {
-  color: var(--w-muted);
-}
-
-.w-file-row__state {
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--w-green-soft);
-  color: var(--w-green-dark);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.w-chunk-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: auto;
-  padding-top: 8px;
-  color: var(--w-muted);
-  font-size: 12px;
-  font-weight: 500;
-
-  strong {
-    margin-left: auto;
-    color: var(--w-ink);
-    font-size: 12px;
-  }
-}
-
-.w-chunk-row__bars {
-  display: inline-flex;
-  gap: 3px;
-
-  i {
-    width: 10px;
-    height: 10px;
-    border-radius: 2px;
-    background: #d5dccb;
-
-    &.on {
-      background: var(--w-green-dark);
-    }
-  }
-}
-
-.w-review-card {
-  padding: 14px;
-  border: 1px solid #d9dfd0;
-  border-radius: 8px;
-  background: var(--w-paper);
-  box-shadow: 0 12px 24px -18px rgba(31, 41, 26, 0.5);
-
-  p {
-    margin: 8px 0 14px;
-    color: var(--w-ink);
-    font-size: 14px;
-    font-weight: 600;
-    line-height: 22px;
-  }
-}
-
-.w-review-card__tag {
-  display: inline-block;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: #fdecec;
-  color: #b42318;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 18px;
-}
-
-.w-rate-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-
-  span {
-    padding: 5px 2px;
-    border: 1px solid #d9dfd0;
-    border-radius: 4px;
-    background: #f6f8f1;
-    color: #4b5563;
-    font-size: 11px;
-    font-weight: 600;
-    line-height: 16px;
-    text-align: center;
-  }
-
-  span:last-child {
-    border-color: var(--w-green-dark);
-    background: var(--w-green-soft);
-    color: var(--w-green-dark);
-  }
-}
-
-.w-review-foot {
-  margin-top: auto;
-  color: var(--w-muted);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.w-chunk-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.w-chunk {
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
-  gap: 8px;
-  padding: 9px 10px;
-  border: 1px solid #d9dfd0;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.7);
-}
-
-.w-chunk__id {
-  color: var(--w-green-dark);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 18px;
-}
-
-.w-chunk__text {
-  overflow: hidden;
-  color: var(--w-body);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 18px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.w-search-row {
-  padding: 8px 10px;
-  border: 1px solid var(--w-green-dark);
-  border-radius: 6px;
-  background: var(--w-cream);
-  color: var(--w-ink);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 18px;
-}
-
-.w-hit {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid #d9dfd0;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.7);
-}
-
-.w-hit__score {
-  color: var(--w-green-dark);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 18px;
-}
-
-.w-hit__body {
+.product__nav {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  min-width: 0;
-
-  strong {
-    color: var(--w-ink);
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 18px;
-  }
-
-  small {
-    overflow: hidden;
-    color: var(--w-muted);
-    font-size: 11px;
-    font-weight: 500;
-    line-height: 17px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 }
 
-.w-section__head {
-  margin-bottom: 20px;
-}
-
-.w-section__title {
-  margin: 0;
-  color: var(--w-ink);
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.6px;
-  line-height: 32px;
-}
-
-.w-scenario-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.w-scenario-card {
-  padding: 24px;
-  border: 1px solid var(--w-line);
-  border-radius: 6px;
-  background: var(--w-cream);
-  box-shadow: 0 16px 32px -26px rgba(31, 41, 26, 0.55);
-
-  &:nth-child(3) {
-    grid-column: span 2;
-  }
-
-  h3 {
-    margin: 12px 0 6px;
-    color: var(--w-ink);
-    font-size: 18px;
-    font-weight: 700;
-    line-height: 26px;
-  }
-
-  p {
-    margin: 0;
-    color: var(--w-body);
-    font-size: 14px;
-    font-weight: 500;
-    line-height: 22px;
-  }
-}
-
-.w-scenario-card__icon {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: var(--w-green-soft);
-  color: var(--w-green-dark);
-  font-size: 24px;
-}
-
-.w-how {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 32px;
-  align-items: start;
-}
-
-.w-steps {
+.product__nav-row {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
+  align-items: center;
+  gap: 9px;
+  padding: 8px 9px;
+  border-radius: 7px;
+  color: #76736b;
+  font-size: 12px;
 
-.w-steps__button {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  width: 100%;
-  padding: 14px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-
-  &:hover {
-    background: rgba(253, 253, 248, 0.55);
+  svg {
+    width: 15px;
+    height: 15px;
   }
 
   &.is-active {
-    border-color: var(--w-line);
-    background: var(--w-cream);
-    box-shadow: 0 16px 32px -26px rgba(31, 41, 26, 0.55);
+    background: #e9f8ec;
+    color: #067a3d;
+    font-weight: 600;
   }
 }
 
-.w-steps__num {
-  color: var(--w-green-dark);
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 28px;
-}
-
-.w-steps__text {
+.product__side-foot {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-
-  strong {
-    color: var(--w-ink);
-    font-size: 16px;
-    font-weight: 700;
-    line-height: 24px;
-  }
-
-  small {
-    color: var(--w-muted);
-    font-size: 13px;
-    font-weight: 500;
-    line-height: 20px;
-  }
-}
-
-.w-how__visual {
-  position: sticky;
-  top: 16px;
-}
-
-.w-stats {
-  padding: 28px;
-  border: 1px solid var(--w-line);
-  border-radius: 6px;
-  background: var(--w-cream);
-  box-shadow: 0 16px 32px -26px rgba(31, 41, 26, 0.55);
-}
-
-.w-stats__grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-  margin-top: 22px;
-}
-
-.w-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-top: 14px;
-  border-top: 1px solid #dfe4d7;
-
-  strong {
-    color: var(--w-ink);
-    font-size: 40px;
-    font-weight: 800;
-    letter-spacing: -1.2px;
-    line-height: 1;
-  }
-
-  span {
-    color: var(--w-muted);
-    font-size: 13px;
-    font-weight: 500;
-    line-height: 20px;
-  }
-}
-
-.w-cta {
-  display: grid;
-  grid-template-columns: 1fr 1.2fr;
-  overflow: hidden;
-  border: 1px solid var(--w-line);
-  border-radius: 6px;
-  background: var(--w-cream);
-  box-shadow: var(--w-shadow);
-}
-
-.w-cta__joke {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 28px;
-  background: linear-gradient(150deg, #e9f8ec, #d9f0e1);
-
-  p {
-    margin: 8px 0 0;
-    color: #31523d;
-    font-size: 14px;
-    font-weight: 500;
-    line-height: 22px;
-  }
-}
-
-.w-cta__badge {
-  align-self: flex-start;
-  padding: 2px 8px;
-  border: 1px solid rgba(7, 192, 95, 0.28);
-  border-radius: 999px;
-  color: var(--w-green-dark);
+  align-items: center;
+  gap: 7px;
+  margin-top: auto;
+  padding: 10px 9px 0;
+  border-top: 1px solid #ece9e2;
+  color: #9a978f;
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  line-height: 18px;
-  text-transform: uppercase;
-}
 
-.w-cta__number {
-  margin-top: 6px;
-  color: var(--w-green-dark);
-  font-size: 96px;
-  font-weight: 800;
-  letter-spacing: -4px;
-  line-height: 1;
-}
-
-.w-cta__action {
-  padding: 32px;
-
-  h2 {
-    margin: 0;
-    color: var(--w-ink);
-    font-size: 28px;
-    font-weight: 800;
-    letter-spacing: -0.8px;
-    line-height: 36px;
-  }
-
-  p {
-    margin: 10px 0 0;
-    color: var(--w-body);
-    font-size: 15px;
-    font-weight: 500;
-    line-height: 24px;
+  svg {
+    width: 13px;
+    height: 13px;
   }
 }
 
-.w-cta__actions {
+.product__main {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 20px;
+  flex-direction: column;
 }
 
-.w-footer {
+.product__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 20px 0 8px;
-  border-top: 1px solid rgba(191, 193, 183, 0.7);
-  color: var(--w-muted);
+  padding: 15px 20px;
+  border-bottom: 1px solid #f0eee9;
   font-size: 12px;
-  font-weight: 500;
-  line-height: 18px;
 }
 
-.w-footer__brand {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
+.product__title {
+  font-weight: 600;
+  color: #33322d;
+}
 
-  strong {
-    color: var(--w-ink);
-    font-size: 13px;
-    font-weight: 700;
+.product__status {
+  color: #a5a29a;
+  font-size: 11px;
+}
+
+.product__chat {
+  flex: 1;
+  padding: 22px 22px 18px;
+  background:
+    radial-gradient(circle at 80% 0%, rgba(233, 248, 236, 0.7), transparent 46%),
+    #fff;
+}
+
+.product__bubble {
+  max-width: 82%;
+  padding: 11px 14px;
+  border-radius: 12px;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.product__bubble--user {
+  margin-left: auto;
+  background: #f1efe9;
+  color: #4f4d46;
+}
+
+.product__bubble--ai {
+  margin-top: 12px;
+  border: 1px solid #ebe8e1;
+  background: #fff;
+  color: #4f4d46;
+  box-shadow: 0 8px 24px -20px rgba(25, 25, 24, 0.5);
+
+  p {
+    margin: 0;
   }
 }
 
-.w-footer__nav,
-.w-footer__meta {
-  display: flex;
-  flex-wrap: wrap;
+.product__cite {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 5px;
+  margin-top: 9px;
+  color: #078347;
+  font-size: 11px;
 
-  button {
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    cursor: pointer;
+  svg {
+    width: 12px;
+    height: 12px;
+  }
+}
 
-    &:hover {
-      color: var(--w-green-dark);
+.product__composer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 18px;
+  padding: 10px 13px;
+  border: 1px solid #e9e6df;
+  border-radius: 10px;
+  color: #aaa79f;
+  font-size: 12px;
+
+  svg {
+    width: 15px;
+    height: 15px;
+    color: #07c05f;
+  }
+}
+
+.float-card {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid #e8e5de;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18px 40px -26px rgba(25, 25, 24, 0.45);
+  backdrop-filter: blur(10px);
+  animation: float-card 7s ease-in-out infinite;
+
+  strong,
+  small {
+    display: block;
+  }
+
+  strong {
+    font-size: 11.5px;
+    color: #33322d;
+  }
+
+  small {
+    margin-top: 2px;
+    color: #9d9a92;
+    font-size: 10px;
+  }
+}
+
+.float-card--kb {
+  top: 42px;
+  right: -6px;
+}
+
+.float-card--review {
+  left: -6px;
+  bottom: 34px;
+  animation-delay: -3.4s;
+}
+
+.float-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+
+  svg {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+.float-card__icon--green {
+  background: #e9f8ec;
+  color: #067a3d;
+}
+
+.float-card__icon--amber {
+  background: #fff4e2;
+  color: #a26b0b;
+}
+
+.float-card__dots {
+  display: flex;
+  gap: 3px;
+  margin-left: 2px;
+
+  i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #e3e0d9;
+
+    &.on {
+      background: #07c05f;
     }
   }
 }
 
-.w-footer__meta {
+.float-card__heat {
+  display: grid;
+  grid-template-columns: repeat(4, 5px);
+  gap: 3px;
+  margin-left: 2px;
+
+  i {
+    width: 5px;
+    height: 5px;
+    border-radius: 1.5px;
+    background: #eae7e0;
+  }
+
+  .heat-1 {
+    background: #d5f2df;
+  }
+
+  .heat-2 {
+    background: #93dcb2;
+  }
+
+  .heat-3 {
+    background: #f0c98a;
+  }
+}
+
+@keyframes float-card {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+.section-head {
+  max-width: 760px;
+  margin: 0 auto;
+  text-align: center;
+
+  h2 {
+    margin: 0;
+    font-size: clamp(32px, 4vw, 48px);
+    line-height: 1.08;
+    letter-spacing: -0.045em;
+    font-weight: 600;
+    color: #191918;
+  }
+}
+
+.bento-section,
+.how-section,
+.scenarios,
+.architecture {
+  padding-top: 118px;
+}
+
+.architecture__switch {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 32px;
+}
+
+.architecture__tab {
+  padding: 8px 16px;
+  border: 1px solid #e7e3da;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #77746c;
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+
+  &:hover {
+    border-color: #cfcac0;
+    color: #191918;
+  }
+
+  &.is-active {
+    border-color: #191918;
+    background: #191918;
+    color: #fff;
+  }
+}
+
+.architecture__frame {
+  min-height: 620px;
+  margin-top: 18px;
+  padding: 4px 0;
+  border-top: 1px solid #ece9e2;
+  border-bottom: 1px solid #ece9e2;
+  background: transparent;
+
+  iframe {
+    display: block;
+    width: 100%;
+    height: 620px;
+    border: 0;
+    background: transparent;
+    transition: height 0.2s ease;
+  }
+}
+
+
+.bento {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 16px;
+  margin-top: 46px;
+}
+
+.bento__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 24px;
+  border: 1px solid #e9e6df;
+  border-radius: 20px;
+  background: #fff;
+  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+
+  &:hover {
+    transform: translateY(-3px);
+    border-color: #ddd9d1;
+    box-shadow: 0 24px 50px -42px rgba(25, 25, 24, 0.5);
+  }
+
+  h3 {
+    margin: 16px 0 8px;
+    font-size: 20px;
+    line-height: 1.2;
+    letter-spacing: -0.025em;
+    color: #22211d;
+  }
+}
+
+.bento__card--ask {
+  grid-column: span 4;
+}
+
+.bento__card--kb {
+  grid-column: span 2;
+}
+
+.bento__card--review {
+  grid-column: span 2;
+}
+
+.bento__card--reading {
+  grid-column: span 2;
+}
+
+.bento__card--mcp {
+  grid-column: span 2;
+}
+
+.bento__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bento__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.bento__icon--green,
+.how__icon--green,
+.scenario__icon--green {
+  background: #e9f8ec;
+  color: #067a3d;
+}
+
+.bento__icon--blue,
+.how__icon--blue,
+.scenario__icon--blue {
+  background: #eaf1ff;
+  color: #3867b7;
+}
+
+.bento__icon--amber,
+.how__icon--amber,
+.scenario__icon--amber {
+  background: #fff4e2;
+  color: #a26b0b;
+}
+
+.bento__icon--lilac,
+.scenario__icon--lilac {
+  background: #f2ecff;
+  color: #7650b8;
+}
+
+.bento__icon--ink {
+  background: #f0efec;
+  color: #4c4a44;
+}
+
+.bento__tag {
+  color: #9a978f;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bento__desc {
+  margin: 0;
+  color: #77746c;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.bento-visual {
+  margin-top: 22px;
+}
+
+.bento-visual--ask {
+  padding: 16px;
+  border-radius: 14px;
+  background: #f8f7f4;
+}
+
+.mini-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mini-chat__user {
+  align-self: flex-end;
+  max-width: 78%;
+  padding: 8px 11px;
+  border-radius: 9px;
+  background: #edeae3;
+  color: #55534c;
+  font-size: 11.5px;
+}
+
+.mini-chat__ai {
+  max-width: 88%;
+  padding: 9px 11px;
+  border: 1px solid #ebe7df;
+  border-radius: 9px;
+  background: #fff;
+  color: #5d5a52;
+  font-size: 11.5px;
+  line-height: 1.55;
+
+  em {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 7px;
+    color: #078347;
+    font-size: 10.5px;
+    font-style: normal;
+
+    svg {
+      width: 11px;
+      height: 11px;
+    }
+  }
+}
+
+.bento-visual--kb {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mini-file {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border: 1px solid #efede8;
+  border-radius: 8px;
+  background: #fbfaf8;
+  color: #55534c;
+  font-size: 11px;
+
+  svg {
+    width: 13px;
+    height: 13px;
+    color: #8d8a82;
+  }
+
+  em {
+    margin-left: auto;
+    color: #a5a29a;
+    font-style: normal;
+  }
+}
+
+.mini-index {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 6px;
+
+  i {
+    width: 5px;
+    height: 12px;
+    border-radius: 2px;
+    background: #eae7e0;
+
+    &.on {
+      background: #07c05f;
+    }
+  }
+
+  em {
+    margin-left: auto;
+    color: #9d9a92;
+    font-size: 10px;
+    font-style: normal;
+  }
+}
+
+.mini-heat {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+
+  i {
+    aspect-ratio: 1;
+    border-radius: 3px;
+    background: #eeeae3;
+  }
+
+  .heat-1 {
+    background: #d5f2df;
+  }
+
+  .heat-2 {
+    background: #8fdbb0;
+  }
+
+  .heat-3 {
+    background: #f1c985;
+  }
+}
+
+.mini-review-foot {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+
+  span {
+    flex: 1;
+    padding: 5px 0;
+    border: 1px solid #eeeae3;
+    border-radius: 6px;
+    color: #9d9a92;
+    font-size: 10px;
+    text-align: center;
+
+    &:not(:last-child) {
+      margin-right: 4px;
+    }
+  }
+}
+
+.mini-chapter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+
+  em {
+    width: 18px;
+    color: #a5a29a;
+    font-size: 10px;
+    font-style: normal;
+  }
+
+  i {
+    display: block;
+    height: 6px;
+    border-radius: 99px;
+    background: #d8d4ca;
+  }
+
+  &:nth-child(3) i {
+    background: #b9a7e6;
+  }
+}
+
+.mini-chapter-note {
+  display: block;
+  margin-top: 8px;
+  color: #9d9a92;
+  font-size: 10.5px;
+}
+
+.bento-visual--mcp {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #191918;
+}
+
+.mini-code {
+  color: #d8f5e5;
+  font-family: var(--app-font-family-mono);
+  font-size: 10.5px;
+
+  &--dim {
+    color: #777b78;
+  }
+}
+
+.mini-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  color: #9fdcbc;
+  font-size: 10px;
+
+  svg {
+    width: 11px;
+    height: 11px;
+  }
+}
+
+.how {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 56px;
+  margin-top: 58px;
+}
+
+.how__line {
+  position: absolute;
+  top: 30px;
+  left: 8%;
+  width: 84%;
+  height: 90px;
+  pointer-events: none;
+
+  path {
+    fill: none;
+    stroke: #e3e0d8;
+    stroke-width: 1;
+    stroke-dasharray: 5 9;
+    animation: landing-flow 18s linear infinite;
+  }
+}
+
+.how__step {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+
+  h3 {
+    margin: 16px 0 8px;
+    font-size: 19px;
+    letter-spacing: -0.02em;
+    color: #22211d;
+  }
+
+  p {
+    max-width: 290px;
+    margin: 0 auto;
+    color: #77746c;
+    font-size: 13.5px;
+    line-height: 1.65;
+  }
+}
+
+.how__num {
+  display: block;
+  color: #b9b5ac;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.how__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  margin-top: 14px;
+  border-radius: 14px;
+
+  svg {
+    width: 22px;
+    height: 22px;
+  }
+}
+
+.scenarios__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-top: 44px;
+}
+
+.scenario {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid #e9e6df;
+  border-radius: 16px;
+  background: #fff;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.22s ease, border-color 0.22s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: #d8d4cb;
+  }
+}
+
+.scenario__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 11px;
+
+  svg {
+    width: 19px;
+    height: 19px;
+  }
+}
+
+.scenario__copy {
+  flex: 1;
+  min-width: 0;
+
+  strong {
+    display: block;
+    color: #2b2a25;
+    font-size: 14px;
+  }
+
+  small {
+    display: block;
+    margin-top: 4px;
+    color: #85827a;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+}
+
+.scenario__arrow {
+  display: flex;
+  color: #b7b3aa;
+}
+
+.final-cta {
+  padding: 126px 0 108px;
+  text-align: center;
+
+  h2 {
+    margin: 18px 0 0;
+    font-size: clamp(36px, 4.6vw, 56px);
+    line-height: 1.05;
+    letter-spacing: -0.05em;
+    font-weight: 600;
+    color: #171716;
+  }
+}
+
+.final-cta__brand {
+  color: #171716;
+  font-family: "WellReadSerif", Georgia, serif;
+  font-size: 32px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.final-cta__actions {
+  display: flex;
+  justify-content: center;
   gap: 10px;
+  margin-top: 28px;
 }
 
-.welcome-home.reveal-ready [data-reveal] {
+.reveal-ready [data-reveal] {
   opacity: 0;
-  transform: translateY(14px);
-  transition: opacity 0.5s ease, transform 0.5s ease;
-
-  &.is-visible {
-    opacity: 1;
-    transform: none;
-  }
+  transform: translateY(18px);
+  transition: opacity 0.55s ease, transform 0.55s ease;
 }
 
-@keyframes w-fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-
-  to {
-    opacity: 1;
-    transform: none;
-  }
+.reveal-ready [data-reveal].is-visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
-@media (max-width: 1280px) {
-  .w-window {
-    width: 84%;
-  }
+/* Dark theme keeps the landing readable while preserving the light-paper
+   structure of the page. */
+:global(html[theme-mode="dark"] .landing) {
+  background: #131413;
+  color: #f1f0ea;
+}
 
-  .w-article {
-    padding: 48px 48px 16px;
-  }
+:global(html[theme-mode="dark"] .hero__chip),
+:global(html[theme-mode="dark"] .hero__ask) {
+  border-color: #343530;
+  background: #1c1d1a;
+  color: #c9c7bf;
+}
+
+:global(html[theme-mode="dark"] .hero__title),
+:global(html[theme-mode="dark"] .section-head h2),
+:global(html[theme-mode="dark"] .final-cta h2),
+:global(html[theme-mode="dark"] .final-cta__brand),
+:global(html[theme-mode="dark"] .bento__card h3),
+:global(html[theme-mode="dark"] .how__step h3),
+:global(html[theme-mode="dark"] .scenario__copy strong) {
+  color: #f1f0ea;
+}
+
+:global(html[theme-mode="dark"] .hero__sub),
+:global(html[theme-mode="dark"] .bento__desc),
+:global(html[theme-mode="dark"] .how__step p),
+:global(html[theme-mode="dark"] .scenario__copy small) {
+  color: #a3a198;
+}
+
+:global(html[theme-mode="dark"] .hero__ask-input) {
+  color: #f1f0ea;
+}
+
+:global(html[theme-mode="dark"] .hero__ask-input::placeholder) {
+  color: #78776f;
+}
+
+:global(html[theme-mode="dark"] .hero__chip:hover) {
+  border-color: #55564f;
+  color: #f1f0ea;
+  background: #242520;
+}
+
+:global(html[theme-mode="dark"] .product) {
+  border-color: #2e2f2a;
+  background: #1c1d1a;
+  box-shadow: 0 40px 90px -40px rgba(0, 0, 0, 0.8);
+}
+
+:global(html[theme-mode="dark"] .product__side) {
+  border-color: #2c2d28;
+  background: #171815;
+}
+
+:global(html[theme-mode="dark"] .product__brand),
+:global(html[theme-mode="dark"] .product__title) {
+  color: #e6e4dc;
+}
+
+:global(html[theme-mode="dark"] .product__nav-row) {
+  color: #99978f;
+}
+
+:global(html[theme-mode="dark"] .product__nav-row.is-active) {
+  background: #123a25;
+  color: #7de2a9;
+}
+
+:global(html[theme-mode="dark"] .product__side-foot),
+:global(html[theme-mode="dark"] .product__head) {
+  border-color: #2c2d28;
+}
+
+:global(html[theme-mode="dark"] .product__chat) {
+  background: #1c1d1a;
+}
+
+:global(html[theme-mode="dark"] .product__bubble--user) {
+  background: #2a2b27;
+  color: #c9c7bf;
+}
+
+:global(html[theme-mode="dark"] .product__bubble--ai) {
+  border-color: #33342f;
+  background: #22231f;
+  color: #c9c7bf;
+}
+
+:global(html[theme-mode="dark"] .product__composer) {
+  border-color: #33342f;
+  color: #7c7b73;
+}
+
+:global(html[theme-mode="dark"] .float-card) {
+  border-color: #33342f;
+  background: rgba(30, 31, 27, 0.92);
+}
+
+:global(html[theme-mode="dark"] .float-card strong) {
+  color: #e6e4dc;
+}
+
+:global(html[theme-mode="dark"] .float-card small) {
+  color: #918f87;
+}
+
+:global(html[theme-mode="dark"] .bento__card),
+:global(html[theme-mode="dark"] .scenario) {
+  border-color: #2e2f2a;
+  background: #1b1c19;
+}
+
+:global(html[theme-mode="dark"] .bento__card:hover),
+:global(html[theme-mode="dark"] .scenario:hover) {
+  border-color: #44453f;
+}
+
+:global(html[theme-mode="dark"] .bento-visual--ask) {
+  background: #22231f;
+}
+
+:global(html[theme-mode="dark"] .mini-chat__user) {
+  background: #2a2b27;
+  color: #c9c7bf;
+}
+
+:global(html[theme-mode="dark"] .mini-chat__ai),
+:global(html[theme-mode="dark"] .mini-file) {
+  border-color: #33342f;
+  background: #1c1d1a;
+  color: #c9c7bf;
+}
+
+:global(html[theme-mode="dark"] .mini-file em),
+:global(html[theme-mode="dark"] .mini-chapter em),
+:global(html[theme-mode="dark"] .mini-chapter-note),
+:global(html[theme-mode="dark"] .bento__tag) {
+  color: #8f8d85;
+}
+
+:global(html[theme-mode="dark"] .mini-heat i),
+:global(html[theme-mode="dark"] .mini-review-foot span),
+:global(html[theme-mode="dark"] .mini-index i) {
+  border-color: #33342f;
+  background: #2a2b27;
+}
+
+:global(html[theme-mode="dark"] .mini-chapter i) {
+  background: #3b3c35;
+}
+
+:global(html[theme-mode="dark"] .mini-review-foot span) {
+  color: #8f8d85;
+}
+
+:global(html[theme-mode="dark"] .architecture__tab) {
+  border-color: #343530;
+  background: #1c1d1a;
+  color: #a3a198;
+}
+
+:global(html[theme-mode="dark"] .architecture__tab.is-active) {
+  border-color: #e9e4da;
+  background: #e9e4da;
+  color: #171816;
+}
+
+:global(html[theme-mode="dark"] .architecture__frame) {
+  border-color: #2c2d28;
 }
 
 @media (max-width: 1100px) {
-  .w-rail--right {
-    display: none;
+  .landing__inner {
+    width: calc(100% - 56px);
   }
 
-  .w-window {
-    width: 88%;
+  .hero__stage {
+    padding: 0 12px;
+  }
+
+  .float-card--kb {
+    right: 0;
+  }
+
+  .float-card--review {
+    left: 0;
+  }
+
+  .bento {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .bento__card--ask {
+    grid-column: span 4;
+  }
+
+  .bento__card--kb,
+  .bento__card--review,
+  .bento__card--reading,
+  .bento__card--mcp {
+    grid-column: span 2;
   }
 }
 
-@media (max-width: 900px) {
-  .w-rail--left {
+@media (max-width: 860px) {
+  .landing__inner {
+    width: calc(100% - 36px);
+    padding-top: 52px;
+  }
+
+  .hero__title {
+    font-size: clamp(42px, 11vw, 64px);
+  }
+
+  .hero__sub {
+    font-size: 15px;
+  }
+
+  .product__side {
     display: none;
   }
 
-  .w-window {
-    width: 94%;
+  .hero__stage {
+    padding: 0;
   }
 
-  .w-article {
-    padding: 32px 24px 16px;
-    font-size: 16px;
-    line-height: 28px;
+  .float-card {
+    display: none;
   }
 
-  .w-hero {
+  .bento {
     grid-template-columns: 1fr;
   }
 
-  .w-setup-card {
-    max-width: none;
-    justify-self: stretch;
+  .bento__card--ask,
+  .bento__card--kb,
+  .bento__card--review,
+  .bento__card--reading,
+  .bento__card--mcp {
+    grid-column: span 1;
   }
 
-  .w-demo__body,
-  .w-how {
+  .how {
+    grid-template-columns: 1fr;
+    gap: 30px;
+  }
+
+  .how__line {
+    display: none;
+  }
+
+  .scenarios__grid {
     grid-template-columns: 1fr;
   }
 
-  .w-demo__visual {
-    border-right: 0;
-    border-bottom: 1px solid rgba(191, 193, 183, 0.6);
+  .bento-section,
+  .how-section,
+  .scenarios,
+  .architecture {
+    padding-top: 84px;
   }
 
-  .w-how__visual {
-    position: static;
+  .architecture__frame {
+    min-height: 480px;
   }
 
-  .w-stats__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .w-cta {
-    grid-template-columns: 1fr;
-  }
-
-  .w-cta__joke {
-    padding-bottom: 18px;
-  }
-
-  .w-cta__number {
-    font-size: 64px;
-  }
-
-  .w-footer {
-    flex-wrap: wrap;
+  .final-cta {
+    padding: 90px 0 72px;
   }
 }
 
 @media (max-width: 600px) {
-  .w-window {
-    width: calc(100% - 8px);
-    height: calc(100% - 4px);
-    border-radius: 16px;
+  .hero__actions,
+  .final-cta__actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 
-  .w-article {
-    padding: 24px 16px 12px;
+  .hero__ask {
+    border-radius: 12px;
   }
 
-  .w-hero__title {
-    font-size: 30px;
-    line-height: 36px;
-    letter-spacing: -0.6px;
+  .hero__chips {
+    justify-content: flex-start;
   }
 
-  .w-hero__sub {
-    font-size: 15px;
-    line-height: 23px;
+  .product {
+    min-height: 330px;
   }
 
-  .w-demo__visual {
-    padding: 14px;
-  }
-
-  .w-paper {
-    min-height: 300px;
-    padding: 14px;
-  }
-
-  .w-stats {
-    padding: 20px;
-  }
-
-  .w-stat strong {
-    font-size: 32px;
-  }
-
-  .w-cta__action {
-    padding: 22px;
-  }
-
-  .w-cta__action h2 {
-    font-size: 24px;
-    line-height: 32px;
-  }
-
-  .w-footer__nav,
-  .w-footer__meta {
-    gap: 8px;
+  .product__chat {
+    padding: 16px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .welcome-page *,
-  .welcome-page *::before,
-  .welcome-page *::after {
-    scroll-behavior: auto !important;
-    transition-duration: 0.001ms !important;
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
+  .landing__flow-line,
+  .hero__stage-lines path,
+  .how__line path,
+  .float-card {
+    animation: none !important;
   }
 
-  .welcome-home.reveal-ready [data-reveal] {
+  .reveal-ready [data-reveal] {
     opacity: 1;
     transform: none;
+    transition: none;
+  }
+
+  .landing__scroll {
+    scroll-behavior: auto;
   }
 }
 </style>

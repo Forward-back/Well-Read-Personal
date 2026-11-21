@@ -1,0 +1,107 @@
+/* WellRead landing embed: transparent surface + Morandi pastel palette. */
+html[data-preset="editorial"][data-theme="light"] {
+  --bg: transparent;
+  --grid: #e2dcd1;
+  --text: #3f3a33;
+  --text-muted: #756e64;
+  --text-dim: #a39a8d;
+  --text-faint: #8f8679;
+  --panel: transparent;
+  --panel-border: #d8d0c4;
+  --lane-fill: transparent;
+  --lane-stroke: #c9c0b2;
+  --arrow: #b2a99b;
+  --arrow-emphasis: #7d9687;
+  --mask: #fbfaf8;
+  --frontend-fill: rgba(166, 184, 196, 0.32);
+  --frontend-stroke: #7e98a7;
+  --backend-fill: rgba(164, 180, 157, 0.34);
+  --backend-stroke: #758d76;
+  --database-fill: rgba(190, 174, 185, 0.34);
+  --database-stroke: #92798a;
+  --cloud-fill: rgba(217, 199, 170, 0.36);
+  --cloud-stroke: #a58c68;
+  --security-fill: rgba(204, 169, 160, 0.34);
+  --security-stroke: #a87a70;
+  --messagebus-fill: rgba(207, 183, 157, 0.34);
+  --messagebus-stroke: #a18163;
+  --external-fill: rgba(196, 192, 184, 0.3);
+  --external-stroke: #8c877f;
+  --toolbar-bg: rgba(251, 250, 248, 0.92);
+  --toolbar-border: #d8d0c4;
+  --toolbar-text: #4a443c;
+  --toolbar-hover: #ffffff;
+  --toolbar-menu-bg: #fbfaf8;
+}
+
+html[data-preset="editorial"][data-theme="dark"] {
+  --bg: transparent;
+  --grid: #3a3833;
+  --text: #e9e4da;
+  --text-muted: #b6aea1;
+  --text-dim: #7e776c;
+  --text-faint: #9e9588;
+  --panel: transparent;
+  --panel-border: #4a453d;
+  --lane-fill: transparent;
+  --lane-stroke: #4a453d;
+  --arrow: #8f877b;
+  --arrow-emphasis: #a9c3b0;
+  --mask: #20211e;
+  --frontend-fill: rgba(126, 152, 167, 0.22);
+  --frontend-stroke: #91aab8;
+  --backend-fill: rgba(117, 141, 118, 0.22);
+  --backend-stroke: #9cb19d;
+  --database-fill: rgba(146, 121, 138, 0.22);
+  --database-stroke: #b39bab;
+  --cloud-fill: rgba(165, 140, 104, 0.22);
+  --cloud-stroke: #c5ab82;
+  --security-fill: rgba(168, 122, 112, 0.22);
+  --security-stroke: #c89a90;
+  --messagebus-fill: rgba(161, 129, 99, 0.22);
+  --messagebus-stroke: #c0a07d;
+  --external-fill: rgba(140, 135, 127, 0.22);
+  --external-stroke: #a7a196;
+  --toolbar-bg: rgba(32, 33, 30, 0.92);
+  --toolbar-border: #4a453d;
+  --toolbar-text: #e0dacf;
+  --toolbar-hover: #2a2b27;
+  --toolbar-menu-bg: #20211e;
+}
+
+html[data-embed="true"],
+html[data-embed="true"] body {
+  background: transparent !important;
+  background-image: none !important;
+  color: var(--text);
+}
+
+html[data-embed="true"] .container {
+  max-width: none;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html[data-embed="true"] .diagram-container {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0.35rem !important;
+}
+
+html[data-embed="true"] .diagram-container::before,
+html[data-embed="true"] .diagram-container::after {
+  display: none !important;
+  content: none !important;
+}
+
+html[data-embed="true"] svg {
+  background: transparent !important;
+}
+
+html[data-embed="true"] body,
+html[data-embed="true"] svg text {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif !important;
+}

@@ -1,0 +1,347 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "WellRead Personal 平台架构",
+    "subtitle": "单 owner、本地部署的知识工作台",
+    "output": "platform-architecture.html",
+    "visual_preset": "editorial",
+    "animation": "trace",
+    "quality_profile": "standard",
+    "views": [
+      {
+        "id": "request-path",
+        "label": "请求主链",
+        "focus": [
+          "browser",
+          "web",
+          "app",
+          "postgres",
+          "redis"
+        ],
+        "note": "从浏览器进入前端，再到 Go 后端与本地状态。"
+      },
+      {
+        "id": "ingest-path",
+        "label": "入库与解析",
+        "focus": [
+          "web",
+          "app",
+          "docreader",
+          "rag",
+          "files"
+        ],
+        "note": "文档解析、分块推送与索引写入。"
+      },
+      {
+        "id": "external-access",
+        "label": "外部接入",
+        "focus": [
+          "mcp",
+          "app",
+          "rag",
+          "models"
+        ],
+        "note": "MCP/CLI 只读接入与模型依赖。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "Owner 浏览器",
+      "sublabel": "桌面 Web",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        128,
+        64
+      ]
+    },
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "Vue 前端",
+      "sublabel": "TDesign · AppShell",
+      "pos": [
+        220,
+        300
+      ],
+      "size": [
+        144,
+        64
+      ]
+    },
+    {
+      "id": "app",
+      "type": "backend",
+      "label": "Go 应用服务",
+      "sublabel": "Gin · JWT · MCP 17 tools",
+      "pos": [
+        430,
+        300
+      ],
+      "size": [
+        168,
+        64
+      ]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "会话 / 知识库 / 复习",
+      "pos": [
+        680,
+        120
+      ],
+      "size": [
+        154,
+        60
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "队列 / 缓存 / 流式状态",
+      "pos": [
+        680,
+        300
+      ],
+      "size": [
+        154,
+        64
+      ]
+    },
+    {
+      "id": "files",
+      "type": "cloud",
+      "label": "本地数据卷",
+      "sublabel": "上传 / 导出 / 背景",
+      "pos": [
+        680,
+        480
+      ],
+      "size": [
+        154,
+        60
+      ]
+    },
+    {
+      "id": "docreader",
+      "type": "backend",
+      "label": "Docreader",
+      "sublabel": "gRPC 文档解析",
+      "pos": [
+        430,
+        100
+      ],
+      "size": [
+        168,
+        60
+      ]
+    },
+    {
+      "id": "rag",
+      "type": "backend",
+      "label": "RAG 侧车",
+      "sublabel": "Flask · ylsw",
+      "pos": [
+        430,
+        500
+      ],
+      "size": [
+        168,
+        64
+      ]
+    },
+    {
+      "id": "models",
+      "type": "external",
+      "label": "模型服务",
+      "sublabel": "BGE / LLM 网关",
+      "pos": [
+        940,
+        220
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "mcp",
+      "type": "external",
+      "label": "MCP / CLI",
+      "sublabel": "只读 API Key",
+      "pos": [
+        220,
+        480
+      ],
+      "size": [
+        144,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "本机 Docker Compose",
+      "wraps": [
+        "web",
+        "app",
+        "postgres",
+        "redis",
+        "files",
+        "docreader",
+        "rag"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "browser-web",
+      "from": "browser",
+      "to": "web",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "id": "web-app",
+      "from": "web",
+      "to": "app",
+      "label": "/api/v1",
+      "variant": "emphasis"
+    },
+    {
+      "id": "app-pg",
+      "from": "app",
+      "to": "postgres",
+      "label": "SQL",
+      "route": "auto",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "via": [
+        [
+          514,
+          220
+        ],
+        [
+          757,
+          220
+        ]
+      ],
+      "labelAt": [
+        620,
+        200
+      ]
+    },
+    {
+      "id": "app-redis",
+      "from": "app",
+      "to": "redis",
+      "label": "队列 / 缓存",
+      "route": "straight"
+    },
+    {
+      "id": "app-files",
+      "from": "app",
+      "to": "files",
+      "label": "文件读写",
+      "route": "auto"
+    },
+    {
+      "id": "app-docreader",
+      "from": "app",
+      "to": "docreader",
+      "label": "gRPC 解析",
+      "fromSide": "left",
+      "toSide": "left",
+      "via": [
+        [
+          410,
+          332
+        ],
+        [
+          410,
+          130
+        ]
+      ]
+    },
+    {
+      "id": "app-rag",
+      "from": "app",
+      "to": "rag",
+      "label": "/ingest · /chat/stream",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        514,
+        450
+      ]
+    },
+    {
+      "id": "rag-models",
+      "from": "rag",
+      "to": "models",
+      "label": "BGE / LLM",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          514,
+          600
+        ],
+        [
+          1015,
+          600
+        ]
+      ],
+      "labelAt": [
+        750,
+        592
+      ]
+    },
+    {
+      "id": "models-app",
+      "from": "models",
+      "to": "app",
+      "label": "直连模型",
+      "variant": "dashed"
+    },
+    {
+      "id": "mcp-app",
+      "from": "mcp",
+      "to": "app",
+      "label": "只读工具",
+      "variant": "security",
+      "fromSide": "left",
+      "toSide": "bottom",
+      "via": [
+        [
+          170,
+          510
+        ],
+        [
+          170,
+          400
+        ],
+        [
+          500,
+          400
+        ]
+      ],
+      "labelAt": [
+        240,
+        402
+      ]
+    }
+  ],
+  "cards": []
+}

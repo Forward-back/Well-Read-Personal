@@ -17,6 +17,7 @@ import "vue-virtual-scroller/dist/vue-virtual-scroller.css";
 import i18n from "./i18n";
 import { initTheme } from "@/composables/useTheme";
 import { initFont } from "@/composables/useFont";
+import { initDetailAppearance } from "@/composables/useDetailAppearance";
 import { installTDesignIconOfflineGuard } from "@/utils/tdesign-icon-offline";
 import { installAutofillGuard } from "@/utils/disable-autofill";
 import { useAuthStore } from "@/stores/auth";
@@ -26,6 +27,7 @@ installTDesignIconOfflineGuard();
 
 initTheme();
 initFont();
+initDetailAppearance();
 
 async function bootstrap() {
   const app = createApp(App);

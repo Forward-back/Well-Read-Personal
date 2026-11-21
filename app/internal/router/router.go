@@ -52,6 +52,7 @@ type RouterParams struct {
 	ModelHandler                 *handler.ModelHandler
 	ModelCredentialsHandler      *handler.ModelCredentialsHandler
 	AuthHandler                  *handler.AuthHandler
+	BackgroundHandler            *handler.BackgroundHandler
 	InitializationHandler        *handler.InitializationHandler
 	SystemHandler                *handler.SystemHandler
 	StorageBackendHandler        *handler.StorageBackendHandler
@@ -161,7 +162,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		// so that sub-groups inherit it.
 		v1.Use(apiKeyGuards.apiKeyAuthorizer.Middleware())
 
-		RegisterAuthRoutes(v1, params.AuthHandler, apiKeyGuards)
+		RegisterAuthRoutes(v1, params.AuthHandler, params.BackgroundHandler, apiKeyGuards)
 		RegisterSettingsRoutes(v1, params.SettingsHandler)
 		RegisterKnowledgeBaseRoutes(v1, params.KBHandler, apiKeyGuards)
 		RegisterKnowledgeTagRoutes(v1, params.TagHandler, apiKeyGuards)

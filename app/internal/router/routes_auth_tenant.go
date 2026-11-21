@@ -11,7 +11,12 @@ import (
 // RegisterAuthRoutes registers the personal edition's authentication routes.
 // Registration, invitations, OIDC and workspace switching do not exist here:
 // the owner is seeded from the environment on first start.
-func RegisterAuthRoutes(r *gin.RouterGroup, handler *handler.AuthHandler, g *apiKeyGuards) {
+func RegisterAuthRoutes(
+	r *gin.RouterGroup,
+	handler *handler.AuthHandler,
+	backgroundHandler *handler.BackgroundHandler,
+	g *apiKeyGuards,
+) {
 	r.POST("/auth/login", handler.Login)
 	r.POST("/auth/refresh", handler.RefreshToken)
 	r.GET("/auth/validate", handler.ValidateToken)
@@ -19,9 +24,17 @@ func RegisterAuthRoutes(r *gin.RouterGroup, handler *handler.AuthHandler, g *api
 	// auth/me returns only the caller's own identity/profile, so it is safe
 	// for any valid API key. Chat clients / MCP call it to discover "who am I".
 	g.apiKeyRoute(r, http.MethodGet, "/auth/me", apiKeyAny(), handler.GetCurrentUser)
-	// Avatar updates are owner-session only: no apiKeyRoute declaration, so
-	// the API-key gate denies read-only keys while JWT sessions pass through.
+	// Avatar and background updates are owner-session only: no apiKeyRoute
+	// declaration, so the API-key gate denies MCP keys while JWT sessions
+	// pass through.
 	r.PUT("/auth/me/avatar", handler.UpdateAvatar)
+	if backgroundHandler != nil {
+		r.GET("/auth/me/backgrounds", backgroundHandler.ListBackgrounds)
+		r.POST("/auth/me/backgrounds", backgroundHandler.UploadBackground)
+		r.DELETE("/auth/me/backgrounds/:id", backgroundHandler.DeleteBackground)
+		r.GET("/auth/me/backgrounds/:id/file", backgroundHandler.GetBackgroundFile)
+		r.PUT("/auth/me/background", backgroundHandler.SetBackgroundChoice)
+	}
 	r.POST("/auth/change-password", handler.ChangePassword)
 }
 

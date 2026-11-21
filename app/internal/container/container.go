@@ -121,6 +121,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewMessageSuggestionRepository))
 	must(container.Provide(repository.NewModelRepository))
 	must(container.Provide(repository.NewUserRepository))
+	must(container.Provide(repository.NewBackgroundRepository))
 	must(container.Provide(repository.NewAuthTokenRepository))
 	must(container.Provide(repository.NewSystemSettingRepository))
 	must(container.Provide(repository.NewMCPServiceRepository))
@@ -170,6 +171,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(embedding.NewBatchEmbedder))
 	must(container.Provide(service.NewModelService))
 	must(container.Provide(service.NewUserService))
+	must(container.Provide(service.NewBackgroundService))
 	must(container.Provide(service.NewSystemSettingService))
 	must(container.Provide(func(
 		repo repository.TenantSandboxConfigRepository,
@@ -355,6 +357,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewModelHandler))
 	must(container.Provide(handler.NewInitializationHandler))
 	must(container.Provide(handler.NewAuthHandler))
+	must(container.Provide(handler.NewBackgroundHandler))
 	must(container.Provide(handler.NewSystemHandler))
 	must(container.Provide(handler.NewModelCredentialsHandler))
 	must(container.Provide(handler.NewDataSourceCredentialsHandler))

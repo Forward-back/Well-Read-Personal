@@ -53,6 +53,8 @@ export type MonoFontKey =
   // Windows
   | 'consolas'
   | 'cascadia'
+  // cross-platform
+  | 'courier'
   // Linux
   | 'dejavu-mono'
   | 'liberation-mono'
@@ -101,6 +103,7 @@ export const MONO_STACKS: Record<MonoFontKey, string> = {
   consolas: 'Consolas, "Courier New", Menlo, Monaco, monospace',
   cascadia:
     '"Cascadia Code", "Cascadia Mono", Consolas, "Courier New", monospace',
+  courier: '"Courier New", Courier, monospace',
   // Linux
   'dejavu-mono':
     '"DejaVu Sans Mono", "Liberation Mono", Menlo, Consolas, monospace',
@@ -160,9 +163,9 @@ const SANS_KEYS_BY_PLATFORM: Record<Platform, FontKey[]> = {
 }
 
 const MONO_KEYS_BY_PLATFORM: Record<Platform, MonoFontKey[]> = {
-  mac: ['system', 'menlo', 'monaco', 'monospace'],
-  windows: ['system', 'consolas', 'cascadia', 'monospace'],
-  linux: ['system', 'dejavu-mono', 'liberation-mono', 'monospace'],
+  mac: ['system', 'menlo', 'monaco', 'courier', 'monospace'],
+  windows: ['system', 'consolas', 'cascadia', 'courier', 'monospace'],
+  linux: ['system', 'dejavu-mono', 'liberation-mono', 'courier', 'monospace'],
 }
 
 /** Keys visible in the sans-serif picker on the current platform. */

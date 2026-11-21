@@ -1,0 +1,331 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "WellRead RAG 架构",
+    "subtitle": "App 分块直传 · 向量 + BM25 双路召回 · 带引用生成",
+    "output": "rag-architecture.html",
+    "visual_preset": "editorial",
+    "animation": "trace",
+    "quality_profile": "standard",
+    "views": [
+      {
+        "id": "query-path",
+        "label": "问答主链",
+        "focus": [
+          "app",
+          "rag",
+          "planner",
+          "retrieval",
+          "fusion",
+          "generator"
+        ],
+        "note": "规划、双路召回、融合精排与答案生成。"
+      },
+      {
+        "id": "ingest-path",
+        "label": "入库与索引",
+        "focus": [
+          "app",
+          "rag",
+          "ingest",
+          "mysql",
+          "retrieval"
+        ],
+        "note": "App 推送分块，RAG 写入镜像、嵌入并追加向量。"
+      },
+      {
+        "id": "model-path",
+        "label": "模型依赖",
+        "focus": [
+          "retrieval",
+          "fusion",
+          "generator",
+          "bge",
+          "llm"
+        ],
+        "note": "BGE 嵌入/精排与 LLM 生成的外部依赖。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "app",
+      "type": "external",
+      "label": "Go App",
+      "sublabel": "分块 / 编排 / 引用",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "rag",
+      "type": "backend",
+      "label": "Flask RAG API",
+      "sublabel": "/search · /chat/stream · /ingest",
+      "pos": [
+        230,
+        300
+      ],
+      "size": [
+        168,
+        64
+      ]
+    },
+    {
+      "id": "planner",
+      "type": "backend",
+      "label": "查询规划器",
+      "sublabel": "分类 / 变体 / 多步",
+      "pos": [
+        450,
+        140
+      ],
+      "size": [
+        156,
+        60
+      ]
+    },
+    {
+      "id": "ingest",
+      "type": "backend",
+      "label": "入库与索引",
+      "sublabel": "事务替换 · 嵌入",
+      "pos": [
+        450,
+        460
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "retrieval",
+      "type": "database",
+      "label": "双路召回",
+      "sublabel": "FAISS HNSW · BM25",
+      "pos": [
+        680,
+        140
+      ],
+      "size": [
+        170,
+        68
+      ]
+    },
+    {
+      "id": "fusion",
+      "type": "backend",
+      "label": "RRF + 精排",
+      "sublabel": "融合 · 多样性 · Rerank",
+      "pos": [
+        910,
+        140
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "generator",
+      "type": "backend",
+      "label": "上下文 + 生成",
+      "sublabel": "预算 · 模板 · 引用",
+      "pos": [
+        1130,
+        140
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "mysql",
+      "type": "database",
+      "label": "MySQL 镜像",
+      "sublabel": "documents · chunks",
+      "pos": [
+        680,
+        462
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "bge",
+      "type": "cloud",
+      "label": "BGE 模型",
+      "sublabel": "嵌入 / Reranker",
+      "pos": [
+        930,
+        460
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "llm",
+      "type": "external",
+      "label": "LLM 网关",
+      "sublabel": "DeepSeek / Qwen",
+      "pos": [
+        1140,
+        460
+      ],
+      "size": [
+        140,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Flask RAG 侧车 / 本机内网",
+      "wraps": [
+        "rag",
+        "planner",
+        "ingest",
+        "retrieval",
+        "fusion",
+        "generator",
+        "mysql"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "app-rag",
+      "from": "app",
+      "to": "rag",
+      "label": "JSON / SSE",
+      "variant": "emphasis",
+      "labelAt": [
+        205,
+        382
+      ]
+    },
+    {
+      "id": "rag-planner",
+      "from": "rag",
+      "to": "planner",
+      "label": "问题规划",
+      "variant": "emphasis"
+    },
+    {
+      "id": "rag-ingest",
+      "from": "rag",
+      "to": "ingest",
+      "label": "App 分块",
+      "variant": "emphasis"
+    },
+    {
+      "id": "planner-retrieval",
+      "from": "planner",
+      "to": "retrieval",
+      "variant": "emphasis"
+    },
+    {
+      "id": "retrieval-fusion",
+      "from": "retrieval",
+      "to": "fusion",
+      "variant": "emphasis"
+    },
+    {
+      "id": "fusion-generator",
+      "from": "fusion",
+      "to": "generator",
+      "variant": "emphasis"
+    },
+    {
+      "id": "generator-app",
+      "from": "generator",
+      "to": "app",
+      "label": "SSE 答案 + 引用",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "top",
+      "via": [
+        [
+          1210,
+          60
+        ],
+        [
+          110,
+          60
+        ]
+      ]
+    },
+    {
+      "id": "ingest-mysql",
+      "from": "ingest",
+      "to": "mysql",
+      "label": "事务写 chunks"
+    },
+    {
+      "id": "ingest-bge",
+      "from": "ingest",
+      "to": "bge",
+      "label": "嵌入",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          530,
+          572
+        ],
+        [
+          1005,
+          572
+        ]
+      ]
+    },
+    {
+      "id": "mysql-retrieval",
+      "from": "mysql",
+      "to": "retrieval",
+      "label": "vector_id 映射",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "bge-fusion",
+      "from": "bge",
+      "to": "fusion",
+      "label": "精排",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "retrieval-bge",
+      "from": "retrieval",
+      "to": "bge",
+      "label": "BGE-M3 查询向量",
+      "variant": "dashed"
+    },
+    {
+      "id": "generator-llm",
+      "from": "generator",
+      "to": "llm",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ],
+  "cards": []
+}

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ProtectedResourcePreview from '@/components/ProtectedResourcePreview.vue'
 import ManualKnowledgeEditor from '@/components/manual-knowledge-editor.vue'
@@ -7,15 +7,27 @@ import UploadConfirmHost from '@/components/UploadConfirmHost.vue'
 import { useSettingsStore } from '@/stores/settings'
 
 import zhCNConfig from 'tdesign-vue-next/esm/locale/zh_CN'
+import enUSConfig from 'tdesign-vue-next/esm/locale/en_US'
 
 const { locale } = useI18n()
 const settingsStore = useSettingsStore()
 
 const tdLocaleMap: Record<string, object> = {
   'zh-CN': zhCNConfig,
+  'en-US': enUSConfig,
 }
 
 const tdGlobalConfig = computed(() => tdLocaleMap[locale.value] || zhCNConfig)
+
+// Keep the document language in sync when the owner switches language at
+// runtime; vue-i18n only sets it on initialisation.
+watch(
+  locale,
+  (value) => {
+    document.documentElement.lang = value.startsWith('zh') ? 'zh-CN' : 'en'
+  },
+  { immediate: true },
+)
 
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null
 

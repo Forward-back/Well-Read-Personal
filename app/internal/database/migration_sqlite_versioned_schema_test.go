@@ -80,13 +80,14 @@ var baselineSQLiteTables = []string{
 	"review_card_sources",
 	"review_logs",
 	"review_sessions",
+	"user_backgrounds",
 }
 
 // baselineSQLiteColumns maps tables to columns the baseline must define
 // because the application reads or writes them.
 var baselineSQLiteColumns = map[string][]string{
 	"tenants":               {"api_principal_config", "memory_config", "reading_model_id"},
-	"users":                 {"is_system_admin", "avatar_data"},
+	"users":                 {"is_system_admin", "avatar_data", "background_choice"},
 	"knowledges":            {"pending_subtasks_count", "folder_path", "folder_id", "created_by", "engine_sync_status"},
 	"messages":              {"attachments", "usage", "query_rewritten", "query_rewrite_meta", "skill", "reading_run_id"},
 	"embed_channels":        {"allow_memory"},
@@ -111,7 +112,7 @@ func TestSQLiteMigrationsCreateBaselineSchema(t *testing.T) {
 
 	db := openSQLiteDB(t, dbPath)
 	version, dirty := sqliteMigrationState(t, db)
-	require.Equal(t, 4, version, "the personal-edition schema includes review V3 easy rating and user avatar migrations")
+	require.Equal(t, 5, version, "the personal-edition schema includes review V3 easy rating, user avatar and shell background migrations")
 	require.False(t, dirty)
 
 	for _, table := range baselineSQLiteTables {

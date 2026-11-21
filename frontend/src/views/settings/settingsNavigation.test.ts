@@ -24,20 +24,20 @@ function evaluate(name: string): unknown {
   const compiled = ts.transpileModule(statement.getText(ast), {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText
-  return runInNewContext(`${compiled}\n${name}`, { computed })
+  return runInNewContext(`${compiled}\n${name}`, { computed, t: (key: string) => key })
 }
 
 const navItems = evaluate('navItems') as { value: Array<{ key: string }> }
 const legacySectionMap = evaluate('LEGACY_SECTION_MAP') as Record<string, string>
 
-test('personal settings sidebar exposes exactly five panes', () => {
+test('personal settings sidebar exposes exactly six panes', () => {
   assert.deepEqual(
     Array.from(navItems.value, (item) => item.key),
-    ['account', 'models', 'integrations', 'health', 'about'],
+    ['account', 'ui', 'models', 'integrations', 'health', 'about'],
   )
 })
 
-test('legacy section links map onto the five panes', () => {
+test('legacy section links map onto the six panes', () => {
   const paneKeys = new Set(Array.from(navItems.value, (item) => item.key))
   for (const target of Object.values(legacySectionMap)) {
     assert.ok(paneKeys.has(target), `legacy target ${target} must be a pane key`)

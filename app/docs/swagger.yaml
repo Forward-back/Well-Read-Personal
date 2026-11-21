@@ -4684,6 +4684,144 @@ paths:
       summary: 更新当前用户头像
       tags:
       - 认证
+  /auth/me/background:
+    put:
+      consumes:
+      - application/json
+      description: 保存选中的背景：default、builtin:1..5 或 upload:<id>。
+      parameters:
+      - description: 背景选择
+        in: body
+        name: request
+        required: true
+        schema:
+          properties:
+            choice:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 保存成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 选择不合法
+          schema:
+            $ref: '#/definitions/gaze_internal_errors.AppError'
+      security:
+      - Bearer: []
+      summary: 选择背景
+      tags:
+      - 背景
+  /auth/me/backgrounds:
+    get:
+      description: 返回当前选中的背景（default / builtin:N / upload:<id>）与已上传背景元数据，不含文件内容。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 背景列表
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: 未登录
+          schema:
+            $ref: '#/definitions/gaze_internal_errors.AppError'
+        "500":
+          description: 读取失败
+          schema:
+            $ref: '#/definitions/gaze_internal_errors.AppError'
+      security:
+      - Bearer: []
+      summary: 获取当前用户的背景列表
+      tags:
+      - 背景
+    post:
+      consumes:
+      - multipart/form-data
+      description: 原图上传，支持 JPEG/PNG/WebP，单张不超过 10MB，最多 10 张；上传成功后自动选中该背景。
+      parameters:
+      - description: 背景图片
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 上传结果
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 格式、大小或数量不合法
+          schema:
+            $ref: '#/definitions/gaze_internal_errors.AppError'
+        "401":
+          description: 未登录
+          schema:
+            $ref: '#/definitions/gaze_internal_errors.AppError'
+      security:
+      - Bearer: []
+      summary: 上传背景图片
+      tags:
+      - 背景
+  /auth/me/backgrounds/{id}:
+    delete:
+      description: 删除指定上传背景及其文件；若该背景正在使用，则回退到默认草地背景。
+      parameters:
+      - description: 背景 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: 背景不存在
+          schema:
+            $ref: '#/definitions/gaze_internal_errors.AppError'
+      security:
+      - Bearer: []
+      summary: 删除上传的背景
+      tags:
+      - 背景
+  /auth/me/backgrounds/{id}/file:
+    get:
+      description: 需要 Bearer 登录；SVG 不支持，仅返回 JPEG/PNG/WebP 原图。
+      parameters:
+      - description: 背景 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - image/jpeg
+      responses:
+        "200":
+          description: 图片内容
+          schema:
+            type: file
+        "404":
+          description: 背景不存在
+          schema:
+            $ref: '#/definitions/gaze_internal_errors.AppError'
+      security:
+      - Bearer: []
+      summary: 读取上传的背景文件
+      tags:
+      - 背景
   /auth/refresh:
     post:
       consumes:
