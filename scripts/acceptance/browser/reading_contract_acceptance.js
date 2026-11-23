@@ -546,9 +546,20 @@ async function main() {
     const earlier = readSections.find((s) => s.id !== beforeJump.current_section_id)
     if (!earlier) fail('jump', 'no earlier read section available')
     await page.evaluate(() => {
-      const rows = [...document.querySelectorAll('.rv-toc-row.read')]
+      const caret = [...document.querySelectorAll('.rv-toc-row.is-root .rv-toc-row__caret')]
+        .find((node) => node.offsetWidth || node.offsetHeight)
+      if (caret) caret.click()
+    })
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('.rv-toc-row.read:not(.is-root)')]
       const target = rows.find((row) => !row.classList.contains('current'))
       if (target) target.click()
+      else {
+        const root = [...document.querySelectorAll('.rv-toc-row.read.is-root')]
+          .find((row) => !row.classList.contains('current'))
+        if (root) root.click()
+      }
     })
     await waitVisible('.rv-preview', 20000)
     await clickText('.rv-preview button', '从本章继续')
