@@ -3239,22 +3239,23 @@ onMounted(async () => {
       localStorage.removeItem(storageKey)
     }
   }
+  const activeId = localStorage.getItem(storageKey)
+  if (activeId && !configView.value) {
+    try {
+      const response = await getReadingRun(activeId)
+      run.value = response.data
+      void loadReadingDocuments()
+      return
+    } catch {
+      localStorage.removeItem(storageKey)
+    }
+  }
   const kb = queryValue(route.query.kb)
   if (kb) {
     kbId.value = kb
     const docs = queryValue(route.query.docs).split(',').map((id) => id.trim()).filter(Boolean)
     const available = new Set(documentOptions.value.map((option) => option.value))
     documentIds.value = docs.filter((id) => available.has(id)).slice(0, 5)
-    return
-  }
-  const activeId = localStorage.getItem(storageKey)
-  if (!activeId) return
-  try {
-    const response = await getReadingRun(activeId)
-    run.value = response.data
-    void loadReadingDocuments()
-  } catch {
-    localStorage.removeItem(storageKey)
   }
 })
 
