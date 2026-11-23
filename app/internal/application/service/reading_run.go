@@ -37,6 +37,26 @@ func normalizeReadingDepth(value string) string {
 	}
 }
 
+func readingSingleKnowledgeBaseID(ids []string) string {
+	if len(ids) == 1 {
+		return ids[0]
+	}
+	return ""
+}
+
+func readingPlanKnowledgeBaseIDs(plan *types.ReadingPlan) []string {
+	if plan == nil {
+		return nil
+	}
+	if len(plan.KnowledgeBaseIDs) > 0 {
+		return readingUniqueStrings(plan.KnowledgeBaseIDs)
+	}
+	if id := strings.TrimSpace(plan.KnowledgeBaseID); id != "" {
+		return []string{id}
+	}
+	return nil
+}
+
 func readingRunDepth(run *types.ReadingRun) string {
 	if run == nil {
 		return types.ReadingDepthStandard
@@ -162,7 +182,7 @@ func (s *readingRunService) Create(
 		return nil, err
 	}
 	depth := normalizeReadingDepth(req.Depth)
-	sections, docIDs, kbID, err := s.buildSections(ctx, caller, req.DocumentIDs, depth)
+	sections, docIDs, kbIDs, err := s.buildSections(ctx, caller, req.DocumentIDs, depth)
 	if err != nil {
 		return nil, err
 	}
@@ -171,12 +191,13 @@ func (s *readingRunService) Create(
 		goal = defaultReadingGoal
 	}
 	plan := types.ReadingPlan{
-		Goal:            goal,
-		Depth:           depth,
-		Policy:          types.ReadingPolicyGrillWithDocs,
-		KnowledgeBaseID: kbID,
-		StateVersion:    readingStructuredStateVersion,
-		Sections:        sections,
+		Goal:             goal,
+		Depth:            depth,
+		Policy:           types.ReadingPolicyGrillWithDocs,
+		KnowledgeBaseID:  readingSingleKnowledgeBaseID(kbIDs),
+		KnowledgeBaseIDs: kbIDs,
+		StateVersion:     readingStructuredStateVersion,
+		Sections:         sections,
 	}
 	planJSON, _ := json.Marshal(plan)
 	notesJSON, _ := json.Marshal(types.ReadingNotes{})
@@ -282,7 +303,7 @@ func (s *readingRunService) Step(ctx context.Context, runID string) (*types.Read
 		return nil, werrors.NewNotFoundError("精读任务不存在")
 	}
 	switch run.Status {
-	case types.ReadingRunFinished, types.ReadingRunStopped:
+	case types.ReadingRunFinished, types.ReadingRunStopped, types.ReadingRunAbandoned:
 		return nil, werrors.NewValidationError("精读任务已结束")
 	case types.ReadingRunWaitingUser:
 		return nil, werrors.NewValidationError("请先反馈当前问题")
@@ -472,7 +493,8 @@ func (s *readingRunService) AddDocuments(
 	if err != nil || run == nil {
 		return nil, werrors.NewNotFoundError("精读任务不存在")
 	}
-	if run.Status == types.ReadingRunFinished || run.Status == types.ReadingRunStopped {
+	if run.Status == types.ReadingRunFinished || run.Status == types.ReadingRunStopped ||
+		run.Status == types.ReadingRunAbandoned {
 		return nil, werrors.NewValidationError("精读任务已结束")
 	}
 	var existing []string
@@ -480,18 +502,14 @@ func (s *readingRunService) AddDocuments(
 	if len(existing)+len(req.DocumentIDs) > readingMaxDocuments {
 		return nil, werrors.NewValidationError("精读文档最多 5 篇")
 	}
-	newSections, newDocs, newKBID, err := s.buildSections(ctx, caller, req.DocumentIDs, readingRunDepth(run))
+	newSections, newDocs, newKBIDs, err := s.buildSections(ctx, caller, req.DocumentIDs, readingRunDepth(run))
 	if err != nil {
 		return nil, err
 	}
 	var plan types.ReadingPlan
 	_ = json.Unmarshal(run.Plan, &plan)
-	if plan.KnowledgeBaseID != "" && newKBID != "" && plan.KnowledgeBaseID != newKBID {
-		return nil, werrors.NewValidationError("一次精读只能同一知识库")
-	}
-	if plan.KnowledgeBaseID == "" {
-		plan.KnowledgeBaseID = newKBID
-	}
+	plan.KnowledgeBaseIDs = readingUniqueStrings(append(plan.KnowledgeBaseIDs, newKBIDs...))
+	plan.KnowledgeBaseID = readingSingleKnowledgeBaseID(plan.KnowledgeBaseIDs)
 	plan.Sections = append(plan.Sections, newSections...)
 	planJSON, _ := json.Marshal(plan)
 	existing = append(existing, newDocs...)
@@ -519,6 +537,9 @@ func (s *readingRunService) Stop(ctx context.Context, runID string) (*types.Read
 	run, err := s.repo.GetRun(ctx, caller.TenantID, caller.UserID, strings.TrimSpace(runID))
 	if err != nil || run == nil {
 		return nil, werrors.NewNotFoundError("精读任务不存在")
+	}
+	if run.Status == types.ReadingRunAbandoned {
+		return s.Get(ctx, run.ID)
 	}
 	if run.Status != types.ReadingRunFinished && run.Status != types.ReadingRunStopped {
 		run.Status = types.ReadingRunStopped
@@ -576,6 +597,383 @@ func (s *readingRunService) Resume(ctx context.Context, runID string) (*types.Re
 		return nil, err
 	}
 	return s.Get(ctx, run.ID)
+}
+
+func (s *readingRunService) Abandon(ctx context.Context, runID string) (*types.ReadingRun, error) {
+	caller, err := readingCaller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	run, err := s.repo.GetRun(ctx, caller.TenantID, caller.UserID, strings.TrimSpace(runID))
+	if err != nil || run == nil {
+		return nil, werrors.NewNotFoundError("精读任务不存在")
+	}
+	if run.Status == types.ReadingRunAbandoned {
+		return s.Get(ctx, run.ID)
+	}
+	if run.Status == types.ReadingRunFinished {
+		return nil, werrors.NewValidationError("精读已完成，不能终止")
+	}
+	run.Status = types.ReadingRunAbandoned
+	run.UpdatedAt = time.Now()
+	if err := s.repo.UpdateRun(ctx, run); err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, run.ID)
+}
+
+func (s *readingRunService) Jump(
+	ctx context.Context, runID string, req *types.JumpReadingSectionRequest,
+) (*types.ReadingRun, error) {
+	caller, err := readingCaller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	run, err := s.repo.GetRun(ctx, caller.TenantID, caller.UserID, strings.TrimSpace(runID))
+	if err != nil || run == nil {
+		return nil, werrors.NewNotFoundError("精读任务不存在")
+	}
+	switch run.Status {
+	case types.ReadingRunFinished, types.ReadingRunStopped, types.ReadingRunAbandoned, types.ReadingRunFailed:
+		return nil, werrors.NewValidationError("精读任务已结束")
+	case types.ReadingRunWaitingUser:
+		return nil, werrors.NewValidationError("请先处理当前问题")
+	}
+	targetID := strings.TrimSpace(req.SectionID)
+	var plan types.ReadingPlan
+	if err := json.Unmarshal(run.Plan, &plan); err != nil {
+		return nil, werrors.NewInternalServerError("阅读计划损坏")
+	}
+	targetIndex := -1
+	for index := range plan.Sections {
+		if plan.Sections[index].ID == targetID {
+			targetIndex = index
+			break
+		}
+	}
+	if targetIndex < 0 {
+		return nil, werrors.NewNotFoundError("章节不存在")
+	}
+	for index := range plan.Sections {
+		if index >= targetIndex {
+			plan.Sections[index].Read = false
+		}
+	}
+	planJSON, _ := json.Marshal(plan)
+	run.Plan = types.JSON(planJSON)
+	run.CurrentSectionID = targetID
+	run.Status = types.ReadingRunReading
+	run.UpdatedAt = time.Now()
+	if err := s.repo.UpdateRun(ctx, run); err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, run.ID)
+}
+
+func (s *readingRunService) UpdateUnderstanding(
+	ctx context.Context, runID string, req *types.UpdateReadingUnderstandingRequest,
+) (*types.ReadingRun, error) {
+	caller, err := readingCaller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	run, err := s.repo.GetRun(ctx, caller.TenantID, caller.UserID, strings.TrimSpace(runID))
+	if err != nil || run == nil {
+		return nil, werrors.NewNotFoundError("精读任务不存在")
+	}
+	decision := strings.TrimSpace(req.Decision)
+	correction := strings.TrimSpace(req.Correction)
+	switch decision {
+	case types.ReadingUnderstandingConfirmed, types.ReadingUnderstandingSkipped:
+		correction = ""
+	case types.ReadingUnderstandingCorrected:
+		if correction == "" {
+			return nil, werrors.NewValidationError("纠正内容不能为空")
+		}
+	default:
+		return nil, werrors.NewValidationError("无效的理解确认状态")
+	}
+	understandings, err := s.repo.ListUnderstandings(ctx, run.ID)
+	if err != nil {
+		return nil, err
+	}
+	if len(understandings) == 0 {
+		return nil, werrors.NewNotFoundError("当前轮次没有理解陈述")
+	}
+	target := understandings[len(understandings)-1]
+	target.Decision = decision
+	target.Correction = correction
+	target.UpdatedAt = time.Now()
+	if err := s.repo.UpdateUnderstanding(ctx, target); err != nil {
+		return nil, err
+	}
+	if decision == types.ReadingUnderstandingConfirmed {
+		if err := s.confirmReadingRoundNotes(ctx, run, target.Round); err != nil {
+			return nil, err
+		}
+	}
+	return s.Get(ctx, run.ID)
+}
+
+func (s *readingRunService) confirmReadingRoundNotes(
+	ctx context.Context, run *types.ReadingRun, round int,
+) error {
+	conclusions, err := s.repo.ListConclusions(ctx, run.ID)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	for _, conclusion := range conclusions {
+		if conclusion.Round != round || conclusion.Status != types.ReadingConclusionCandidate {
+			continue
+		}
+		conclusion.Status = types.ReadingConclusionConfirmed
+		conclusion.UpdatedAt = now
+		if err := s.repo.UpdateConclusion(ctx, conclusion); err != nil {
+			return err
+		}
+	}
+	terms, err := s.repo.ListTerms(ctx, run.ID)
+	if err != nil {
+		return err
+	}
+	for _, term := range terms {
+		if term.Round != round || term.Status != types.ReadingTermCandidate {
+			continue
+		}
+		term.Status = types.ReadingTermConfirmed
+		term.UpdatedAt = now
+		if err := s.repo.UpdateTerm(ctx, term); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *readingRunService) UpdateTerm(
+	ctx context.Context, runID, termID string, req *types.UpdateReadingNoteRequest,
+) (*types.ReadingTerm, error) {
+	_, run, err := s.ownedRun(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	status := strings.TrimSpace(req.Status)
+	if status != "" && status != types.ReadingTermCandidate &&
+		status != types.ReadingTermConfirmed && status != types.ReadingTermRejected {
+		return nil, werrors.NewValidationError("无效的术语状态")
+	}
+	text := strings.TrimSpace(req.Text)
+	if status == "" && text == "" {
+		return nil, werrors.NewValidationError("没有需要更新的内容")
+	}
+	terms, err := s.repo.ListTerms(ctx, run.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, term := range terms {
+		if term.ID != strings.TrimSpace(termID) {
+			continue
+		}
+		if status != "" {
+			term.Status = status
+		}
+		if text != "" {
+			term.Definition = text
+		}
+		term.UpdatedAt = time.Now()
+		if err := s.repo.UpdateTerm(ctx, term); err != nil {
+			return nil, err
+		}
+		return term, nil
+	}
+	return nil, werrors.NewNotFoundError("术语不存在")
+}
+
+func (s *readingRunService) UpdateConclusion(
+	ctx context.Context, runID, conclusionID string, req *types.UpdateReadingNoteRequest,
+) (*types.ReadingConclusion, error) {
+	_, run, err := s.ownedRun(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	status := strings.TrimSpace(req.Status)
+	if status != "" && status != types.ReadingConclusionCandidate &&
+		status != types.ReadingConclusionConfirmed && status != types.ReadingConclusionRejected {
+		return nil, werrors.NewValidationError("无效的结论状态")
+	}
+	text := strings.TrimSpace(req.Text)
+	if status == "" && text == "" {
+		return nil, werrors.NewValidationError("没有需要更新的内容")
+	}
+	conclusions, err := s.repo.ListConclusions(ctx, run.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, conclusion := range conclusions {
+		if conclusion.ID != strings.TrimSpace(conclusionID) {
+			continue
+		}
+		if status != "" {
+			conclusion.Status = status
+		}
+		if text != "" {
+			conclusion.Text = text
+		}
+		conclusion.UpdatedAt = time.Now()
+		if err := s.repo.UpdateConclusion(ctx, conclusion); err != nil {
+			return nil, err
+		}
+		return conclusion, nil
+	}
+	return nil, werrors.NewNotFoundError("结论不存在")
+}
+
+func (s *readingRunService) ownedRun(
+	ctx context.Context, runID string,
+) (types.Caller, *types.ReadingRun, error) {
+	caller, err := readingCaller(ctx)
+	if err != nil {
+		return caller, nil, err
+	}
+	run, err := s.repo.GetRun(ctx, caller.TenantID, caller.UserID, strings.TrimSpace(runID))
+	if err != nil {
+		return caller, nil, err
+	}
+	if run == nil {
+		return caller, nil, werrors.NewNotFoundError("精读任务不存在")
+	}
+	return caller, run, nil
+}
+
+func (s *readingRunService) ListDrafts(ctx context.Context) ([]*types.ReadingDraft, error) {
+	caller, err := readingCaller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.ListDrafts(ctx, caller.TenantID, caller.UserID)
+}
+
+func (s *readingRunService) CreateDraft(
+	ctx context.Context, req *types.ReadingDraftRequest,
+) (*types.ReadingDraft, error) {
+	caller, err := readingCaller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	documentIDs, err := normalizeReadingDraftDocumentIDs(req.DocumentIDs, true)
+	if err != nil {
+		return nil, err
+	}
+	drafts, err := s.repo.ListDrafts(ctx, caller.TenantID, caller.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if len(drafts) >= 20 {
+		return nil, werrors.NewValidationError("精读草稿最多保存 20 份")
+	}
+	name, err := normalizeReadingDraftName(req.Name, "未命名精读配置")
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	docJSON, _ := json.Marshal(documentIDs)
+	draft := &types.ReadingDraft{
+		ID: uuid.NewString(), TenantID: caller.TenantID, UserID: caller.UserID,
+		Name: name, DocumentIDs: types.JSON(docJSON),
+		Depth: normalizeReadingDepth(req.Depth), Goal: readingDraftGoal(req.Goal),
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.repo.CreateDraft(ctx, draft); err != nil {
+		return nil, err
+	}
+	return draft, nil
+}
+
+func (s *readingRunService) UpdateDraft(
+	ctx context.Context, draftID string, req *types.ReadingDraftRequest,
+) (*types.ReadingDraft, error) {
+	caller, err := readingCaller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	draft, err := s.repo.GetDraft(ctx, caller.TenantID, caller.UserID, strings.TrimSpace(draftID))
+	if err != nil {
+		return nil, err
+	}
+	if draft == nil {
+		return nil, werrors.NewNotFoundError("精读草稿不存在")
+	}
+	if req.Name != "" {
+		name, nameErr := normalizeReadingDraftName(req.Name, "")
+		if nameErr != nil {
+			return nil, nameErr
+		}
+		draft.Name = name
+	}
+	if req.DocumentIDs != nil {
+		documentIDs, docsErr := normalizeReadingDraftDocumentIDs(req.DocumentIDs, true)
+		if docsErr != nil {
+			return nil, docsErr
+		}
+		docJSON, _ := json.Marshal(documentIDs)
+		draft.DocumentIDs = types.JSON(docJSON)
+	}
+	if req.Depth != "" {
+		draft.Depth = normalizeReadingDepth(req.Depth)
+	}
+	if strings.TrimSpace(req.Goal) != "" {
+		draft.Goal = readingDraftGoal(req.Goal)
+	}
+	draft.UpdatedAt = time.Now()
+	if err := s.repo.UpdateDraft(ctx, draft); err != nil {
+		return nil, err
+	}
+	return draft, nil
+}
+
+func (s *readingRunService) DeleteDraft(ctx context.Context, draftID string) error {
+	caller, err := readingCaller(ctx)
+	if err != nil {
+		return err
+	}
+	draft, err := s.repo.GetDraft(ctx, caller.TenantID, caller.UserID, strings.TrimSpace(draftID))
+	if err != nil {
+		return err
+	}
+	if draft == nil {
+		return werrors.NewNotFoundError("精读草稿不存在")
+	}
+	return s.repo.DeleteDraft(ctx, caller.TenantID, caller.UserID, draft.ID)
+}
+
+func normalizeReadingDraftDocumentIDs(values []string, required bool) ([]string, error) {
+	documentIDs := readingUniqueStrings(values)
+	if required && len(documentIDs) == 0 {
+		return nil, werrors.NewValidationError("精读草稿至少选择一篇文档")
+	}
+	if len(documentIDs) > readingMaxDocuments {
+		return nil, werrors.NewValidationError("精读草稿最多选择 5 篇文档")
+	}
+	return documentIDs, nil
+}
+
+func normalizeReadingDraftName(value, fallback string) (string, error) {
+	name := strings.TrimSpace(value)
+	if name == "" {
+		name = fallback
+	}
+	if name == "" {
+		return "", werrors.NewValidationError("精读草稿名称不能为空")
+	}
+	runes := []rune(name)
+	if len(runes) > 120 {
+		name = string(runes[:120])
+	}
+	return name, nil
+}
+
+func readingDraftGoal(value string) string {
+	return readingTruncateRunes(strings.TrimSpace(value), 2000)
 }
 
 func (s *readingRunService) Export(ctx context.Context, runID string, format string) (*types.ReadingExport, error) {
@@ -779,10 +1177,11 @@ func (s *readingRunService) ensureDocumentReadable(
 
 func (s *readingRunService) buildSections(
 	ctx context.Context, caller types.Caller, documentIDs []string, depth string,
-) ([]types.ReadingSection, []string, string, error) {
+) ([]types.ReadingSection, []string, []string, error) {
 	sections := make([]types.ReadingSection, 0)
 	docIDs := make([]string, 0, len(documentIDs))
-	kbID := ""
+	kbIDs := make([]string, 0, len(documentIDs))
+	seenKBs := make(map[string]struct{}, len(documentIDs))
 	seen := make(map[string]struct{}, len(documentIDs))
 	for _, docID := range documentIDs {
 		docID = strings.TrimSpace(docID)
@@ -795,29 +1194,28 @@ func (s *readingRunService) buildSections(
 		seen[docID] = struct{}{}
 		knowledge, err := s.ensureDocumentReadable(ctx, caller, docID)
 		if err != nil {
-			return nil, nil, "", err
+			return nil, nil, nil, err
 		}
-		if kbID == "" {
-			kbID = knowledge.KnowledgeBaseID
-		} else if knowledge.KnowledgeBaseID != kbID {
-			return nil, nil, "", werrors.NewValidationError("一次精读只能同一知识库")
+		if _, ok := seenKBs[knowledge.KnowledgeBaseID]; !ok {
+			seenKBs[knowledge.KnowledgeBaseID] = struct{}{}
+			kbIDs = append(kbIDs, knowledge.KnowledgeBaseID)
 		}
 		chunks, err := s.chunkRepo.ListChunksByKnowledgeID(ctx, caller.TenantID, knowledge.ID)
 		if err != nil {
-			return nil, nil, "", err
+			return nil, nil, nil, err
 		}
 		sort.SliceStable(chunks, func(i, j int) bool { return chunks[i].ChunkIndex < chunks[j].ChunkIndex })
 		docSections := buildDocSections(knowledge, chunks, readingWindowRunes(depth))
 		if len(docSections) == 0 {
-			return nil, nil, "", werrors.NewValidationError("文档没有可读文本")
+			return nil, nil, nil, werrors.NewValidationError("文档没有可读文本")
 		}
 		sections = append(sections, docSections...)
 		docIDs = append(docIDs, knowledge.ID)
 	}
 	if len(sections) == 0 {
-		return nil, nil, "", werrors.NewValidationError("没有可精读的文档")
+		return nil, nil, nil, werrors.NewValidationError("没有可精读的文档")
 	}
-	return sections, docIDs, kbID, nil
+	return sections, docIDs, kbIDs, nil
 }
 
 func (s *readingRunService) canReadKB(
@@ -874,14 +1272,15 @@ func buildDocSections(knowledge *types.Knowledge, chunks []*types.Chunk, windowR
 			}
 			idx := len(sections)
 			sections = append(sections, types.ReadingSection{
-				ID:          fmt.Sprintf("%s-%d", knowledge.ID, idx),
-				KnowledgeID: knowledge.ID,
-				Title:       title,
-				Heading:     window[0].Heading,
-				Index:       idx,
-				Content:     strings.Join(parts, "\n\n"),
-				ChunkIDs:    chunkIDs,
-				Segments:    append([]types.ReadingChunkSegment(nil), window...),
+				ID:              fmt.Sprintf("%s-%d", knowledge.ID, idx),
+				KnowledgeID:     knowledge.ID,
+				KnowledgeBaseID: knowledge.KnowledgeBaseID,
+				Title:           title,
+				Heading:         window[0].Heading,
+				Index:           idx,
+				Content:         strings.Join(parts, "\n\n"),
+				ChunkIDs:        chunkIDs,
+				Segments:        append([]types.ReadingChunkSegment(nil), window...),
 			})
 			window = nil
 			size = 0

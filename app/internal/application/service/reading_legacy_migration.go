@@ -147,7 +147,7 @@ func (s *readingRunService) migrateLegacyRun(ctx context.Context, run *types.Rea
 		questions = append(questions, &types.ReadingQuestionNode{
 			ID: legacyID("question", len(questions)), RunID: run.ID, TenantID: run.TenantID,
 			Text: text, Why: "历史笔记迁移，无结构化出处",
-			Evidence: types.JSON("[]"), Status: types.ReadingQuestionPending,
+			Options: types.JSON("[]"), Evidence: types.JSON("[]"), Status: types.ReadingQuestionPending,
 			CreatedAt: now, UpdatedAt: now,
 		})
 	}

@@ -196,3 +196,36 @@ func TestBuildReadingRoundOutcomeGates(t *testing.T) {
 		t.Fatalf("expected 1 contradiction, got %d", len(outcome.Contradictions))
 	}
 }
+
+func TestNormalizeReadingQuestionOptionsKeepsThreeAndOneRecommendation(t *testing.T) {
+	options, recommended := normalizeReadingQuestionOptions(readingLLMQuestion{
+		RecommendedAnswer: "A 的答案",
+		Options: []readingLLMOption{
+			{Label: "A", Text: "A 的答案"},
+			{Label: "B", Text: "B 的答案"},
+			{Label: "C", Text: "C 的答案"},
+			{Label: "D", Text: "D 的答案"},
+		},
+	})
+	if len(options) != 3 {
+		t.Fatalf("expected 3 options, got %d", len(options))
+	}
+	if options[0].ID != "0" || options[1].Label != "B" {
+		t.Fatalf("unexpected options: %+v", options)
+	}
+	if !options[0].Recommended || recommended != "A 的答案" {
+		t.Fatalf("expected first option recommended, got %+v", options)
+	}
+}
+
+func TestReadingPlanKnowledgeBaseIDsSupportsLegacySingleField(t *testing.T) {
+	if got := readingPlanKnowledgeBaseIDs(&types.ReadingPlan{KnowledgeBaseID: "kb1"}); len(got) != 1 || got[0] != "kb1" {
+		t.Fatalf("expected legacy single kb, got %+v", got)
+	}
+	if got := readingSingleKnowledgeBaseID([]string{"kb1"}); got != "kb1" {
+		t.Fatalf("expected single kb, got %q", got)
+	}
+	if got := readingSingleKnowledgeBaseID([]string{"kb1", "kb2"}); got != "" {
+		t.Fatalf("expected empty single-kb id for cross-kb, got %q", got)
+	}
+}

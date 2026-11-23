@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	werrors "gaze/internal/errors"
+	"gaze/internal/logger"
 	"gaze/internal/models/chat"
 	"gaze/internal/models/embedding"
 	"gaze/internal/types"
@@ -169,13 +170,20 @@ type readingEvidenceRef struct {
 	Quote   string `json:"quote"`
 }
 
+type readingLLMOption struct {
+	Label       string `json:"label"`
+	Text        string `json:"text"`
+	Recommended bool   `json:"recommended"`
+}
+
 type readingLLMQuestion struct {
-	Text              string `json:"text"`
-	Kind              string `json:"kind"`
-	GapType           string `json:"gap_type"`
-	Why               string `json:"why"`
-	RecommendedAnswer string `json:"recommended_answer"`
-	SearchQuery       string `json:"search_query"`
+	Text              string             `json:"text"`
+	Kind              string             `json:"kind"`
+	GapType           string             `json:"gap_type"`
+	Why               string             `json:"why"`
+	RecommendedAnswer string             `json:"recommended_answer"`
+	Options           []readingLLMOption `json:"options"`
+	SearchQuery       string             `json:"search_query"`
 }
 
 type readingLLMAnswer struct {
@@ -249,6 +257,7 @@ const readingStructuredRoundRules = `## 结构化精读输出纪律
 - kind: fact（文档内可查，引擎会强制检索自答）或 decision（必须用户裁定）
 - gap_type: ambiguity / missing_param / contradiction / scope / version
 每个问题必须有 recommended_answer；没有推荐解读的问题不要提出。
+每个问题必须给 3 个不同视角的 options，label 用 A/B/C，且恰好一个 recommended=true；recommended_answer 必须与推荐项 text 一致。
 只允许引用本轮窗口或引擎检索结果中出现的 chunk_id；quote 必须是该 chunk 中逐字存在的连续片段。
 能从给定材料回答的问题必须给出 supported=true 的 answer，不要抛给用户；只有检索不落的问题才保留为待确认。
 结论必须有证据；没有证据不要写结论。矛盾必须给冲突双方出处。不要重复已确认结论和术语。
@@ -364,6 +373,17 @@ func (s *readingRunService) structuredStep(
 		ctx, run, outcome.Questions, outcome.Conclusions, outcome.Terms, outcome.Contradictions, step,
 	); err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(outcome.Understanding) != "" {
+		understanding := &types.ReadingUnderstanding{
+			ID: uuid.NewString(), RunID: run.ID, TenantID: run.TenantID,
+			SectionID: section.ID, Round: run.StepCount,
+			Text: outcome.Understanding, Decision: types.ReadingUnderstandingPending,
+			CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		}
+		if err := s.repo.SaveUnderstanding(ctx, understanding); err != nil {
+			logger.Warnf(ctx, "reading: persist understanding %s failed: %v", run.ID, err)
+		}
 	}
 	return s.Get(ctx, run.ID)
 }
@@ -740,6 +760,73 @@ func mergeReadingRoundResponse(
 	merged.SearchQueries = parsed.SearchQueries
 }
 
+func normalizeReadingQuestionOptions(
+	candidate readingLLMQuestion,
+) ([]types.ReadingQuestionOption, string) {
+	options := make([]types.ReadingQuestionOption, 0, 3)
+	seen := map[string]struct{}{}
+	for _, option := range candidate.Options {
+		text := strings.TrimSpace(option.Text)
+		if text == "" {
+			continue
+		}
+		key := normalizeReadingText(text)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		label := strings.TrimSpace(option.Label)
+		if label == "" {
+			label = string(rune('A' + len(options)))
+		}
+		options = append(options, types.ReadingQuestionOption{
+			ID:          fmt.Sprint(len(options)),
+			Label:       label,
+			Text:        text,
+			Recommended: option.Recommended,
+		})
+		if len(options) == 3 {
+			break
+		}
+	}
+	recommendedAnswer := strings.TrimSpace(candidate.RecommendedAnswer)
+	if len(options) == 0 && recommendedAnswer != "" {
+		options = append(options, types.ReadingQuestionOption{
+			ID: "0", Label: "A", Text: recommendedAnswer, Recommended: true,
+		})
+	}
+	if len(options) > 0 {
+		hasRecommended := false
+		for index := range options {
+			if options[index].Recommended {
+				if hasRecommended {
+					options[index].Recommended = false
+					continue
+				}
+				hasRecommended = true
+				recommendedAnswer = options[index].Text
+			}
+		}
+		if !hasRecommended {
+			matched := false
+			if recommendedAnswer != "" {
+				for index := range options {
+					if options[index].Text == recommendedAnswer {
+						options[index].Recommended = true
+						matched = true
+						break
+					}
+				}
+			}
+			if !matched {
+				options[0].Recommended = true
+				recommendedAnswer = options[0].Text
+			}
+		}
+	}
+	return options, recommendedAnswer
+}
+
 func buildReadingRoundPrompt(
 	run *types.ReadingRun, plan *types.ReadingPlan, section *types.ReadingSection,
 	stateSummary string, round int,
@@ -766,7 +853,7 @@ func buildReadingRoundPrompt(
   "understanding": "本轮理解，2-4 句",
   "search_queries": ["需要跨章节/跨文档证据时填写，最多 2 个；否则空数组"],
   "questions": [
-    {"text": "关键问题", "kind": "fact|decision", "gap_type": "ambiguity|missing_param|contradiction|scope|version", "why": "为什么关键", "recommended_answer": "推荐解读", "search_query": "用于自动检索的关键词"}
+    {"text": "关键问题", "kind": "fact|decision", "gap_type": "ambiguity|missing_param|contradiction|scope|version", "why": "为什么关键", "recommended_answer": "推荐解读", "options": [{"label": "A", "text": "候选答案", "recommended": true}, {"label": "B", "text": "另一个视角", "recommended": false}, {"label": "C", "text": "第三个视角", "recommended": false}], "search_query": "用于自动检索的关键词"}
   ],
   "answers": [
     {"question_index": 0, "question_text": "问题原文", "answer": "回答", "supported": true, "evidence": [{"chunk_id": "chunk id", "quote": "原文连续片段"}]}
@@ -784,6 +871,7 @@ func buildReadingRoundPrompt(
 
 规则：
 - questions 每轮 2-4 个；一次只向用户抛一个，引擎负责逐个提问。
+- 每个问题必须给 3 个不同视角的 options，label 用 A/B/C，且恰好一个 recommended=true；recommended_answer 必须与推荐项 text 一致。
 - 能根据本轮原文或检索结果回答的问题，必须给 supported=true 的 answer，不要留在待确认。
 - 仅当证据不足时才保留为待确认问题；推荐解读要短，理由要引用具体 chunk。
 - conclusions 只能写有证据的结论；没有证据的推断不要写成结论。
@@ -815,6 +903,9 @@ func (s *readingRunService) buildReadingStateSummary(
 	written := 0
 	for i := len(state.Terms) - 1; i >= 0 && written < 20; i-- {
 		term := state.Terms[i]
+		if term.Status == types.ReadingTermRejected {
+			continue
+		}
 		builder.WriteString("- " + term.Term + "：" + readingTruncateRunes(term.Definition, 160) + "\n")
 		written++
 	}
@@ -871,10 +962,14 @@ func (s *readingRunService) selectRelevantConclusions(
 			confirmed = append(confirmed, conclusion)
 		}
 	}
-	if len(confirmed) <= readingPrefilterThreshold || plan == nil || strings.TrimSpace(plan.KnowledgeBaseID) == "" {
+	if len(confirmed) <= readingPrefilterThreshold || plan == nil {
 		return nil
 	}
-	knowledgeBase, err := s.kbService.GetKnowledgeBaseByID(ctx, plan.KnowledgeBaseID)
+	kbIDs := readingPlanKnowledgeBaseIDs(plan)
+	if len(kbIDs) != 1 {
+		return nil
+	}
+	knowledgeBase, err := s.kbService.GetKnowledgeBaseByID(ctx, kbIDs[0])
 	if err != nil || knowledgeBase == nil || strings.TrimSpace(knowledgeBase.EmbeddingModelID) == "" {
 		return nil
 	}
@@ -1072,12 +1167,15 @@ func (s *readingRunService) buildReadingRoundOutcome(
 			continue
 		}
 		questionCount++
+		options, recommendedAnswer := normalizeReadingQuestionOptions(candidate)
+		optionsJSON, _ := json.Marshal(options)
 		node := &types.ReadingQuestionNode{
 			ID: uuid.NewString(), RunID: run.ID, TenantID: run.TenantID,
 			SectionID: section.ID, Round: round, Text: text,
 			Kind:              normalizeReadingQuestionKind(candidate.Kind),
 			GapType:           normalizeReadingGapType(candidate.GapType),
-			RecommendedAnswer: strings.TrimSpace(candidate.RecommendedAnswer),
+			RecommendedAnswer: recommendedAnswer,
+			Options:           types.JSON(optionsJSON),
 			Why:               strings.TrimSpace(candidate.Why),
 			SearchQuery:       strings.TrimSpace(candidate.SearchQuery),
 			Evidence:          evidenceJSON(nil),
@@ -1141,7 +1239,7 @@ func (s *readingRunService) buildReadingRoundOutcome(
 			canonical = true
 		}
 		outcome.Terms = append(outcome.Terms, &types.ReadingTerm{
-			ID: uuid.NewString(), RunID: run.ID, TenantID: run.TenantID,
+			ID: uuid.NewString(), RunID: run.ID, TenantID: run.TenantID, Round: round,
 			Term: term, Definition: definition, Source: evidenceJSON(source),
 			Canonical: canonical, Status: status, CreatedAt: now, UpdatedAt: now,
 		})
@@ -1409,7 +1507,11 @@ func (s *readingRunService) semanticSearchSelectedDocs(
 	run *types.ReadingRun, plan *types.ReadingPlan,
 	chunkInfo map[string]*readingChunkInfo, chunkSection map[string]string,
 ) []types.ReadingEvidence {
-	if s.ragEngine == nil || plan == nil || strings.TrimSpace(plan.KnowledgeBaseID) == "" {
+	if s.ragEngine == nil || plan == nil {
+		return nil
+	}
+	knowledgeBaseIDs := readingPlanKnowledgeBaseIDs(plan)
+	if len(knowledgeBaseIDs) == 0 {
 		return nil
 	}
 	documentIDs := planDocumentIDs(run)
@@ -1419,7 +1521,7 @@ func (s *readingRunService) semanticSearchSelectedDocs(
 	searchCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
 	results, err := s.ragEngine.SearchDocuments(
-		searchCtx, []string{query}, []string{plan.KnowledgeBaseID},
+		searchCtx, []string{query}, knowledgeBaseIDs,
 		documentIDs, 8,
 	)
 	if err != nil {
@@ -1598,6 +1700,9 @@ func (s *readingRunService) finishStructured(
 	citations := make([]types.ReadingEvidence, 0)
 	seenCitations := map[string]struct{}{}
 	for _, conclusion := range state.Conclusions {
+		if conclusion.Status == types.ReadingConclusionRejected {
+			continue
+		}
 		if conclusion.Status == types.ReadingConclusionConfirmed {
 			confirmed = append(confirmed, conclusion.Text)
 		}
@@ -1758,17 +1863,28 @@ func (s *readingRunService) structuredFeedback(
 		target.Status = types.ReadingQuestionAnswered
 		target.Answer = feedback
 		target.AnswerSource = "user"
-		evidence := evidenceFromJSON(target.Evidence)
-		gates := types.ReadingConclusionGates{
-			ReferencesOK: len(evidence) > 0, ConflictFree: true,
-			CrossDocConsistent: true, UserAdjudicated: true,
+		if judgment, reason, judgeErr := s.judgeReadingAnswer(ctx, run, target); judgeErr != nil {
+			logger.Warnf(ctx, "reading: judge question %s failed: %v", target.ID, judgeErr)
+		} else {
+			target.Judgment = judgment
+			target.JudgmentReason = reason
+			target.JudgedAt = &now
 		}
-		rawGates, _ := json.Marshal(gates)
-		conclusion = &types.ReadingConclusion{
-			ID: uuid.NewString(), RunID: run.ID, TenantID: run.TenantID,
-			SectionID: target.SectionID, Round: target.Round, Text: feedback,
-			Evidence: evidenceJSON(evidence), Status: types.ReadingConclusionConfirmed,
-			Source: "user", Gates: types.JSON(rawGates), CreatedAt: now, UpdatedAt: now,
+		// A fact answer only verifies the user's understanding. Only decisions
+		// become user-adjudicated conclusions.
+		if normalizeReadingQuestionKind(target.Kind) != "fact" {
+			evidence := evidenceFromJSON(target.Evidence)
+			gates := types.ReadingConclusionGates{
+				ReferencesOK: len(evidence) > 0, ConflictFree: true,
+				CrossDocConsistent: true, UserAdjudicated: true,
+			}
+			rawGates, _ := json.Marshal(gates)
+			conclusion = &types.ReadingConclusion{
+				ID: uuid.NewString(), RunID: run.ID, TenantID: run.TenantID,
+				SectionID: target.SectionID, Round: target.Round, Text: feedback,
+				Evidence: evidenceJSON(evidence), Status: types.ReadingConclusionConfirmed,
+				Source: "user", Gates: types.JSON(rawGates), CreatedAt: now, UpdatedAt: now,
+			}
 		}
 	}
 	target.UpdatedAt = now
@@ -1788,6 +1904,95 @@ func (s *readingRunService) structuredFeedback(
 		return nil, err
 	}
 	return s.Get(ctx, run.ID)
+}
+
+func (s *readingRunService) JudgeQuestion(
+	ctx context.Context, runID, questionID string,
+) (*types.ReadingRun, error) {
+	caller, err := readingCaller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	run, err := s.repo.GetRun(ctx, caller.TenantID, caller.UserID, strings.TrimSpace(runID))
+	if err != nil || run == nil {
+		return nil, werrors.NewNotFoundError("精读任务不存在")
+	}
+	questions, err := s.repo.ListQuestions(ctx, run.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, question := range questions {
+		if question.ID != strings.TrimSpace(questionID) {
+			continue
+		}
+		if strings.TrimSpace(question.Answer) == "" {
+			return nil, werrors.NewValidationError("问题还没有作答")
+		}
+		judgment, reason, judgeErr := s.judgeReadingAnswer(ctx, run, question)
+		if judgeErr != nil {
+			return nil, judgeErr
+		}
+		now := time.Now()
+		question.Judgment = judgment
+		question.JudgmentReason = reason
+		question.JudgedAt = &now
+		question.UpdatedAt = now
+		if err := s.repo.UpdateQuestion(ctx, question); err != nil {
+			return nil, err
+		}
+		return s.Get(ctx, run.ID)
+	}
+	return nil, werrors.NewNotFoundError("问题不存在")
+}
+
+func (s *readingRunService) judgeReadingAnswer(
+	ctx context.Context, run *types.ReadingRun, question *types.ReadingQuestionNode,
+) (string, string, error) {
+	answer := strings.TrimSpace(question.Answer)
+	if answer == "" {
+		return "", "", werrors.NewValidationError("问题还没有作答")
+	}
+	model, err := s.modelService.GetChatModel(ctx, run.ReadingModelID)
+	if err != nil {
+		return "", "", fmt.Errorf("加载精读模型失败: %w", err)
+	}
+	var evidence strings.Builder
+	for _, item := range evidenceFromJSON(question.Evidence) {
+		fmt.Fprintf(&evidence, "- %s § %s：%s\n", item.DocumentTitle, item.Heading, item.Quote)
+	}
+	prompt := fmt.Sprintf(
+		"问题：%s\n推荐解读：%s\n用户答案：%s\n证据：\n%s\n"+
+			"请判定用户答案与推荐解读和证据的契合程度。返回严格 JSON："+
+			`{"judgment":"correct|partial|wrong","reason":"必须指出用户答案对了什么、漏了什么或错在哪，并引用证据"}`,
+		question.Text, question.RecommendedAnswer, answer, evidence.String(),
+	)
+	resp, err := model.Chat(ctx, []chat.Message{
+		{Role: "system", Content: "你是精读答案判定器。只输出严格 JSON，不输出 Markdown。"},
+		{Role: "user", Content: prompt},
+	}, readingChatOptions(readingRunDepth(run), 800))
+	if err != nil {
+		return "", "", fmt.Errorf("精读答案判定失败: %w", err)
+	}
+	var parsed struct {
+		Judgment string `json:"judgment"`
+		Reason   string `json:"reason"`
+	}
+	if err := json.Unmarshal([]byte(stripJSONFence(resp.Content)), &parsed); err != nil {
+		return "", "", fmt.Errorf("精读答案判定不是有效 JSON: %w", err)
+	}
+	judgment := strings.ToLower(strings.TrimSpace(parsed.Judgment))
+	switch judgment {
+	case types.ReadingQuestionJudgmentCorrect,
+		types.ReadingQuestionJudgmentPartial,
+		types.ReadingQuestionJudgmentWrong:
+	default:
+		return "", "", fmt.Errorf("精读答案判定值无效: %s", judgment)
+	}
+	reason := strings.TrimSpace(parsed.Reason)
+	if reason == "" {
+		return "", "", fmt.Errorf("精读答案判定缺少理由")
+	}
+	return judgment, reason, nil
 }
 
 func buildStructuredReadingMarkdown(
@@ -1856,7 +2061,8 @@ func buildStructuredReadingMarkdown(
 	candidates := 0
 	for i := len(conclusions) - 1; i >= 0; i-- {
 		conclusion := conclusions[i]
-		if conclusion.Status == types.ReadingConclusionConfirmed {
+		if conclusion.Status == types.ReadingConclusionConfirmed ||
+			conclusion.Status == types.ReadingConclusionRejected {
 			continue
 		}
 		candidates++
@@ -1872,7 +2078,7 @@ func buildStructuredReadingMarkdown(
 	decisions := 0
 	for i := len(conclusions) - 1; i >= 0; i-- {
 		conclusion := conclusions[i]
-		if conclusion.Source != "user" {
+		if conclusion.Source != "user" || conclusion.Status == types.ReadingConclusionRejected {
 			continue
 		}
 		decisions++
@@ -1889,6 +2095,9 @@ func buildStructuredReadingMarkdown(
 		writeLine("—")
 	} else {
 		for _, term := range terms {
+			if term.Status == types.ReadingTermRejected {
+				continue
+			}
 			writeLine(fmt.Sprintf("- %s：%s（%s）", term.Term, term.Definition, readingTermStatusLabel(term.Status)))
 			writeEvidence(evidenceFromJSON(term.Source))
 		}
@@ -1955,6 +2164,8 @@ func readingConclusionStatusLabel(status string) string {
 	switch status {
 	case types.ReadingConclusionContradicted:
 		return "被矛盾推翻"
+	case types.ReadingConclusionRejected:
+		return "已驳回"
 	case types.ReadingConclusionCandidate:
 		return "待确认"
 	default:
@@ -1963,10 +2174,14 @@ func readingConclusionStatusLabel(status string) string {
 }
 
 func readingTermStatusLabel(status string) string {
-	if status == types.ReadingTermConfirmed {
+	switch status {
+	case types.ReadingTermConfirmed:
 		return "已确认"
+	case types.ReadingTermRejected:
+		return "已驳回"
+	default:
+		return "待确认"
 	}
-	return "待确认"
 }
 
 func (s *readingRunService) populateStructuredReading(
@@ -1992,10 +2207,15 @@ func (s *readingRunService) populateStructuredReading(
 	if err != nil {
 		return err
 	}
+	understandings, err := s.repo.ListUnderstandings(ctx, run.ID)
+	if err != nil {
+		return err
+	}
 	run.Questions = questions
 	run.Conclusions = conclusions
 	run.Terms = terms
 	run.Contradictions = contradictions
+	run.Understandings = understandings
 	return nil
 }
 
@@ -2056,11 +2276,23 @@ func (s *readingRunService) exportStructuredReading(
 	edited := draft != nil && strings.TrimSpace(draft.ContentMD) != ""
 	result := &types.ReadingExport{Format: format, Coverage: coverage, GeneratedAt: generatedAt}
 	if format == "json" {
+		conclusions := make([]*types.ReadingConclusion, 0, len(run.Conclusions))
+		for _, conclusion := range run.Conclusions {
+			if conclusion.Status != types.ReadingConclusionRejected {
+				conclusions = append(conclusions, conclusion)
+			}
+		}
+		terms := make([]*types.ReadingTerm, 0, len(run.Terms))
+		for _, term := range run.Terms {
+			if term.Status != types.ReadingTermRejected {
+				terms = append(terms, term)
+			}
+		}
 		payload := map[string]any{
 			"run_id": run.ID, "goal": plan.Goal, "depth": plan.Depth, "policy": plan.Policy,
 			"documents": docTitles, "coverage": coverage,
-			"questions": run.Questions, "conclusions": run.Conclusions,
-			"terms": run.Terms, "contradictions": run.Contradictions,
+			"questions": run.Questions, "conclusions": conclusions,
+			"terms": terms, "contradictions": run.Contradictions,
 			"final": final, "state_version": plan.StateVersion,
 			"report_edited": edited, "generated_at": generatedAt,
 		}

@@ -16,6 +16,7 @@ const (
 	ReadingRunWaitingUser ReadingRunStatus = "waiting_user"
 	ReadingRunFinished    ReadingRunStatus = "finished"
 	ReadingRunStopped     ReadingRunStatus = "stopped"
+	ReadingRunAbandoned   ReadingRunStatus = "abandoned"
 	ReadingRunFailed      ReadingRunStatus = "failed"
 )
 
@@ -36,26 +37,28 @@ type ReadingChunkSegment struct {
 
 // ReadingSection is one readable window of the selected documents.
 type ReadingSection struct {
-	ID          string                `json:"id"`
-	KnowledgeID string                `json:"knowledge_id"`
-	Title       string                `json:"title"`
-	Heading     string                `json:"heading,omitempty"`
-	Index       int                   `json:"index"`
-	Content     string                `json:"content"`
-	ChunkIDs    []string              `json:"chunk_ids,omitempty"`
-	Segments    []ReadingChunkSegment `json:"segments,omitempty"`
-	Read        bool                  `json:"read"`
+	ID              string                `json:"id"`
+	KnowledgeID     string                `json:"knowledge_id"`
+	KnowledgeBaseID string                `json:"knowledge_base_id,omitempty"`
+	Title           string                `json:"title"`
+	Heading         string                `json:"heading,omitempty"`
+	Index           int                   `json:"index"`
+	Content         string                `json:"content"`
+	ChunkIDs        []string              `json:"chunk_ids,omitempty"`
+	Segments        []ReadingChunkSegment `json:"segments,omitempty"`
+	Read            bool                  `json:"read"`
 }
 
 // ReadingPlan is the ordered section list. section_id values are stable for
 // one run so read progress survives step polling/reloads.
 type ReadingPlan struct {
-	Goal            string           `json:"goal,omitempty"`
-	Depth           string           `json:"depth,omitempty"`
-	Policy          string           `json:"policy,omitempty"`
-	KnowledgeBaseID string           `json:"knowledge_base_id,omitempty"`
-	StateVersion    int              `json:"state_version,omitempty"`
-	Sections        []ReadingSection `json:"sections"`
+	Goal             string           `json:"goal,omitempty"`
+	Depth            string           `json:"depth,omitempty"`
+	Policy           string           `json:"policy,omitempty"`
+	KnowledgeBaseID  string           `json:"knowledge_base_id,omitempty"`
+	KnowledgeBaseIDs []string         `json:"knowledge_base_ids,omitempty"`
+	StateVersion     int              `json:"state_version,omitempty"`
+	Sections         []ReadingSection `json:"sections"`
 }
 
 // ReadingQuestion is the single checkpoint question for a step.
@@ -164,6 +167,7 @@ type ReadingRun struct {
 	Conclusions      []*ReadingConclusion    `json:"conclusions,omitempty" gorm:"-"`
 	Terms            []*ReadingTerm          `json:"terms,omitempty" gorm:"-"`
 	Contradictions   []*ReadingContradiction `json:"contradictions,omitempty" gorm:"-"`
+	Understandings   []*ReadingUnderstanding `json:"understandings,omitempty" gorm:"-"`
 	CreatedAt        time.Time               `json:"created_at"`
 	UpdatedAt        time.Time               `json:"updated_at"`
 }
@@ -207,26 +211,46 @@ type ReadingEvidence struct {
 	Quote         string `json:"quote"`
 }
 
+// ReadingQuestionOption is one candidate answer shown for a checkpoint
+// question. Exactly one option is normally recommended.
+type ReadingQuestionOption struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Text        string `json:"text"`
+	Recommended bool   `json:"recommended,omitempty"`
+}
+
+const (
+	ReadingQuestionJudgmentUnjudged = ""
+	ReadingQuestionJudgmentCorrect  = "correct"
+	ReadingQuestionJudgmentPartial  = "partial"
+	ReadingQuestionJudgmentWrong    = "wrong"
+)
+
 // ReadingQuestionNode is one question in the reading question tree.
 type ReadingQuestionNode struct {
-	ID                string    `json:"id" gorm:"type:varchar(36);primaryKey"`
-	RunID             string    `json:"run_id" gorm:"type:varchar(36);not null;index"`
-	TenantID          uint64    `json:"tenant_id" gorm:"not null"`
-	ParentID          string    `json:"parent_id" gorm:"type:varchar(36);not null;default:''"`
-	SectionID         string    `json:"section_id" gorm:"type:varchar(64);not null;default:''"`
-	Round             int       `json:"round" gorm:"not null;default:0"`
-	Text              string    `json:"text" gorm:"type:text;not null;default:''"`
-	RecommendedAnswer string    `json:"recommended_answer" gorm:"type:text;not null;default:''"`
-	Why               string    `json:"why" gorm:"type:text;not null;default:''"`
-	SearchQuery       string    `json:"search_query" gorm:"type:text;not null;default:''"`
-	Kind              string    `json:"kind" gorm:"type:varchar(16);not null;default:''"`
-	GapType           string    `json:"gap_type" gorm:"type:varchar(24);not null;default:''"`
-	Evidence          JSON      `json:"evidence" gorm:"type:jsonb;not null"`
-	Answer            string    `json:"answer" gorm:"type:text;not null;default:''"`
-	AnswerSource      string    `json:"answer_source" gorm:"type:varchar(16);not null;default:''"`
-	Status            string    `json:"status" gorm:"type:varchar(20);not null;default:'pending'"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID                string     `json:"id" gorm:"type:varchar(36);primaryKey"`
+	RunID             string     `json:"run_id" gorm:"type:varchar(36);not null;index"`
+	TenantID          uint64     `json:"tenant_id" gorm:"not null"`
+	ParentID          string     `json:"parent_id" gorm:"type:varchar(36);not null;default:''"`
+	SectionID         string     `json:"section_id" gorm:"type:varchar(64);not null;default:''"`
+	Round             int        `json:"round" gorm:"not null;default:0"`
+	Text              string     `json:"text" gorm:"type:text;not null;default:''"`
+	RecommendedAnswer string     `json:"recommended_answer" gorm:"type:text;not null;default:''"`
+	Why               string     `json:"why" gorm:"type:text;not null;default:''"`
+	SearchQuery       string     `json:"search_query" gorm:"type:text;not null;default:''"`
+	Kind              string     `json:"kind" gorm:"type:varchar(16);not null;default:''"`
+	GapType           string     `json:"gap_type" gorm:"type:varchar(24);not null;default:''"`
+	Options           JSON       `json:"options" gorm:"type:jsonb;not null"`
+	Evidence          JSON       `json:"evidence" gorm:"type:jsonb;not null"`
+	Answer            string     `json:"answer" gorm:"type:text;not null;default:''"`
+	AnswerSource      string     `json:"answer_source" gorm:"type:varchar(16);not null;default:''"`
+	Judgment          string     `json:"judgment" gorm:"type:varchar(16);not null;default:''"`
+	JudgmentReason    string     `json:"judgment_reason" gorm:"type:text;not null;default:''"`
+	JudgedAt          *time.Time `json:"judged_at,omitempty"`
+	Status            string     `json:"status" gorm:"type:varchar(20);not null;default:'pending'"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 func (ReadingQuestionNode) TableName() string { return "reading_questions" }
@@ -235,6 +259,7 @@ const (
 	ReadingConclusionCandidate    = "candidate"
 	ReadingConclusionConfirmed    = "confirmed"
 	ReadingConclusionContradicted = "contradicted"
+	ReadingConclusionRejected     = "rejected"
 
 	// ReadingConclusionSourceLegacy marks conclusions migrated from the old
 	// notes JSON. They have no structured evidence and are never counted as
@@ -272,6 +297,7 @@ func (ReadingConclusion) TableName() string { return "reading_conclusions" }
 const (
 	ReadingTermCandidate = "candidate"
 	ReadingTermConfirmed = "confirmed"
+	ReadingTermRejected  = "rejected"
 )
 
 // ReadingTerm is one glossary entry with a source.
@@ -279,6 +305,7 @@ type ReadingTerm struct {
 	ID         string    `json:"id" gorm:"type:varchar(36);primaryKey"`
 	RunID      string    `json:"run_id" gorm:"type:varchar(36);not null;index"`
 	TenantID   uint64    `json:"tenant_id" gorm:"not null"`
+	Round      int       `json:"round" gorm:"not null;default:0"`
 	Term       string    `json:"term" gorm:"type:varchar(200);not null;default:''"`
 	Definition string    `json:"definition" gorm:"type:text;not null;default:''"`
 	Source     JSON      `json:"source" gorm:"type:jsonb;not null"`
@@ -326,6 +353,7 @@ type CreateReadingRunRequest struct {
 type ReadingFeedbackRequest struct {
 	Feedback   string `json:"feedback"`
 	QuestionID string `json:"question_id"`
+	OptionID   string `json:"option_id"`
 	Skip       bool   `json:"skip"`
 }
 
@@ -367,6 +395,75 @@ type SaveReadingReportRequest struct {
 // AddReadingDocumentsRequest explicitly adds documents (max 5 total).
 type AddReadingDocumentsRequest struct {
 	DocumentIDs []string `json:"document_ids" binding:"required"`
+}
+
+// ReadingDraft is one reusable reading configuration.
+type ReadingDraft struct {
+	ID          string    `json:"id" gorm:"type:varchar(36);primaryKey"`
+	TenantID    uint64    `json:"tenant_id" gorm:"not null;index"`
+	UserID      string    `json:"user_id" gorm:"type:varchar(36);not null;index"`
+	Name        string    `json:"name" gorm:"type:varchar(120);not null"`
+	DocumentIDs JSON      `json:"document_ids" gorm:"type:jsonb;not null"`
+	Depth       string    `json:"depth" gorm:"type:varchar(16);not null;default:'standard'"`
+	Goal        string    `json:"goal" gorm:"type:text;not null;default:''"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (ReadingDraft) TableName() string { return "reading_drafts" }
+
+// ReadingDraftRequest creates or updates a draft. DocumentIDs is required on
+// create; an update may omit it to keep the stored selection.
+type ReadingDraftRequest struct {
+	Name        string   `json:"name"`
+	DocumentIDs []string `json:"document_ids"`
+	Depth       string   `json:"depth"`
+	Goal        string   `json:"goal"`
+}
+
+const (
+	ReadingUnderstandingPending   = "pending"
+	ReadingUnderstandingConfirmed = "confirmed"
+	ReadingUnderstandingCorrected = "corrected"
+	ReadingUnderstandingSkipped   = "skipped"
+)
+
+// ReadingUnderstanding persists the user's decision on one round's
+// understanding statement so it can influence the next round and survive a
+// reload.
+type ReadingUnderstanding struct {
+	ID         string    `json:"id" gorm:"type:varchar(36);primaryKey"`
+	RunID      string    `json:"run_id" gorm:"type:varchar(36);not null;index"`
+	TenantID   uint64    `json:"tenant_id" gorm:"not null"`
+	SectionID  string    `json:"section_id" gorm:"type:varchar(64);not null;default:''"`
+	Round      int       `json:"round" gorm:"not null;default:0"`
+	Text       string    `json:"text" gorm:"type:text;not null;default:''"`
+	Decision   string    `json:"decision" gorm:"type:varchar(16);not null;default:'pending'"`
+	Correction string    `json:"correction" gorm:"type:text;not null;default:''"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+func (ReadingUnderstanding) TableName() string { return "reading_understandings" }
+
+// UpdateReadingUnderstandingRequest confirms, corrects, or skips the current
+// round's understanding statement.
+type UpdateReadingUnderstandingRequest struct {
+	Decision   string `json:"decision" binding:"required"`
+	Correction string `json:"correction"`
+}
+
+// UpdateReadingNoteRequest updates one note's text or review status.
+type UpdateReadingNoteRequest struct {
+	Status string `json:"status"`
+	Text   string `json:"text"`
+}
+
+// JumpReadingSectionRequest moves the reading cursor back to a section. The
+// target and all later sections become unread so "continue from this chapter"
+// actually resumes there.
+type JumpReadingSectionRequest struct {
+	SectionID string `json:"section_id" binding:"required"`
 }
 
 // ReadingCoverage summarizes how much of the selected reading plan was covered.

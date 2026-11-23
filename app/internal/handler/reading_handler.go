@@ -75,6 +75,15 @@ func (h *ReadingHandler) Feedback(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
 }
 
+func (h *ReadingHandler) JudgeQuestion(c *gin.Context) {
+	run, err := h.service.JudgeQuestion(c.Request.Context(), c.Param("id"), c.Param("questionId"))
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
+}
+
 func (h *ReadingHandler) ResolveContradiction(c *gin.Context) {
 	var req types.ReadingContradictionResolutionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -180,6 +189,120 @@ func (h *ReadingHandler) Stop(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
+}
+
+func (h *ReadingHandler) Abandon(c *gin.Context) {
+	run, err := h.service.Abandon(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
+}
+
+func (h *ReadingHandler) Jump(c *gin.Context) {
+	var req types.JumpReadingSectionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	run, err := h.service.Jump(c.Request.Context(), c.Param("id"), &req)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
+}
+
+func (h *ReadingHandler) UpdateUnderstanding(c *gin.Context) {
+	var req types.UpdateReadingUnderstandingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	run, err := h.service.UpdateUnderstanding(c.Request.Context(), c.Param("id"), &req)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
+}
+
+func (h *ReadingHandler) UpdateTerm(c *gin.Context) {
+	var req types.UpdateReadingNoteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	term, err := h.service.UpdateTerm(
+		c.Request.Context(), c.Param("id"), c.Param("termId"), &req,
+	)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": term})
+}
+
+func (h *ReadingHandler) UpdateConclusion(c *gin.Context) {
+	var req types.UpdateReadingNoteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	conclusion, err := h.service.UpdateConclusion(
+		c.Request.Context(), c.Param("id"), c.Param("conclusionId"), &req,
+	)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": conclusion})
+}
+
+func (h *ReadingHandler) ListDrafts(c *gin.Context) {
+	drafts, err := h.service.ListDrafts(c.Request.Context())
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": drafts})
+}
+
+func (h *ReadingHandler) CreateDraft(c *gin.Context) {
+	var req types.ReadingDraftRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	draft, err := h.service.CreateDraft(c.Request.Context(), &req)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": draft})
+}
+
+func (h *ReadingHandler) UpdateDraft(c *gin.Context) {
+	var req types.ReadingDraftRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	draft, err := h.service.UpdateDraft(c.Request.Context(), c.Param("draftId"), &req)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": draft})
+}
+
+func (h *ReadingHandler) DeleteDraft(c *gin.Context) {
+	if err := h.service.DeleteDraft(c.Request.Context(), c.Param("draftId")); err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 func (h *ReadingHandler) Resume(c *gin.Context) {

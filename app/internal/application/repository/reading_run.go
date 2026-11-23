@@ -139,6 +139,25 @@ func (r *readingRunRepository) ListQuestions(
 	return rows, nil
 }
 
+func (r *readingRunRepository) UpdateQuestion(
+	ctx context.Context, question *types.ReadingQuestionNode,
+) error {
+	return r.db.WithContext(ctx).
+		Model(&types.ReadingQuestionNode{}).
+		Where("id = ? AND run_id = ?", question.ID, question.RunID).
+		Updates(map[string]any{
+			"options":         question.Options,
+			"evidence":        question.Evidence,
+			"answer":          question.Answer,
+			"answer_source":   question.AnswerSource,
+			"judgment":        question.Judgment,
+			"judgment_reason": question.JudgmentReason,
+			"judged_at":       question.JudgedAt,
+			"status":          question.Status,
+			"updated_at":      question.UpdatedAt,
+		}).Error
+}
+
 func (r *readingRunRepository) ListConclusions(
 	ctx context.Context, runID string,
 ) ([]*types.ReadingConclusion, error) {
@@ -152,6 +171,20 @@ func (r *readingRunRepository) ListConclusions(
 	return rows, nil
 }
 
+func (r *readingRunRepository) UpdateConclusion(
+	ctx context.Context, conclusion *types.ReadingConclusion,
+) error {
+	return r.db.WithContext(ctx).
+		Model(&types.ReadingConclusion{}).
+		Where("id = ? AND run_id = ?", conclusion.ID, conclusion.RunID).
+		Updates(map[string]any{
+			"text":       conclusion.Text,
+			"status":     conclusion.Status,
+			"gates":      conclusion.Gates,
+			"updated_at": conclusion.UpdatedAt,
+		}).Error
+}
+
 func (r *readingRunRepository) ListTerms(
 	ctx context.Context, runID string,
 ) ([]*types.ReadingTerm, error) {
@@ -163,6 +196,119 @@ func (r *readingRunRepository) ListTerms(
 		return nil, err
 	}
 	return rows, nil
+}
+
+func (r *readingRunRepository) UpdateTerm(
+	ctx context.Context, term *types.ReadingTerm,
+) error {
+	return r.db.WithContext(ctx).
+		Model(&types.ReadingTerm{}).
+		Where("id = ? AND run_id = ?", term.ID, term.RunID).
+		Updates(map[string]any{
+			"definition": term.Definition,
+			"status":     term.Status,
+			"updated_at": term.UpdatedAt,
+		}).Error
+}
+
+func (r *readingRunRepository) ListUnderstandings(
+	ctx context.Context, runID string,
+) ([]*types.ReadingUnderstanding, error) {
+	var rows []*types.ReadingUnderstanding
+	if err := r.db.WithContext(ctx).
+		Where("run_id = ?", runID).
+		Order("round ASC, created_at ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (r *readingRunRepository) SaveUnderstanding(
+	ctx context.Context, understanding *types.ReadingUnderstanding,
+) error {
+	return r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "run_id"}, {Name: "section_id"}, {Name: "round"},
+			},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"text", "decision", "correction", "updated_at",
+			}),
+		}).
+		Create(understanding).Error
+}
+
+func (r *readingRunRepository) UpdateUnderstanding(
+	ctx context.Context, understanding *types.ReadingUnderstanding,
+) error {
+	return r.db.WithContext(ctx).
+		Model(&types.ReadingUnderstanding{}).
+		Where("id = ? AND run_id = ?", understanding.ID, understanding.RunID).
+		Updates(map[string]any{
+			"decision":   understanding.Decision,
+			"correction": understanding.Correction,
+			"updated_at": understanding.UpdatedAt,
+		}).Error
+}
+
+func (r *readingRunRepository) ListDrafts(
+	ctx context.Context, tenantID uint64, userID string,
+) ([]*types.ReadingDraft, error) {
+	var rows []*types.ReadingDraft
+	if err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND user_id = ?", tenantID, userID).
+		Order("updated_at DESC").
+		Limit(20).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (r *readingRunRepository) GetDraft(
+	ctx context.Context, tenantID uint64, userID, draftID string,
+) (*types.ReadingDraft, error) {
+	var draft types.ReadingDraft
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND user_id = ? AND id = ?", tenantID, userID, draftID).
+		First(&draft).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &draft, nil
+}
+
+func (r *readingRunRepository) CreateDraft(
+	ctx context.Context, draft *types.ReadingDraft,
+) error {
+	return r.db.WithContext(ctx).Create(draft).Error
+}
+
+func (r *readingRunRepository) UpdateDraft(
+	ctx context.Context, draft *types.ReadingDraft,
+) error {
+	return r.db.WithContext(ctx).
+		Model(&types.ReadingDraft{}).
+		Where("tenant_id = ? AND user_id = ? AND id = ?", draft.TenantID, draft.UserID, draft.ID).
+		Updates(map[string]any{
+			"name":         draft.Name,
+			"document_ids": draft.DocumentIDs,
+			"depth":        draft.Depth,
+			"goal":         draft.Goal,
+			"updated_at":   draft.UpdatedAt,
+		}).Error
+}
+
+func (r *readingRunRepository) DeleteDraft(
+	ctx context.Context, tenantID uint64, userID, draftID string,
+) error {
+	return r.db.WithContext(ctx).
+		Where("tenant_id = ? AND user_id = ? AND id = ?", tenantID, userID, draftID).
+		Delete(&types.ReadingDraft{}).Error
 }
 
 func (r *readingRunRepository) ListContradictions(
@@ -232,10 +378,13 @@ func (r *readingRunRepository) SaveFeedback(
 			if err := tx.Model(&types.ReadingQuestionNode{}).
 				Where("id = ?", question.ID).
 				Updates(map[string]any{
-					"answer":        question.Answer,
-					"answer_source": question.AnswerSource,
-					"status":        question.Status,
-					"updated_at":    question.UpdatedAt,
+					"answer":          question.Answer,
+					"answer_source":   question.AnswerSource,
+					"judgment":        question.Judgment,
+					"judgment_reason": question.JudgmentReason,
+					"judged_at":       question.JudgedAt,
+					"status":          question.Status,
+					"updated_at":      question.UpdatedAt,
 				}).Error; err != nil {
 				return err
 			}
