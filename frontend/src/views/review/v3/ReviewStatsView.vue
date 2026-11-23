@@ -583,8 +583,6 @@ onBeforeUnmount(() => {
     width: 46px;
     height: 46px;
     flex: 0 0 auto;
-    background: var(--td-bg-color-secondarycontainer);
-    border-radius: var(--td-radius-default);
 
     img {
       width: 34px;
