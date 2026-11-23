@@ -222,7 +222,7 @@
       </div>
     </div>
 
-    <div v-else-if="run" class="rv-body">
+    <div v-else-if="run" ref="readingBodyRef" class="rv-body">
       <aside class="rv-left" :class="{ 'is-open': mobileLeftOpen }">
         <div class="rv-left__mobile-head">
           <span>{{ $t('reading.outline') }}</span>
@@ -453,8 +453,22 @@
               </div>
 
               <div v-else class="rv-verdict">
-                <span class="rv-verdict__state">{{ $t('reading.answerRecorded') }}</span>
-                <span>{{ $t('reading.answerPendingEvaluation') }}</span>
+                <span class="rv-verdict__state">
+                  {{ questionCard?.judgment ? questionJudgmentLabel : $t('reading.answerRecorded') }}
+                </span>
+                <span v-if="questionCard?.judgment_reason" class="rv-verdict__reason">
+                  {{ questionCard.judgment_reason }}
+                </span>
+                <span v-else>{{ $t('reading.answerPendingEvaluation') }}</span>
+                <button
+                  v-if="!questionCard?.judgment"
+                  type="button"
+                  class="rv-text-btn"
+                  :disabled="answering"
+                  @click="retryQuestionJudgment"
+                >
+                  {{ $t('reading.retryJudgment') }}
+                </button>
                 <button type="button" class="rv-text-btn" @click="continueAfterAnswer">
                   {{ $t('reading.continueReading') }}
                 </button>
@@ -570,70 +584,89 @@
         </div>
       </main>
 
-      <aside class="rv-right" :class="{ 'is-open': mobileRightOpen }">
-        <div class="rv-right__mobile-head">
-          <span>{{ $t('reading.notes') }}</span>
-          <button type="button" @click="mobileRightOpen = false">×</button>
-        </div>
-        <div class="rv-notes__head">
-          <span>{{ $t('reading.notes') }}</span>
-          <span class="rv-notes__count">{{ noteTotalCount }} {{ $t('reading.noteCountUnit') }}</span>
-        </div>
-        <div class="rv-notes__tabs">
-          <button
-            v-for="tab in noteTabs"
-            :key="tab.key"
-            type="button"
-            class="rv-notes__tab"
-            :class="{ on: activeTab === tab.key }"
-            @click="activeTab = tab.key"
-          >
-            {{ tab.label }}<span v-if="tab.count" class="rv-notes__tab-count">{{ tab.count }}</span>
-          </button>
-        </div>
-        <div class="rv-notes__list">
-          <p v-if="!visibleNotes.length" class="rv-empty">{{ $t('reading.notesEmpty') }}</p>
-          <article v-for="note in visibleNotes" :key="note.key" class="rv-note" :class="{ rejected: note.status === 'rejected' }">
-            <div class="rv-note__head">
-              <span class="rv-note__type" :class="'is-' + note.type">{{ note.typeLabel }}</span>
-              <span class="rv-note__state" :class="{ done: note.status === 'confirmed' }">{{ note.statusLabel }}</span>
-              <span v-if="note.recommended" class="rv-note__recommended">{{ $t('reading.recommended') }}</span>
-            </div>
-            <template v-if="editingNoteKey === note.key">
-              <textarea v-model="editingNoteText" class="rv-textarea rv-textarea--answer" rows="3" />
-              <div class="rv-note__actions">
-                <button type="button" class="rv-note__action is-main" @click="saveNoteEdit(note)">{{ $t('reading.save') }}</button>
-                <button type="button" class="rv-note__action" @click="cancelNoteEdit">{{ $t('common.cancel') }}</button>
+      <aside
+        class="rv-right"
+        :class="{ 'is-open': mobileRightOpen }"
+        :style="pageNarrow ? undefined : { width: rightWidth + 'px' }"
+      >
+        <div
+          class="rv-right__resizer"
+          role="separator"
+          aria-orientation="vertical"
+          tabindex="0"
+          @pointerdown="startRightResize"
+          @keydown="onRightResizeKeydown"
+        />
+        <div class="rv-right__scroll">
+          <div class="rv-right__mobile-head">
+            <span>{{ $t('reading.notes') }}</span>
+            <button type="button" @click="mobileRightOpen = false">×</button>
+          </div>
+          <div class="rv-notes__head">
+            <span>{{ $t('reading.notes') }}</span>
+            <span class="rv-notes__count">{{ noteTotalCount }} {{ $t('reading.noteCountUnit') }}</span>
+          </div>
+          <div class="rv-notes__tabs">
+            <button
+              v-for="tab in noteTabs"
+              :key="tab.key"
+              type="button"
+              class="rv-notes__tab"
+              :class="[{ on: activeTab === tab.key }, 'is-' + tab.key]"
+              @click="activeTab = tab.key"
+            >
+              {{ tab.label }}<span v-if="tab.count" class="rv-notes__tab-count">{{ tab.count }}</span>
+            </button>
+          </div>
+          <div class="rv-notes__list">
+            <p v-if="!visibleNotes.length" class="rv-empty">{{ $t('reading.notesEmpty') }}</p>
+            <article
+              v-for="note in visibleNotes"
+              :key="note.key"
+              class="rv-note"
+              :class="[{ rejected: note.status === 'rejected', 'is-tinted': activeTab === 'all' }, 'is-' + note.type]"
+            >
+              <div class="rv-note__head">
+                <span class="rv-note__type" :class="'is-' + note.type">{{ note.typeLabel }}</span>
+                <span class="rv-note__state" :class="{ done: note.status === 'confirmed' }">{{ note.statusLabel }}</span>
+                <span v-if="note.recommended" class="rv-note__recommended">{{ $t('reading.recommended') }}</span>
               </div>
-            </template>
-            <template v-else>
-              <p class="rv-note__text">{{ note.text }}</p>
-              <p v-if="note.cite" class="rv-note__cite">{{ note.cite }}</p>
-              <div class="rv-note__actions">
-                <button
-                  v-if="note.actions && note.status === 'candidate'"
-                  type="button"
-                  class="rv-note__action is-main"
-                  @click="confirmNote(note)"
-                >✓ {{ $t('reading.confirmNote') }}</button>
-                <button v-if="note.actions" type="button" class="rv-note__action" @click="startNoteEdit(note)">
-                  {{ $t('reading.editNote') }}
-                </button>
-                <button
-                  v-if="note.actions && note.status === 'candidate'"
-                  type="button"
-                  class="rv-note__action is-danger"
-                  @click="rejectNote(note)"
-                >{{ $t('reading.rejectNote') }}</button>
-                <button
-                  v-if="note.actions && note.status === 'rejected'"
-                  type="button"
-                  class="rv-note__action"
-                  @click="restoreNote(note)"
-                >{{ $t('reading.restoreNote') }}</button>
-              </div>
-            </template>
-          </article>
+              <template v-if="editingNoteKey === note.key">
+                <textarea v-model="editingNoteText" class="rv-textarea rv-textarea--answer" rows="3" />
+                <div class="rv-note__actions">
+                  <button type="button" class="rv-note__action is-main" @click="saveNoteEdit(note)">{{ $t('reading.save') }}</button>
+                  <button type="button" class="rv-note__action" @click="cancelNoteEdit">{{ $t('common.cancel') }}</button>
+                </div>
+              </template>
+              <template v-else>
+                <p class="rv-note__text">{{ note.text }}</p>
+                <p v-if="note.cite" class="rv-note__cite">{{ note.cite }}</p>
+                <div class="rv-note__actions">
+                  <button
+                    v-if="note.actions && note.status === 'candidate'"
+                    type="button"
+                    class="rv-note__action is-main"
+                    @click="confirmNote(note)"
+                  >✓ {{ $t('reading.confirmNote') }}</button>
+                  <button v-if="note.actions" type="button" class="rv-note__action" @click="startNoteEdit(note)">
+                    {{ $t('reading.editNote') }}
+                  </button>
+                  <button
+                    v-if="note.actions && note.status === 'candidate'"
+                    type="button"
+                    class="rv-note__action is-danger"
+                    @click="rejectNote(note)"
+                  >{{ $t('reading.rejectNote') }}</button>
+                  <button
+                    v-if="note.actions && note.status === 'rejected'"
+                    type="button"
+                    class="rv-note__action"
+                    @click="restoreNote(note)"
+                  >{{ $t('reading.restoreNote') }}</button>
+                </div>
+              </template>
+            </article>
+          </div>
         </div>
       </aside>
     </div>
@@ -737,23 +770,34 @@ import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import { createSessions } from '@/api/chat'
 import { getChunkByIdOnly, listKnowledgeBases, listKnowledgeFiles, listKnowledgeFolders, type KnowledgeFolderNode } from '@/api/knowledge-base'
 import {
+  abandonReadingRun,
+  addReadingDocuments,
+  createReadingDraft,
   createReadingRun,
+  deleteReadingDraft,
   deleteReadingReport,
   exportReadingRun,
   feedbackReadingRun,
   getReadingReport,
   getReadingRun,
   getReadingRunDocuments,
+  judgeReadingQuestion,
+  jumpReadingSection,
+  listReadingDrafts,
   resolveReadingContradiction,
+  resumeReadingRun,
   saveReadingReport,
   stepReadingRun,
   stopReadingRun,
-  resumeReadingRun,
-  addReadingDocuments,
+  updateReadingConclusion,
+  updateReadingDraft,
+  updateReadingTerm,
+  updateReadingUnderstanding,
   type ReadingConclusion,
   type ReadingContradiction,
   type ReadingDepth,
   type ReadingDocument,
+  type ReadingDraft as ApiReadingDraft,
   type ReadingEvidence,
   type ReadingQuestionNode,
   type ReadingRun,
@@ -867,9 +911,11 @@ const activeDocumentId = ref('')
 const documentPaneRef = ref<HTMLElement | null>(null)
 const documentCurrentRef = ref<HTMLElement | null>(null)
 const selectedTraceRound = ref(0)
+const DEFAULT_RIGHT_WIDTH = 312
+const MIN_RIGHT_WIDTH = 260
 const leftWidth = ref(loadStoredLeftWidth())
+const rightWidth = ref(loadStoredRightWidth())
 const storageKey = 'gaze_active_reading_run_id'
-const draftsStorageKey = 'gaze_reading_drafts'
 const configView = ref(false)
 const mobileLeftOpen = ref(false)
 const mobileRightOpen = ref(false)
@@ -877,7 +923,7 @@ const previewSectionId = ref('')
 const originalDrawerOpen = ref(false)
 const originalSectionId = ref('')
 const drawerWidth = ref(loadStoredDrawerWidth())
-const drafts = ref<ReadingDraft[]>(loadStoredDrafts())
+const drafts = ref<ReadingDraft[]>([])
 const draftsExpanded = ref(true)
 const renamingDraftId = ref('')
 const renameDraftValue = ref('')
@@ -963,6 +1009,14 @@ const currentUnderstanding = computed(() => {
   }
   return ''
 })
+const currentUnderstandingRecord = computed(() => {
+  const items = run.value?.understandings || []
+  if (!items.length) return null
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    if (items[i].round === currentRound.value) return items[i]
+  }
+  return items[items.length - 1]
+})
 const structuredTabs = computed(() => [
   { key: 'terms' as const, label: t('reading.tabs.terms'), count: structuredTerms.value.length },
   { key: 'conclusions' as const, label: t('reading.tabs.conclusions'), count: structuredConclusions.value.length },
@@ -973,7 +1027,7 @@ const pauseEachRound = computed(() =>
   isStructured.value && (run.value?.plan.depth || 'standard') !== 'quick',
 )
 const canStartNewReading = computed(() =>
-  ['finished', 'stopped', 'failed'].includes(String(run.value?.status || '')),
+  ['finished', 'stopped', 'failed', 'abandoned'].includes(String(run.value?.status || '')),
 )
 
 const showConfigView = computed(() => !run.value || configView.value)
@@ -1282,7 +1336,11 @@ const visibleNotes = computed<NoteItem[]>(() => {
       type: 'term',
       typeLabel: t('reading.tabs.terms'),
       status: term.status,
-      statusLabel: term.status === 'confirmed' ? t('reading.confirmedTag') : t('reading.pendingConfirm'),
+      statusLabel: term.status === 'confirmed'
+        ? t('reading.confirmedTag')
+        : term.status === 'rejected'
+          ? t('reading.rejectedTag')
+          : t('reading.pendingConfirm'),
       text: `${term.term}：${term.definition}`,
       cite: term.source?.[0] ? evidenceLabel(term.source[0]) : '',
       recommended: Boolean(term.canonical),
@@ -1344,12 +1402,12 @@ const visibleNotes = computed<NoteItem[]>(() => {
 
 const answerOptions = computed<AnswerOption[]>(() => {
   const question = currentPendingQuestion.value as (ReadingQuestionNode & {
-    options?: Array<{ label?: string; text?: string; recommended?: boolean }>
+    options?: Array<{ id?: string; label?: string; text?: string; recommended?: boolean }>
   }) | null
   const raw = question?.options
   if (Array.isArray(raw) && raw.length) {
     return raw.map((option, index) => ({
-      id: String(index),
+      id: option.id || String(index),
       label: option.label || t('reading.optionLabel', { index: index + 1 }),
       text: option.text || '',
       recommended: Boolean(option.recommended),
@@ -1371,10 +1429,22 @@ const answerReady = computed(() =>
 const questionCard = computed(() =>
   inlineAnswerSubmitted.value ? answeredQuestionSnapshot.value : currentPendingQuestion.value,
 )
+const questionJudgmentLabel = computed(() => {
+  const judgment = questionCard.value?.judgment
+  return judgment ? t(`reading.judgment.${judgment}`) : ''
+})
 
 const activeDocument = computed(() => {
   const documents = readingDocuments.value
   return documents.find((doc) => doc.id === activeDocumentId.value) || documents[0] || null
+})
+const activeDocumentKnowledgeBaseID = computed(() => {
+  const documentID = activeDocument.value?.id
+  if (!documentID) return run.value?.plan.knowledge_base_id || ''
+  return (run.value?.plan.sections || [])
+    .find((section) => section.knowledge_id === documentID)?.knowledge_base_id
+    || run.value?.plan.knowledge_base_id
+    || ''
 })
 const originalFileBlob = computed(() =>
   activeDocument.value
@@ -1580,10 +1650,67 @@ function onResizeKeydown(event: KeyboardEvent) {
 
 function onWindowResize() {
   const next = clampLeftWidth(leftWidth.value)
-  if (next === leftWidth.value) return
-  leftWidth.value = next
-  readingBodyRef.value?.style.setProperty('--reading-left-width', `${next}px`)
-  localStorage.setItem('gaze_reading_left_width', String(next))
+  if (next !== leftWidth.value) {
+    leftWidth.value = next
+    readingBodyRef.value?.style.setProperty('--reading-left-width', `${next}px`)
+    localStorage.setItem('gaze_reading_left_width', String(next))
+  }
+  const nextRight = clampRightWidth(rightWidth.value)
+  if (nextRight !== rightWidth.value) {
+    rightWidth.value = nextRight
+    localStorage.setItem('gaze_reading_right_width', String(nextRight))
+  }
+}
+
+function clampRightWidth(value: number) {
+  const bodyWidth = readingBodyRef.value?.clientWidth || window.innerWidth
+  const max = Math.max(MIN_RIGHT_WIDTH, Math.floor(bodyWidth / 2))
+  return Math.min(Math.max(MIN_RIGHT_WIDTH, Math.round(value)), max)
+}
+
+function loadStoredRightWidth() {
+  const raw = Number(localStorage.getItem('gaze_reading_right_width') || '')
+  if (Number.isFinite(raw) && raw > 0) return clampRightWidth(raw)
+  return DEFAULT_RIGHT_WIDTH
+}
+
+let rightResizing = false
+let rightResizeStartX = 0
+let rightResizeStartWidth = 0
+
+function startRightResize(event: PointerEvent) {
+  if (pageNarrow.value) return
+  rightResizing = true
+  rightResizeStartX = event.clientX
+  rightResizeStartWidth = rightWidth.value
+  document.body.style.userSelect = 'none'
+  document.body.style.cursor = 'col-resize'
+  document.addEventListener('pointermove', onRightResize)
+  document.addEventListener('pointerup', endRightResize, { once: true })
+  event.preventDefault()
+}
+
+function onRightResize(event: PointerEvent) {
+  if (!rightResizing) return
+  rightWidth.value = clampRightWidth(rightResizeStartWidth + rightResizeStartX - event.clientX)
+}
+
+function endRightResize() {
+  if (!rightResizing) return
+  rightResizing = false
+  rightWidth.value = clampRightWidth(rightWidth.value)
+  localStorage.setItem('gaze_reading_right_width', String(rightWidth.value))
+  document.body.style.userSelect = ''
+  document.body.style.cursor = ''
+  document.removeEventListener('pointermove', onRightResize)
+}
+
+function onRightResizeKeydown(event: KeyboardEvent) {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+  event.preventDefault()
+  const delta = event.key === 'ArrowLeft' ? 24 : -24
+  rightWidth.value = clampRightWidth(rightWidth.value + delta)
+  localStorage.setItem('gaze_reading_right_width', String(rightWidth.value))
 }
 
 type HeadingSegment = { level: number; text: string }
@@ -1644,9 +1771,156 @@ function citationSources(conclusion: ReadingConclusion) {
 function openEvidence(evidence: ReadingEvidence) {
   if (!evidence.knowledge_id) return
   void ensureReadingDocuments()
+  pendingEvidenceLocation = evidence
   originalSectionId.value = evidence.section_id || ''
   activeDocumentId.value = evidence.knowledge_id
   originalDrawerOpen.value = true
+  void nextTick(scheduleEvidenceLocation)
+}
+
+let pendingEvidenceLocation: ReadingEvidence | null = null
+let evidenceLocateTimer: number | null = null
+let evidenceLocateAttempts = 0
+
+function clearEvidenceMarks() {
+  const root = documentPaneRef.value
+  if (!root) return
+  root.querySelectorAll('.rv-doc-locate-mark').forEach((mark) => {
+    mark.replaceWith(...Array.from(mark.childNodes))
+  })
+  root.querySelectorAll('.rv-doc-locate-block').forEach((el) => {
+    el.classList.remove('rv-doc-locate-block')
+  })
+}
+
+function stopEvidenceLocation() {
+  if (evidenceLocateTimer) {
+    window.clearTimeout(evidenceLocateTimer)
+    evidenceLocateTimer = null
+  }
+  evidenceLocateAttempts = 0
+  pendingEvidenceLocation = null
+  clearEvidenceMarks()
+}
+
+function scheduleEvidenceLocation() {
+  if (evidenceLocateTimer) {
+    window.clearTimeout(evidenceLocateTimer)
+    evidenceLocateTimer = null
+  }
+  clearEvidenceMarks()
+  evidenceLocateAttempts = 0
+  const attempt = () => {
+    if (!originalDrawerOpen.value || !pendingEvidenceLocation) return
+    const root = documentPaneRef.value?.querySelector('.preview-markdown .markdown-body') as HTMLElement | null
+    if (root && locateEvidenceInPreview(root, pendingEvidenceLocation)) return
+    evidenceLocateAttempts += 1
+    if (evidenceLocateAttempts >= 50) return
+    evidenceLocateTimer = window.setTimeout(attempt, 80)
+  }
+  attempt()
+}
+
+function normalizeDocumentText(value: string) {
+  let text = ''
+  const map: number[] = []
+  let previousSpace = false
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i]
+    if (/\s/.test(char)) {
+      if (!previousSpace && text) {
+        text += ' '
+        map.push(i)
+      }
+      previousSpace = true
+      continue
+    }
+    text += char
+    map.push(i)
+    previousSpace = false
+  }
+  return { text, map }
+}
+
+function locateEvidenceInPreview(root: HTMLElement, evidence: ReadingEvidence) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const nodes: Array<{ node: Text; start: number; end: number }> = []
+  let raw = ''
+  let current = walker.nextNode() as Text | null
+  while (current) {
+    const value = current.nodeValue || ''
+    nodes.push({ node: current, start: raw.length, end: raw.length + value.length })
+    raw += value
+    current = walker.nextNode() as Text | null
+  }
+  if (!nodes.length) return false
+  const normalized = normalizeDocumentText(raw)
+  const target = normalizeDocumentText(evidence.quote || '').text
+  const headingText = normalizeDocumentText(cleanHeading(evidence.heading)).text
+  let searchFrom = 0
+  let headingElement: HTMLElement | null = null
+  if (headingText) {
+    headingElement = Array.from(root.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6'))
+      .find((heading) => normalizeDocumentText(heading.textContent || '').text.includes(headingText)) || null
+    if (headingElement) {
+      const firstText = nodes.find((entry) => headingElement?.contains(entry.node))
+      if (firstText) searchFrom = firstText.start
+    }
+  }
+  const nodeAt = (offset: number) =>
+    nodes.find((entry) => offset >= entry.start && offset < entry.end) || nodes[nodes.length - 1]
+  if (target) {
+    let index = normalized.text.indexOf(target)
+    while (index >= 0 && normalized.map[index] < searchFrom) {
+      index = normalized.text.indexOf(target, index + 1)
+    }
+    if (index < 0) index = normalized.text.indexOf(target)
+    if (index >= 0) {
+      const rawStart = normalized.map[index]
+      const rawEnd = normalized.map[index + target.length - 1] + 1
+      const from = nodeAt(rawStart)
+      const to = nodeAt(rawEnd - 1)
+      try {
+        const range = document.createRange()
+        range.setStart(from.node, rawStart - from.start)
+        range.setEnd(to.node, rawEnd - to.start)
+        const block = (from.node.parentElement?.closest('p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th, pre') as HTMLElement | null)
+          || from.node.parentElement
+        const mark = document.createElement('mark')
+        mark.className = 'rv-doc-locate-mark'
+        try {
+          range.surroundContents(mark)
+          scrollPreviewToElement(mark)
+        } catch {
+          block?.classList.add('rv-doc-locate-block')
+          scrollPreviewToElement(block || root)
+        }
+        return true
+      } catch {
+        // Fall through to the heading anchor.
+      }
+    }
+  }
+  if (headingElement) {
+    headingElement.classList.add('rv-doc-locate-block')
+    scrollPreviewToElement(headingElement)
+    return true
+  }
+  return false
+}
+
+function scrollPreviewToElement(element: HTMLElement) {
+  const scroller = element.closest('.preview-markdown') as HTMLElement | null
+  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  if (!scroller) {
+    element.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' })
+    return
+  }
+  const scrollerRect = scroller.getBoundingClientRect()
+  const elementRect = element.getBoundingClientRect()
+  const top = scroller.scrollTop + elementRect.top - scrollerRect.top
+    - scroller.clientHeight / 2 + elementRect.height / 2
+  scroller.scrollTo({ top: Math.max(0, top), behavior: reduced ? 'auto' : 'smooth' })
 }
 
 function conclusionStatusLabel(conclusion: ReadingConclusion) {
@@ -1655,6 +1929,7 @@ function conclusionStatusLabel(conclusion: ReadingConclusion) {
     return conclusion.source === 'user' ? t('reading.userDecision') : t('reading.confirmedTag')
   }
   if (conclusion.status === 'contradicted') return t('reading.contradicted')
+  if (conclusion.status === 'rejected') return t('reading.rejectedTag')
   return t('reading.pendingConfirm')
 }
 
@@ -2042,8 +2317,11 @@ const loadReadingDocuments = async () => {
   try {
     const response = await getReadingRunDocuments(current.id)
     readingDocuments.value = response.data.documents || []
+    const evidenceDocID = pendingEvidenceLocation?.knowledge_id
     const currentDocID = currentSection.value?.knowledge_id
-    if (currentDocID && readingDocuments.value.some((doc) => doc.id === currentDocID)) {
+    if (evidenceDocID && readingDocuments.value.some((doc) => doc.id === evidenceDocID)) {
+      activeDocumentId.value = evidenceDocID
+    } else if (currentDocID && readingDocuments.value.some((doc) => doc.id === currentDocID)) {
       activeDocumentId.value = currentDocID
     } else if (!readingDocuments.value.some((doc) => doc.id === activeDocumentId.value)) {
       activeDocumentId.value = readingDocuments.value[0]?.id || ''
@@ -2318,18 +2596,24 @@ watch(
   },
 )
 
-function loadStoredDrafts(): ReadingDraft[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(draftsStorageKey) || '[]')
-    if (!Array.isArray(raw)) return []
-    return raw.filter((item) => item && item.id && Array.isArray(item.documentIds)).slice(0, 20)
-  } catch {
-    return []
+function mapReadingDraft(draft: ApiReadingDraft): ReadingDraft {
+  return {
+    id: draft.id,
+    name: draft.name,
+    documentIds: Array.isArray(draft.document_ids) ? draft.document_ids : [],
+    depth: draft.depth || 'standard',
+    goal: draft.goal || '',
+    updatedAt: draft.updated_at || new Date().toISOString(),
   }
 }
 
-function persistDrafts() {
-  localStorage.setItem(draftsStorageKey, JSON.stringify(drafts.value.slice(0, 20)))
+async function loadDrafts() {
+  try {
+    const response = await listReadingDrafts()
+    drafts.value = (response.data || []).map(mapReadingDraft).slice(0, 20)
+  } catch {
+    drafts.value = []
+  }
 }
 
 function depthLabelOf(value: ReadingDepth) {
@@ -2389,11 +2673,12 @@ watch(
 )
 
 watch(
-  () => `${currentRound.value}:${currentUnderstanding.value}`,
+  () => `${currentRound.value}:${currentUnderstanding.value}:${currentUnderstandingRecord.value?.decision || ''}`,
   () => {
-    stageDecision.value = ''
+    const record = currentUnderstandingRecord.value
+    stageDecision.value = record && record.decision !== 'pending' ? record.decision : ''
     stageCorrecting.value = false
-    stageCorrection.value = ''
+    stageCorrection.value = record?.correction || ''
   },
 )
 
@@ -2432,24 +2717,25 @@ function selectGoalChip(chip: { key: string; value: string }) {
   goal.value = goal.value === chip.value ? '' : chip.value
 }
 
-function saveDraft() {
+async function saveDraft() {
   if (!documentIds.value.length) return
   const first = documentOptions.value.find((doc) => doc.value === documentIds.value[0])
   const name = t('reading.draftAutoName', {
     name: first?.label || t('reading.title'),
     date: formatDraftDate(new Date().toISOString()),
   })
-  const draft: ReadingDraft = {
-    id: crypto.randomUUID(),
-    name,
-    documentIds: [...documentIds.value],
-    depth: depth.value,
-    goal: goal.value,
-    updatedAt: new Date().toISOString(),
+  try {
+    const response = await createReadingDraft({
+      name,
+      document_ids: [...documentIds.value],
+      depth: depth.value,
+      goal: goal.value,
+    })
+    drafts.value = [mapReadingDraft(response.data), ...drafts.value].slice(0, 20)
+    MessagePlugin.success(t('reading.draftSaved'))
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('reading.draftSaveFailed'))
   }
-  drafts.value = [draft, ...drafts.value].slice(0, 20)
-  persistDrafts()
-  MessagePlugin.success(t('reading.draftSaved'))
 }
 
 function loadDraft(draft: ReadingDraft) {
@@ -2470,15 +2756,22 @@ function cancelRenameDraft() {
   renameDraftValue.value = ''
 }
 
-function confirmRenameDraft(id: string) {
+async function confirmRenameDraft(id: string) {
   const name = renameDraftValue.value.trim()
   if (!name) return
-  const draft = drafts.value.find((item) => item.id === id)
-  if (draft) {
-    draft.name = name
-    draft.updatedAt = new Date().toISOString()
-    persistDrafts()
+  const existing = drafts.value.find((item) => item.id === id)
+  try {
+    const response = await updateReadingDraft(id, {
+      name,
+      document_ids: existing?.documentIds,
+      depth: existing?.depth,
+      goal: existing?.goal,
+    })
+    const index = drafts.value.findIndex((item) => item.id === id)
+    if (index >= 0) drafts.value[index] = mapReadingDraft(response.data)
     MessagePlugin.success(t('reading.draftRenamed'))
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('reading.draftRenameFailed'))
   }
   cancelRenameDraft()
 }
@@ -2490,11 +2783,15 @@ function deleteDraft(id: string) {
     theme: 'warning',
     confirmBtn: t('common.confirm'),
     cancelBtn: t('common.cancel'),
-    onConfirm: () => {
+    onConfirm: async () => {
       dialog.hide()
-      drafts.value = drafts.value.filter((item) => item.id !== id)
-      persistDrafts()
-      MessagePlugin.success(t('reading.draftDeleted'))
+      try {
+        await deleteReadingDraft(id)
+        drafts.value = drafts.value.filter((item) => item.id !== id)
+        MessagePlugin.success(t('reading.draftDeleted'))
+      } catch (err: any) {
+        MessagePlugin.error(err?.message || t('reading.draftDeleteFailed'))
+      }
     },
     onClose: () => dialog.hide(),
   })
@@ -2509,8 +2806,16 @@ function clearPreview() {
   previewSectionId.value = ''
 }
 
-function continueFromPreview() {
-  MessagePlugin.info(t('reading.jumpPending'))
+async function continueFromPreview() {
+  if (!run.value || !previewSectionId.value) return
+  try {
+    const response = await jumpReadingSection(run.value.id, previewSectionId.value)
+    await persistRun(response.data)
+    previewSectionId.value = ''
+    MessagePlugin.success(t('reading.jumpApplied'))
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('reading.jumpFailed'))
+  }
 }
 
 function ensureReadingDocuments() {
@@ -2592,7 +2897,7 @@ function hydrateDrawerImages() {
   drawerHydrateTimer = window.setTimeout(async () => {
     const root = documentPaneRef.value
     if (!root) return
-    const kbId = run.value?.plan.knowledge_base_id
+    const kbId = activeDocumentKnowledgeBaseID.value
     await hydrateProtectedFileImages(
       root,
       kbId ? { mode: 'knowledgeBase', kbId } : undefined,
@@ -2622,6 +2927,7 @@ watch(originalDrawerOpen, (open) => {
     startDrawerImageWatch()
     return
   }
+  stopEvidenceLocation()
   drawerImageObserver?.disconnect()
   drawerImageObserver = null
   if (drawerHydrateTimer) {
@@ -2630,11 +2936,15 @@ watch(originalDrawerOpen, (open) => {
   }
 })
 
-watch(activeDocumentId, () => {
+watch(activeDocumentId, (documentId) => {
+  if (pendingEvidenceLocation && pendingEvidenceLocation.knowledge_id !== documentId) {
+    stopEvidenceLocation()
+  }
   if (originalDrawerOpen.value) startDrawerImageWatch()
 })
 
 function openOriginal() {
+  stopEvidenceLocation()
   originalSectionId.value = viewingSection.value?.id || currentSection.value?.id || ''
   drawerWidth.value = clampDrawerWidth(drawerWidth.value)
   ensureReadingDocuments()
@@ -2685,12 +2995,36 @@ async function submitInlineAnswer() {
     const response = await feedbackReadingRun(run.value.id, {
       feedback: text,
       question_id: question.id,
+      option_id: customAnswerMode.value ? '' : selectedAnswerId.value,
     })
     await persistRun(response.data)
+    answeredQuestionSnapshot.value = (response.data.questions || [])
+      .find((item) => item.id === question.id) || {
+      ...question,
+      answer: text,
+      status: 'answered',
+    }
     inlineAnswerSubmitted.value = true
   } catch (err: any) {
     answeredQuestionSnapshot.value = null
     MessagePlugin.error(err?.message || t('reading.feedbackFailed'))
+  } finally {
+    answering.value = false
+  }
+}
+
+async function retryQuestionJudgment() {
+  const question = answeredQuestionSnapshot.value
+  if (!run.value || !question || answering.value) return
+  answering.value = true
+  try {
+    const response = await judgeReadingQuestion(run.value.id, question.id)
+    await persistRun(response.data)
+    answeredQuestionSnapshot.value = (response.data.questions || [])
+      .find((item) => item.id === question.id) || question
+    MessagePlugin.success(t('reading.judgmentCompleted'))
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('reading.judgmentFailed'))
   } finally {
     answering.value = false
   }
@@ -2720,21 +3054,20 @@ function continueAfterAnswer() {
   void advanceUntilPause()
 }
 
-function decideStage(decision: 'confirmed' | 'corrected' | 'skipped') {
+async function decideStage(decision: 'confirmed' | 'corrected' | 'skipped') {
+  if (!run.value) return
   if (decision === 'corrected') {
     stageCorrecting.value = true
     stageDecision.value = ''
     return
   }
-  stageDecision.value = decision
-  stageCorrecting.value = false
-  if (decision === 'confirmed' && run.value) {
-    for (const item of run.value.conclusions || []) {
-      if (item.round === currentRound.value && item.status === 'candidate') item.status = 'confirmed'
-    }
-    for (const item of run.value.terms || []) {
-      if (item.status === 'candidate') item.status = 'confirmed'
-    }
+  try {
+    const response = await updateReadingUnderstanding(run.value.id, { decision })
+    await persistRun(response.data)
+    stageDecision.value = decision
+    stageCorrecting.value = false
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('reading.stageUpdateFailed'))
   }
 }
 
@@ -2744,11 +3077,20 @@ function resetStageDecision() {
   stageCorrection.value = ''
 }
 
-function submitStageCorrection() {
-  if (!stageCorrection.value.trim()) return
-  stageCorrecting.value = false
-  stageDecision.value = 'corrected'
-  MessagePlugin.success(t('reading.correctionRecorded'))
+async function submitStageCorrection() {
+  if (!run.value || !stageCorrection.value.trim()) return
+  try {
+    const response = await updateReadingUnderstanding(run.value.id, {
+      decision: 'corrected',
+      correction: stageCorrection.value.trim(),
+    })
+    await persistRun(response.data)
+    stageCorrecting.value = false
+    stageDecision.value = 'corrected'
+    MessagePlugin.success(t('reading.correctionRecorded'))
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('reading.stageUpdateFailed'))
+  }
 }
 
 function cancelStageCorrection() {
@@ -2761,21 +3103,38 @@ function markContradictionUncertain(item: ReadingContradiction) {
   MessagePlugin.info(t('reading.markedUncertain'))
 }
 
-function confirmNote(note: NoteItem) {
-  note.raw.status = 'confirmed'
+async function updateNoteStatus(note: NoteItem, status: 'candidate' | 'confirmed' | 'rejected') {
+  if (!run.value) return
+  try {
+    if (note.type === 'term') {
+      const response = await updateReadingTerm(run.value.id, String(note.raw.id), { status })
+      Object.assign(note.raw, response.data)
+    } else if (note.type === 'conclusion') {
+      const response = await updateReadingConclusion(run.value.id, String(note.raw.id), { status })
+      Object.assign(note.raw, response.data)
+    }
+    return true
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('reading.noteUpdateFailed'))
+    return false
+  }
+}
+
+async function confirmNote(note: NoteItem) {
+  if (!(await updateNoteStatus(note, 'confirmed'))) return
   if (note.raw.gates && typeof note.raw.gates === 'object') {
     note.raw.gates.user_adjudicated = true
   }
   MessagePlugin.success(t('reading.noteConfirmed'))
 }
 
-function rejectNote(note: NoteItem) {
-  note.raw.status = 'rejected'
+async function rejectNote(note: NoteItem) {
+  if (!(await updateNoteStatus(note, 'rejected'))) return
   MessagePlugin.success(t('reading.noteRejected'))
 }
 
-function restoreNote(note: NoteItem) {
-  note.raw.status = 'candidate'
+async function restoreNote(note: NoteItem) {
+  if (!(await updateNoteStatus(note, 'candidate'))) return
   MessagePlugin.success(t('reading.noteRestored'))
 }
 
@@ -2791,13 +3150,22 @@ function cancelNoteEdit() {
   editingNoteText.value = ''
 }
 
-function saveNoteEdit(note: NoteItem) {
+async function saveNoteEdit(note: NoteItem) {
   const text = editingNoteText.value.trim()
-  if (!text) return
-  if (note.type === 'term') note.raw.definition = text
-  else note.raw.text = text
-  cancelNoteEdit()
-  MessagePlugin.success(t('reading.noteSaved'))
+  if (!text || !run.value) return
+  try {
+    if (note.type === 'term') {
+      const response = await updateReadingTerm(run.value.id, String(note.raw.id), { text })
+      Object.assign(note.raw, response.data)
+    } else if (note.type === 'conclusion') {
+      const response = await updateReadingConclusion(run.value.id, String(note.raw.id), { text })
+      Object.assign(note.raw, response.data)
+    }
+    cancelNoteEdit()
+    MessagePlugin.success(t('reading.noteSaved'))
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('reading.noteUpdateFailed'))
+  }
 }
 
 function handleExportMenu(item: { value?: string }) {
@@ -2829,9 +3197,8 @@ function abandonRun() {
       dialog.hide()
       void (async () => {
         try {
-          const response = await stopReadingRun(current.id)
-          run.value = { ...response.data, status: 'abandoned' } as ReadingRun
-          localStorage.removeItem(storageKey)
+          const response = await abandonReadingRun(current.id)
+          await persistRun(response.data)
           MessagePlugin.success(t('reading.abandonedToast'))
         } catch (err: any) {
           MessagePlugin.error(err?.message || t('reading.stopFailed'))
@@ -2849,13 +3216,17 @@ onMounted(async () => {
     readingPageObserver = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width || 0
       pageNarrow.value = width > 0 && width < 1100
-      if (width > 0) drawerWidth.value = clampDrawerWidth(drawerWidth.value)
+      if (width > 0) {
+        drawerWidth.value = clampDrawerWidth(drawerWidth.value)
+        rightWidth.value = clampRightWidth(rightWidth.value)
+      }
     })
     readingPageObserver.observe(readingPageRef.value)
   }
   configView.value = queryValue(route.query.view) === 'config'
   await loadKnowledgeBases()
   await loadDocuments()
+  void loadDrafts()
   const runId = queryValue(route.query.run_id)
   if (runId) {
     try {
@@ -3778,6 +4149,8 @@ onBeforeUnmount(() => {
 }
 
 .rv-conclusion-source {
+  align-self: flex-start;
+  max-width: 100%;
   overflow: hidden;
   font-size: 11.5px;
   color: var(--rv-text-3);
@@ -3993,6 +4366,12 @@ onBeforeUnmount(() => {
   color: var(--rv-green-deep);
 }
 
+.rv-verdict__reason {
+  flex: 1 1 100%;
+  color: var(--rv-text-2);
+  line-height: 1.6;
+}
+
 /* stage confirmation */
 .rv-stage {
   padding: 20px 22px;
@@ -4100,12 +4479,50 @@ onBeforeUnmount(() => {
 
 /* notes */
 .rv-right {
+  position: relative;
   flex: none;
   width: 312px;
-  padding: 20px 16px 60px;
-  overflow-y: auto;
+  overflow: hidden;
   background: var(--rv-side);
   border-left: 1px solid var(--rv-hair);
+}
+
+.rv-right__scroll {
+  height: 100%;
+  padding: 20px 16px 60px;
+  overflow-y: auto;
+}
+
+.rv-right__resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 6;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.rv-right__resizer::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  content: '';
+  background: var(--rv-hair);
+  transition: width 0.13s ease, background 0.13s ease;
+}
+
+.rv-right__resizer:hover::after,
+.rv-right__resizer:focus-visible::after {
+  width: 2px;
+  background: var(--rv-green);
+}
+
+.rv-right__resizer:focus-visible {
+  outline: none;
 }
 
 .rv-notes__head {
@@ -4143,9 +4560,41 @@ onBeforeUnmount(() => {
 
 .rv-notes__tab.on {
   font-weight: 500;
-  color: var(--rv-text);
-  background: var(--rv-side);
-  box-shadow: inset 0 0 0 1px var(--rv-hair);
+}
+
+.rv-notes__tab.on.is-all {
+  color: var(--rv-green-deep);
+  background: var(--rv-green-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rv-green) 28%, transparent);
+}
+
+.rv-notes__tab.on.is-terms {
+  color: var(--rv-mauve-d);
+  background: var(--rv-mauve);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rv-mauve-d) 22%, transparent);
+}
+
+.rv-notes__tab.on.is-conclusions {
+  color: var(--rv-sage-d);
+  background: var(--rv-sage);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rv-sage-d) 22%, transparent);
+}
+
+.rv-notes__tab.on.is-open {
+  color: var(--rv-oat-d);
+  background: var(--rv-oat);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rv-oat-d) 22%, transparent);
+}
+
+.rv-notes__tab.on.is-contradictions {
+  color: var(--rv-clay-d);
+  background: var(--rv-clay-deep);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rv-clay-d) 22%, transparent);
+}
+
+.rv-notes__tab.on .rv-notes__tab-count {
+  color: inherit;
+  opacity: 0.72;
 }
 
 .rv-notes__tab-count {
@@ -4175,6 +4624,38 @@ onBeforeUnmount(() => {
 
 .rv-note.rejected {
   opacity: 0.45;
+}
+
+.rv-note.is-term {
+  --rv-note-bg: var(--rv-mauve);
+  --rv-note-accent: var(--rv-mauve-d);
+}
+
+.rv-note.is-conclusion {
+  --rv-note-bg: var(--rv-sage);
+  --rv-note-accent: var(--rv-sage-d);
+}
+
+.rv-note.is-open {
+  --rv-note-bg: var(--rv-oat);
+  --rv-note-accent: var(--rv-oat-d);
+}
+
+.rv-note.is-contradiction {
+  --rv-note-bg: var(--rv-clay-deep);
+  --rv-note-accent: var(--rv-clay-d);
+}
+
+.rv-note.is-tinted {
+  background: var(--rv-note-bg);
+  box-shadow: inset 2px 0 0 var(--rv-note-accent);
+}
+
+.rv-note.is-tinted:hover {
+  background: var(--rv-note-bg);
+  box-shadow:
+    inset 2px 0 0 var(--rv-note-accent),
+    inset 0 0 0 1px var(--rv-note-accent);
 }
 
 .rv-note__head {
@@ -4337,10 +4818,30 @@ onBeforeUnmount(() => {
 }
 
 .rv-drawer__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
   margin-left: 0;
-  padding: 2px 8px;
   font-size: 18px;
-  color: var(--rv-text-3);
+  line-height: 1;
+  color: var(--rv-text);
+}
+
+.rv-drawer__toolbar :deep(.t-button) {
+  width: 30px;
+  height: 30px;
+  color: var(--rv-text);
+}
+
+.rv-drawer__toolbar :deep(.t-button .t-icon) {
+  color: var(--rv-text);
+}
+
+.rv-drawer__toolbar :deep(.t-button:hover) {
+  color: var(--rv-text);
 }
 
 .rv-drawer__body {
@@ -4360,6 +4861,19 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   height: 100%;
+}
+
+.rv-drawer__body--preview :deep(.rv-doc-locate-mark) {
+  padding: 1px 0;
+  color: inherit;
+  background: color-mix(in srgb, var(--rv-green) 22%, transparent);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--rv-green) 26%, transparent);
+}
+
+.rv-drawer__body--preview :deep(.rv-doc-locate-block) {
+  background: var(--rv-green-bg);
+  box-shadow: inset 2px 0 0 var(--rv-green);
 }
 
 .rv-drawer__body--preview :deep(img.is-broken) {
@@ -4529,6 +5043,7 @@ onBeforeUnmount(() => {
 /* hide scrollbars, keep scrolling */
 .rv-left,
 .rv-right,
+.rv-right__scroll,
 .rv-main,
 .rv-config,
 .rv-drawer__body,
@@ -4540,6 +5055,7 @@ onBeforeUnmount(() => {
 
 .rv-left::-webkit-scrollbar,
 .rv-right::-webkit-scrollbar,
+.rv-right__scroll::-webkit-scrollbar,
 .rv-main::-webkit-scrollbar,
 .rv-config::-webkit-scrollbar,
 .rv-drawer__body::-webkit-scrollbar,
@@ -4619,6 +5135,10 @@ onBeforeUnmount(() => {
   display: block;
 }
 
+.reading-page.is-narrow .rv-right__resizer {
+  display: none;
+}
+
 .reading-page.is-narrow .rv-right__mobile-head {
   display: flex;
   align-items: center;
@@ -4656,6 +5176,10 @@ onBeforeUnmount(() => {
 
   .rv-right.is-open {
     display: block;
+  }
+
+  .rv-right__resizer {
+    display: none;
   }
 
   .rv-right__mobile-head,

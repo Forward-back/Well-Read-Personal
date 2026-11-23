@@ -9,6 +9,7 @@ export interface ReadingChunkSegment {
 export interface ReadingSection {
   id: string
   knowledge_id: string
+  knowledge_base_id?: string
   title: string
   heading?: string
   index: number
@@ -16,6 +17,13 @@ export interface ReadingSection {
   chunk_ids?: string[]
   segments?: ReadingChunkSegment[]
   read: boolean
+}
+
+export interface ReadingQuestionOption {
+  id: string
+  label: string
+  text: string
+  recommended?: boolean
 }
 
 export interface ReadingQuestion {
@@ -45,9 +53,13 @@ export interface ReadingQuestionNode {
   search_query?: string
   kind?: 'fact' | 'decision' | ''
   gap_type?: string
+  options?: ReadingQuestionOption[]
   evidence?: ReadingEvidence[]
   answer?: string
   answer_source?: string
+  judgment?: 'correct' | 'partial' | 'wrong' | ''
+  judgment_reason?: string
+  judged_at?: string
   status: 'pending' | 'auto_answered' | 'answered' | 'contradicted' | 'resolved' | 'skipped'
 }
 
@@ -64,7 +76,7 @@ export interface ReadingConclusion {
   round: number
   text: string
   evidence?: ReadingEvidence[]
-  status: 'candidate' | 'confirmed' | 'contradicted'
+  status: 'candidate' | 'confirmed' | 'contradicted' | 'rejected'
   source: 'model' | 'auto' | 'user' | 'legacy'
   gates?: ReadingConclusionGates
 }
@@ -75,7 +87,7 @@ export interface ReadingTerm {
   definition: string
   source?: ReadingEvidence[]
   canonical: boolean
-  status: 'candidate' | 'confirmed'
+  status: 'candidate' | 'confirmed' | 'rejected'
 }
 
 export interface ReadingContradiction {
@@ -85,6 +97,26 @@ export interface ReadingContradiction {
   evidence_b?: ReadingEvidence[]
   status: 'open' | 'resolved' | 'closed'
   resolution?: string
+}
+
+export interface ReadingUnderstanding {
+  id: string
+  run_id: string
+  section_id: string
+  round: number
+  text: string
+  decision: 'pending' | 'confirmed' | 'corrected' | 'skipped'
+  correction?: string
+}
+
+export interface ReadingDraft {
+  id: string
+  name: string
+  document_ids: string[]
+  depth: ReadingDepth
+  goal: string
+  created_at?: string
+  updated_at: string
 }
 
 export interface ReadingReport {
@@ -148,6 +180,7 @@ export interface ReadingPlan {
   depth?: ReadingDepth
   policy?: string
   knowledge_base_id?: string
+  knowledge_base_ids?: string[]
   state_version?: number
   sections?: ReadingSection[]
 }
@@ -168,6 +201,7 @@ export interface ReadingRun {
   conclusions?: ReadingConclusion[]
   terms?: ReadingTerm[]
   contradictions?: ReadingContradiction[]
+  understandings?: ReadingUnderstanding[]
 }
 
 export function createReadingRun(payload: {
@@ -192,15 +226,92 @@ export function stepReadingRun(id: string) {
 
 export function feedbackReadingRun(
   id: string,
-  payload: { feedback?: string; question_id?: string; skip?: boolean },
+  payload: { feedback?: string; question_id?: string; option_id?: string; skip?: boolean },
 ) {
   return post<{ data: ReadingRun }>(`/api/v1/reading/runs/${encodeURIComponent(id)}/feedback`, payload, {
-    timeout: 60_000,
+    timeout: 120_000,
   })
+}
+
+export function judgeReadingQuestion(id: string, questionId: string) {
+  return post<{ data: ReadingRun }>(
+    `/api/v1/reading/runs/${encodeURIComponent(id)}/questions/${encodeURIComponent(questionId)}/judge`,
+    {},
+    { timeout: 60_000 },
+  )
 }
 
 export function stopReadingRun(id: string) {
   return post<{ data: ReadingRun }>(`/api/v1/reading/runs/${encodeURIComponent(id)}/stop`, {})
+}
+
+export function abandonReadingRun(id: string) {
+  return post<{ data: ReadingRun }>(`/api/v1/reading/runs/${encodeURIComponent(id)}/abandon`, {})
+}
+
+export function jumpReadingSection(id: string, sectionId: string) {
+  return post<{ data: ReadingRun }>(`/api/v1/reading/runs/${encodeURIComponent(id)}/jump`, {
+    section_id: sectionId,
+  })
+}
+
+export function updateReadingUnderstanding(
+  id: string,
+  payload: { decision: 'confirmed' | 'corrected' | 'skipped'; correction?: string },
+) {
+  return put<{ data: ReadingRun }>(
+    `/api/v1/reading/runs/${encodeURIComponent(id)}/understanding`,
+    payload,
+  )
+}
+
+export function updateReadingTerm(
+  id: string,
+  termId: string,
+  payload: { status?: 'candidate' | 'confirmed' | 'rejected'; text?: string },
+) {
+  return put<{ data: ReadingTerm }>(
+    `/api/v1/reading/runs/${encodeURIComponent(id)}/terms/${encodeURIComponent(termId)}`,
+    payload,
+  )
+}
+
+export function updateReadingConclusion(
+  id: string,
+  conclusionId: string,
+  payload: { status?: 'candidate' | 'confirmed' | 'rejected'; text?: string },
+) {
+  return put<{ data: ReadingConclusion }>(
+    `/api/v1/reading/runs/${encodeURIComponent(id)}/conclusions/${encodeURIComponent(conclusionId)}`,
+    payload,
+  )
+}
+
+export function listReadingDrafts() {
+  return get<{ data: ReadingDraft[] }>('/api/v1/reading/drafts')
+}
+
+export function createReadingDraft(payload: {
+  name?: string
+  document_ids: string[]
+  depth: ReadingDepth
+  goal?: string
+}) {
+  return post<{ data: ReadingDraft }>('/api/v1/reading/drafts', payload)
+}
+
+export function updateReadingDraft(
+  draftId: string,
+  payload: { name?: string; document_ids?: string[]; depth?: ReadingDepth; goal?: string },
+) {
+  return put<{ data: ReadingDraft }>(
+    `/api/v1/reading/drafts/${encodeURIComponent(draftId)}`,
+    payload,
+  )
+}
+
+export function deleteReadingDraft(draftId: string) {
+  return del<{ success: boolean }>(`/api/v1/reading/drafts/${encodeURIComponent(draftId)}`)
 }
 
 export function resolveReadingContradiction(
