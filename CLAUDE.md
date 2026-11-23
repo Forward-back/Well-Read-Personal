@@ -63,7 +63,7 @@ make migrate-up / migrate-down
 make health
 ```
 
-- 前端开发：`cd frontend && npm run dev`，`/api` 代理到 6152。
+- 前端开发：`cd frontend && npm run dev`，`/api` 代理到 6152。视觉对齐阶段统一用 `http://localhost:5173` 查看，不为单点视觉修正重建前端镜像；批量签收后再重建 `gaze-ui:personal`。
 - RAG 语法：`cd rag && python -m compileall -q src`。
 - MCP 测试：`cd mcp && uv sync --extra test && uv run pytest -q`。
 - Swagger：`cd app && GOSUMDB=off go run github.com/swaggo/swag/cmd/swag@v1.16.6 init -g cmd/server/main.go -o ./docs --parseDependency --parseInternal`，然后 `go test ./docs/`。
