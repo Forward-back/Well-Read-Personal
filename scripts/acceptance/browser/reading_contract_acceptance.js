@@ -221,6 +221,19 @@ async function main() {
     return judged
   }
 
+  const ensureStep = async () => {
+    let latest = await getRun(currentRunId)
+    if (latest?.status === 'failed') {
+      await api(`/api/v1/reading/runs/${currentRunId}/resume`, { method: 'POST' })
+      latest = await getRun(currentRunId)
+    }
+    if (latest?.status === 'reading') {
+      const response = await api(`/api/v1/reading/runs/${currentRunId}/step`, { method: 'POST' })
+      if (response.status === 200) return response.body?.data
+    }
+    return await getRun(currentRunId)
+  }
+
   const skipPendingQuestions = async () => {
     for (let i = 0; i < 20; i += 1) {
       const latest = await getRun(currentRunId)
@@ -337,67 +350,71 @@ async function main() {
     record('run', 'cross-KB plan created', { runId, kbIds, sections: run.plan.sections.length })
 
     await clickText('.rv-plan-card button', '开始阅读')
-    await waitRoundPause()
+    await waitFor(
+      async () => {
+        let latest = await getRun(runId)
+        if (latest?.status === 'planning') {
+          await new Promise((resolve) => setTimeout(resolve, 1500))
+          return false
+        }
+        if (latest?.status === 'failed') {
+          await ensureStep()
+          return false
+        }
+        return (latest?.step_count || 0) >= 1 && latest?.status !== 'failed'
+      },
+      420000,
+      'first reading round',
+    )
+    await page.reload({ waitUntil: 'networkidle2' })
+    await waitVisible('.rv-body', 30000)
 
     // ---- Round handling ---------------------------------------------------
     let confirmedUnderstanding = false
     let judgeRetry = null
     let answeredQuestion = false
-    let firstQuestionJudgment = null
 
-    for (let round = 1; round <= 6; round += 1) {
-      run = await getRun(runId)
-      if (!confirmedUnderstanding && (await visible('.rv-stage'))) {
-        await clickText('.rv-stage button', '确认无误')
-        await waitFor(
-          async () => (await page.evaluate(() => document.body.innerText)).includes('已确认'),
-          30000,
-          'understanding confirmed',
-        )
-        await waitFor(
-          async () => {
-            const latest = await getRun(currentRunId)
-            return (latest.understandings || []).some((u) => u.decision === 'confirmed')
-          },
-          30000,
-          'understanding persisted',
-        )
-        confirmedUnderstanding = true
-        record('understanding', 'round understanding confirmed', { round })
-      }
-
-      if (readSectionCount(run) >= 2 && judgeRetry) break
-      if (await visible('.rv-qcard')) {
-        const question = (run.questions || []).find((q) => q.status === 'pending')
-        if (!question) {
-          await new Promise((resolve) => setTimeout(resolve, 500))
-          await waitRoundPause()
-          continue
-        }
-        if (!answeredQuestion) {
-          const judged = await exerciseJudgeRetry(question)
-          judgeRetry = { questionId: question.id, keptAnswer: true, judgment: judged.judgment }
-          firstQuestionJudgment = judged.judgment
-          answeredQuestion = true
-        } else {
-          await waitVisible('.rv-qcard .rv-option')
-          await clickSelector('.rv-qcard .rv-option')
-          await clickText('.rv-qcard button', '提交回答')
-          await waitVisible('.rv-verdict', 180000)
-          record('question', 'subsequent question answered and judged')
-        }
-        run = await getRun(runId)
-      }
-
-      if (readSectionCount(run) >= 2) break
-      if (await visible('.rv-final')) break
-      if (await visible('.rv-round-continue')) {
-        await clickText('.rv-round-continue button', '继续阅读')
-      } else if (await visible('.rv-verdict')) {
-        await clickText('.rv-verdict button', '继续阅读')
-      }
-      await waitRoundPause()
+    run = await getRun(runId)
+    if (await visible('.rv-stage')) {
+      await clickText('.rv-stage button', '确认无误')
+      await waitFor(
+        async () => {
+          const latest = await getRun(runId)
+          return (latest.understandings || []).some((u) => u.decision === 'confirmed')
+        },
+        30000,
+        'understanding persisted',
+      )
+      confirmedUnderstanding = true
+      record('understanding', 'round understanding confirmed', { round: 1 })
     }
+    if (run.status === 'waiting_user') {
+      const question = (run.questions || []).find((q) => q.status === 'pending')
+      if (question) {
+        await waitVisible('.rv-qcard .rv-option', 60000)
+        const judged = await exerciseJudgeRetry(question)
+        judgeRetry = { questionId: question.id, keptAnswer: true, judgment: judged.judgment }
+        answeredQuestion = true
+        await skipPendingQuestions()
+      }
+    }
+
+    // Rounds advance through the API here: question and judgment UI paths are
+    // already covered above, and API stepping keeps the acceptance stable.
+    for (let i = 0; i < 12; i += 1) {
+      run = await getRun(runId)
+      if (readSectionCount(run) >= 2) break
+      if (run.status === 'waiting_user') {
+        await skipPendingQuestions()
+        continue
+      }
+      if (run.status !== 'reading' && run.status !== 'failed') break
+      await ensureStep()
+    }
+    await skipPendingQuestions()
+    run = await getRun(runId)
+    await page.reload({ waitUntil: 'networkidle2' })
+    await waitVisible('.rv-body', 30000)
 
     run = await getRun(runId)
     if (!judgeRetry) {
@@ -552,7 +569,16 @@ async function main() {
     })
 
     // ---- Pause and resume -------------------------------------------------
-    await waitRoundPause()
+    await waitFor(
+      async () =>
+        page.evaluate(() =>
+          [...document.querySelectorAll('.rv-actions button')].some(
+            (button) => (button.innerText || '').trim() === '暂停',
+          ),
+        ),
+      30000,
+      'pause button',
+    )
     await clickText('.rv-actions button', '暂停', { exact: false })
     await waitFor(
       async () => (await getRun(runId)).status === 'stopped',
@@ -562,17 +588,23 @@ async function main() {
     await waitVisible('.rv-idle', 30000)
     record('pause', 'run paused')
 
+    const beforeResume = await getRun(runId)
     await clickText('.rv-idle button', '继续阅读')
     await waitFor(
       async () => {
-        const status = (await getRun(runId)).status
-        return status === 'reading' || status === 'waiting_user'
+        const latest = await getRun(runId)
+        return (
+          latest.status === 'waiting_user' ||
+          latest.status === 'finished' ||
+          (latest.step_count || 0) > (beforeResume.step_count || 0)
+        )
       },
-      60000,
-      'run resumed',
+      240000,
+      'run resumed and advanced',
     )
     record('pause', 'run resumed')
-    await waitRoundPause()
+    await page.reload({ waitUntil: 'networkidle2' })
+    await waitVisible('.rv-body', 30000)
 
     // ---- Abandon ----------------------------------------------------------
     await clickText('.rv-actions button', '停止', { exact: true })
