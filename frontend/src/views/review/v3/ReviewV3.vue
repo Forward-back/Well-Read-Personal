@@ -610,7 +610,7 @@ onMounted(() => {
 .review-v3 {
   height: 100%;
   overflow-y: auto;
-  background: var(--td-bg-color-page);
+  background: transparent;
 }
 
 .review-v3__inner {
@@ -650,6 +650,11 @@ onMounted(() => {
 .review-v3__tabs {
   margin-top: 14px;
   overflow: visible;
+  background: transparent;
+
+  :deep(.t-tabs) {
+    background: transparent;
+  }
 
   :deep(.t-tabs__content) {
     padding: 0;
