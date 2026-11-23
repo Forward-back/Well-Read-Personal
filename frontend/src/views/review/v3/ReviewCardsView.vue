@@ -1,6 +1,6 @@
 /**
  * Cards tab for review V3: compact 56px rows, server-side filters, batch
- * actions, performance drawer, create/edit dialogs. Reuses the existing
+ * actions, and inline full-width performance/create/edit detail pages. Reuses the existing
  * review API; generation/merge/rebind stay on the legacy page until parity.
  */
 <script setup lang="ts">
@@ -35,7 +35,6 @@ import checklistIcon from '@/assets/icons/static/checklist.png'
 import bookIcon from '@/assets/icons/static/book.png'
 import searchIcon from '@/assets/icons/static/search.png'
 import moreIcon from '@/assets/icons/static/more.png'
-import closeIcon from '@/assets/icons/static/close.png'
 
 const props = defineProps<{
   flatGroups: ReviewFlatGroup[]
@@ -404,6 +403,7 @@ async function reloadPerformance() {
 }
 
 function openEdit(card: ReviewCard) {
+  performanceVisible.value = false
   editForm.id = card.id
   editForm.question = card.question
   editForm.answer = card.answer
@@ -665,7 +665,152 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="cards-page" data-testid="review-v3-cards">
+  <section v-if="performanceVisible" class="cards-subpage" data-testid="review-v3-card-performance">
+    <header class="cards-subpage__head">
+      <t-button variant="text" @click="performanceVisible = false">← {{ t('review.v3.cardsPage.back') }}</t-button>
+      <h2>{{ t('review.v3.cardsPage.performance') }}</h2>
+    </header>
+    <div class="cards-subpage__body">
+      <t-loading :loading="performanceLoading" size="small">
+        <template v-if="performance">
+          <div class="perf-card">
+            <h3>{{ performance.card.question }}</h3>
+            <p v-if="performance.warning !== 'none'" class="perf-warning">
+              {{ performance.warning_reason || t('review.warningBadge') }}
+            </p>
+            <div class="perf-counts">
+              <div><span>{{ t('review.v3.rating.easy') }}</span><strong>{{ performance.counts.easy }}</strong></div>
+              <div><span>{{ t('review.v3.rating.remembered') }}</span><strong>{{ performance.counts.remembered }}</strong></div>
+              <div><span>{{ t('review.v3.rating.fuzzy') }}</span><strong>{{ performance.counts.fuzzy }}</strong></div>
+              <div><span>{{ t('review.v3.rating.forgot') }}</span><strong>{{ performance.counts.forgot }}</strong></div>
+            </div>
+            <div class="perf-meta">
+              <span>{{ t('review.v3.cardsPage.recentCounts') }}：{{ performance.recent_counts.easy }}/{{ performance.recent_counts.remembered }}/{{ performance.recent_counts.fuzzy }}/{{ performance.recent_counts.forgot }}</span>
+              <span>{{ t('review.v3.cardsPage.forgetRate') }}：{{ Math.round(performance.recent_forget_rate * 100) }}%</span>
+              <span>{{ t('review.forgetStreak') }}：{{ performance.forget_streak }}</span>
+              <span>{{ t('review.stability') }}：{{ t('review.v3.cardsPage.holdDays', { count: holdDays(performance.card.stability) }) }}</span>
+            </div>
+            <div class="perf-tags">
+              <t-tag v-for="tag in cardTags(performance.card)" :key="tag" size="small" variant="light">{{ tag }}</t-tag>
+            </div>
+          </div>
+
+          <div class="perf-history">
+            <h4>{{ t('review.history') }}</h4>
+            <div v-if="performance.logs.length" class="perf-log-list">
+              <div v-for="log in performance.logs.slice(0, 12)" :key="log.id" class="perf-log">
+                <span :class="`perf-log__rating perf-log__rating--${log.rating}`">{{ t(`review.v3.rating.${log.rating}`) }}</span>
+                <span class="perf-log__time">{{ new Date(log.reviewed_at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }}</span>
+              </div>
+            </div>
+            <p v-else class="cards-state__hint">{{ t('review.noHistory') }}</p>
+          </div>
+
+          <div class="perf-actions">
+            <t-button
+              theme="primary"
+              :disabled="performance.card.status !== 'active'"
+              data-testid="review-v3-card-review-now"
+              @click="reviewCard(performance.card)"
+            >
+              {{ t('review.v3.cardsPage.reviewNow') }}
+            </t-button>
+            <t-button variant="outline" data-testid="review-v3-card-edit" @click="openEdit(performance.card)">
+              {{ t('review.v3.cardsPage.edit') }}
+            </t-button>
+            <t-button variant="outline" data-testid="review-v3-card-reset" @click="resetCard(performance.card)">
+              {{ t('review.v3.cardsPage.reset') }}
+            </t-button>
+          </div>
+        </template>
+      </t-loading>
+    </div>
+  </section>
+
+  <section v-else-if="editVisible" class="cards-subpage" data-testid="review-v3-card-edit-page">
+    <header class="cards-subpage__head">
+      <t-button variant="text" @click="editVisible = false">← {{ t('review.v3.cardsPage.back') }}</t-button>
+      <h2>{{ t('review.v3.cardsPage.edit') }}</h2>
+    </header>
+    <div class="cards-subpage__body">
+      <div class="form-stack">
+        <label class="form-field">
+          <span>{{ t('review.v3.cardsPage.createQuestion') }}</span>
+          <t-textarea v-model="editForm.question" data-testid="review-v3-card-edit-question" :autosize="{ minRows: 2, maxRows: 4 }" />
+        </label>
+        <label class="form-field">
+          <span>{{ t('review.v3.cardsPage.createAnswer') }}</span>
+          <t-textarea v-model="editForm.answer" data-testid="review-v3-card-edit-answer" :autosize="{ minRows: 2, maxRows: 4 }" />
+        </label>
+        <label class="form-field">
+          <span>{{ t('review.v3.cardsPage.createExplanation') }}</span>
+          <t-textarea v-model="editForm.explanation" data-testid="review-v3-card-edit-explanation" :autosize="{ minRows: 2, maxRows: 4 }" />
+        </label>
+        <label class="form-field">
+          <span>{{ t('review.v3.cardsPage.tags') }}</span>
+          <t-tag-input v-model="editForm.tags" data-testid="review-v3-card-edit-tags" :placeholder="t('review.v3.cardsPage.tagsPlaceholder')" />
+        </label>
+      </div>
+    </div>
+    <footer class="cards-subpage__foot">
+      <t-button variant="outline" @click="editVisible = false">{{ t('review.cancel') }}</t-button>
+      <t-button theme="primary" :loading="editSaving" @click="saveEdit">{{ t('review.save') }}</t-button>
+    </footer>
+  </section>
+
+  <section v-else-if="createVisible" class="cards-subpage" data-testid="review-v3-card-create-page">
+    <header class="cards-subpage__head">
+      <t-button variant="text" @click="createVisible = false">← {{ t('review.v3.cardsPage.back') }}</t-button>
+      <h2>{{ t('review.v3.cardsPage.createTitle') }}</h2>
+    </header>
+    <div class="cards-subpage__body">
+      <div class="form-stack">
+        <t-select v-model="createForm.groupId" data-testid="review-v3-card-create-group" :label="t('review.groupName')" :options="groupOptions.filter(item => item.value)" filterable />
+        <label class="form-field">
+          <span>{{ t('review.v3.cardsPage.createQuestion') }}</span>
+          <t-textarea v-model="createForm.question" data-testid="review-v3-card-create-question" :autosize="{ minRows: 2, maxRows: 4 }" />
+        </label>
+        <label class="form-field">
+          <span>{{ t('review.v3.cardsPage.createAnswer') }}</span>
+          <t-textarea v-model="createForm.answer" data-testid="review-v3-card-create-answer" :autosize="{ minRows: 2, maxRows: 4 }" />
+        </label>
+        <label class="form-field">
+          <span>{{ t('review.v3.cardsPage.createExplanation') }}</span>
+          <t-textarea v-model="createForm.explanation" data-testid="review-v3-card-create-explanation" :autosize="{ minRows: 2, maxRows: 4 }" />
+        </label>
+        <label class="form-field">
+          <span>{{ t('review.v3.cardsPage.tags') }}</span>
+          <t-tag-input v-model="createForm.tags" data-testid="review-v3-card-create-tags" :placeholder="t('review.v3.cardsPage.tagsPlaceholder')" />
+        </label>
+        <div class="form-grid">
+          <t-select
+            v-model="createForm.knowledgeBaseId"
+            data-testid="review-v3-card-create-kb"
+            :label="t('review.knowledgeBase')"
+            :options="kbOptions"
+            :placeholder="t('review.selectKnowledgeBase')"
+            filterable
+            @change="(value: string) => loadDocuments(value)"
+          />
+          <t-select
+            v-model="createForm.knowledgeId"
+            data-testid="review-v3-card-create-doc"
+            :label="t('review.v3.cardsPage.selectKnowledge')"
+            :options="docOptions"
+            :loading="docsLoading"
+            :placeholder="t('review.v3.cardsPage.selectKnowledge')"
+            filterable
+          />
+        </div>
+      </div>
+    </div>
+    <footer class="cards-subpage__foot">
+      <t-button variant="outline" @click="createVisible = false">{{ t('review.cancel') }}</t-button>
+      <t-button theme="primary" :loading="createSaving" @click="saveCreate">{{ t('review.create') }}</t-button>
+    </footer>
+  </section>
+
+  <div v-else class="cards-page" data-testid="review-v3-cards">
     <div class="cards-panel">
       <div class="cards-panel__head">
         <div class="cards-panel__title">
@@ -863,162 +1008,11 @@ onMounted(() => {
       </div>
     </t-loading>
 
-    <t-drawer
-      v-model:visible="performanceVisible"
-      size="560px"
-      :footer="false"
-      attach="body"
-      data-testid="review-v3-card-drawer"
-    >
-      <template #header>
-        <div class="drawer-head">
-          <span>{{ t('review.v3.cardsPage.performance') }}</span>
-          <t-button
-            variant="text"
-            shape="square"
-            size="small"
-            data-testid="review-v3-card-drawer-close"
-            @click="performanceVisible = false"
-          >
-            <img class="inline-hand-icon" :src="closeIcon" alt="" />
-          </t-button>
-        </div>
-      </template>
-      <t-loading :loading="performanceLoading" size="small">
-        <template v-if="performance">
-          <div class="perf-card">
-            <h3>{{ performance.card.question }}</h3>
-            <p v-if="performance.warning !== 'none'" class="perf-warning">
-              {{ performance.warning_reason || t('review.warningBadge') }}
-            </p>
-            <div class="perf-counts">
-              <div><span>{{ t('review.v3.rating.easy') }}</span><strong>{{ performance.counts.easy }}</strong></div>
-              <div><span>{{ t('review.v3.rating.remembered') }}</span><strong>{{ performance.counts.remembered }}</strong></div>
-              <div><span>{{ t('review.v3.rating.fuzzy') }}</span><strong>{{ performance.counts.fuzzy }}</strong></div>
-              <div><span>{{ t('review.v3.rating.forgot') }}</span><strong>{{ performance.counts.forgot }}</strong></div>
-            </div>
-            <div class="perf-meta">
-              <span>{{ t('review.v3.cardsPage.recentCounts') }}：{{ performance.recent_counts.easy }}/{{ performance.recent_counts.remembered }}/{{ performance.recent_counts.fuzzy }}/{{ performance.recent_counts.forgot }}</span>
-              <span>{{ t('review.v3.cardsPage.forgetRate') }}：{{ Math.round(performance.recent_forget_rate * 100) }}%</span>
-              <span>{{ t('review.forgetStreak') }}：{{ performance.forget_streak }}</span>
-              <span>{{ t('review.stability') }}：{{ t('review.v3.cardsPage.holdDays', { count: holdDays(performance.card.stability) }) }}</span>
-            </div>
-            <div class="perf-tags">
-              <t-tag v-for="tag in cardTags(performance.card)" :key="tag" size="small" variant="light">{{ tag }}</t-tag>
-            </div>
-          </div>
 
-          <div class="perf-history">
-            <h4>{{ t('review.history') }}</h4>
-            <div v-if="performance.logs.length" class="perf-log-list">
-              <div v-for="log in performance.logs.slice(0, 12)" :key="log.id" class="perf-log">
-                <span :class="`perf-log__rating perf-log__rating--${log.rating}`">{{ t(`review.v3.rating.${log.rating}`) }}</span>
-                <span class="perf-log__time">{{ new Date(log.reviewed_at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }}</span>
-              </div>
-            </div>
-            <p v-else class="cards-state__hint">{{ t('review.noHistory') }}</p>
-          </div>
 
-          <div class="perf-actions">
-            <t-button
-              theme="primary"
-              :disabled="performance.card.status !== 'active'"
-              data-testid="review-v3-card-review-now"
-              @click="reviewCard(performance.card)"
-            >
-              {{ t('review.v3.cardsPage.reviewNow') }}
-            </t-button>
-            <t-button variant="outline" data-testid="review-v3-card-edit" @click="openEdit(performance.card)">
-              {{ t('review.v3.cardsPage.edit') }}
-            </t-button>
-            <t-button variant="outline" data-testid="review-v3-card-reset" @click="resetCard(performance.card)">
-              {{ t('review.v3.cardsPage.reset') }}
-            </t-button>
-          </div>
-        </template>
-      </t-loading>
-    </t-drawer>
 
-    <t-dialog
-      v-model:visible="editVisible"
-      :header="t('review.v3.cardsPage.edit')"
-      :confirm-btn="{ content: t('review.save'), loading: editSaving }"
-      :cancel-btn="{ content: t('review.cancel') }"
-      width="640px"
-      @confirm="saveEdit"
-    >
-      <div class="form-stack">
-        <label class="form-field">
-          <span>{{ t('review.v3.cardsPage.createQuestion') }}</span>
-          <t-textarea v-model="editForm.question" data-testid="review-v3-card-edit-question" :autosize="{ minRows: 2, maxRows: 4 }" />
-        </label>
-        <label class="form-field">
-          <span>{{ t('review.v3.cardsPage.createAnswer') }}</span>
-          <t-textarea v-model="editForm.answer" data-testid="review-v3-card-edit-answer" :autosize="{ minRows: 2, maxRows: 4 }" />
-        </label>
-        <label class="form-field">
-          <span>{{ t('review.v3.cardsPage.createExplanation') }}</span>
-          <t-textarea v-model="editForm.explanation" data-testid="review-v3-card-edit-explanation" :autosize="{ minRows: 2, maxRows: 4 }" />
-        </label>
-        <label class="form-field">
-          <span>{{ t('review.v3.cardsPage.tags') }}</span>
-          <t-tag-input v-model="editForm.tags" data-testid="review-v3-card-edit-tags" :placeholder="t('review.v3.cardsPage.tagsPlaceholder')" />
-        </label>
-      </div>
-    </t-dialog>
 
-    <t-dialog
-      v-model:visible="createVisible"
-      :header="t('review.v3.cardsPage.createTitle')"
-      :confirm-btn="{ content: t('review.create'), loading: createSaving }"
-      :cancel-btn="{ content: t('review.cancel') }"
-      width="680px"
-      @confirm="saveCreate"
-    >
-      <div class="form-stack">
-        <t-select v-model="createForm.groupId" data-testid="review-v3-card-create-group" :label="t('review.groupName')" :options="groupOptions.filter(item => item.value)" filterable />
-        <label class="form-field">
-          <span>{{ t('review.v3.cardsPage.createQuestion') }}</span>
-          <t-textarea v-model="createForm.question" data-testid="review-v3-card-create-question" :autosize="{ minRows: 2, maxRows: 4 }" />
-        </label>
-        <label class="form-field">
-          <span>{{ t('review.v3.cardsPage.createAnswer') }}</span>
-          <t-textarea v-model="createForm.answer" data-testid="review-v3-card-create-answer" :autosize="{ minRows: 2, maxRows: 4 }" />
-        </label>
-        <label class="form-field">
-          <span>{{ t('review.v3.cardsPage.createExplanation') }}</span>
-          <t-textarea v-model="createForm.explanation" data-testid="review-v3-card-create-explanation" :autosize="{ minRows: 2, maxRows: 4 }" />
-        </label>
-        <label class="form-field">
-          <span>{{ t('review.v3.cardsPage.tags') }}</span>
-          <t-tag-input v-model="createForm.tags" data-testid="review-v3-card-create-tags" :placeholder="t('review.v3.cardsPage.tagsPlaceholder')" />
-        </label>
-        <div class="form-grid">
-          <t-select
-            v-model="createForm.knowledgeBaseId"
-            data-testid="review-v3-card-create-kb"
-            :label="t('review.knowledgeBase')"
-            :options="kbOptions"
-            :placeholder="t('review.selectKnowledgeBase')"
-            filterable
-            @change="(value: string) => loadDocuments(value)"
-          />
-          <t-select
-            v-model="createForm.knowledgeId"
-            data-testid="review-v3-card-create-doc"
-            :label="t('review.v3.cardsPage.selectKnowledge')"
-            :options="docOptions"
-            :loading="docsLoading"
-            :placeholder="t('review.v3.cardsPage.selectKnowledge')"
-            filterable
-          />
-        </div>
-        <label class="form-field">
-          <span>{{ t('review.v3.cardsPage.sourceExcerpt') }}</span>
-          <t-textarea v-model="createForm.excerpt" data-testid="review-v3-card-create-excerpt" :autosize="{ minRows: 2, maxRows: 4 }" />
-        </label>
-      </div>
-    </t-dialog>
+
 
     <t-dialog
       v-model:visible="moveVisible"
@@ -1463,6 +1457,47 @@ onMounted(() => {
   .card-row__review {
     display: none;
   }
+}
+
+.cards-subpage {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 100%;
+  padding: 4px 0 24px;
+}
+
+.cards-subpage__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--rvn-border);
+
+  h2 {
+    margin: 0;
+    font-size: 22px;
+    line-height: 30px;
+    font-weight: 700;
+    color: var(--td-text-color-primary);
+  }
+}
+
+.cards-subpage__body {
+  width: 100%;
+}
+
+.cards-subpage__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rvn-border);
+}
+
+.perf-page {
+  width: 100%;
+  padding: 0;
 }
 
 .perf-card {

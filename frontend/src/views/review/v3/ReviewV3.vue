@@ -478,7 +478,15 @@ onMounted(() => {
         </div>
       </header>
 
-      <t-tabs v-model="activeView" class="review-v3__tabs">
+      <ReviewGenerateDialog
+        v-if="generateVisible"
+        v-model:visible="generateVisible"
+        :flat-groups="flatGroups"
+        :default-group-id="selectedGroupId"
+        @imported="refreshAfterCardChange"
+      />
+
+      <t-tabs v-if="!generateVisible" v-model="activeView" class="review-v3__tabs">
         <t-tab-panel value="today" :label="t('review.v3.todayTab')">
           <div class="review-v3__today">
             <ReviewGroupRail
@@ -581,13 +589,6 @@ onMounted(() => {
       </div>
     </t-dialog>
 
-    <ReviewGenerateDialog
-      v-model:visible="generateVisible"
-      :flat-groups="flatGroups"
-      :default-group-id="selectedGroupId"
-      @imported="refreshAfterCardChange"
-    />
-
     <ReviewMode
       v-if="reviewVisible && reviewState"
       :state="reviewState"
@@ -608,6 +609,7 @@ onMounted(() => {
 }
 
 .review-v3 {
+  position: relative;
   height: 100%;
   overflow-y: auto;
   background: transparent;
@@ -675,9 +677,8 @@ onMounted(() => {
 }
 
 .review-v3__inner {
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 28px 48px 48px;
+  width: 100%;
+  padding: 24px 32px 48px;
 }
 
 .review-v3__head {

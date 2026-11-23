@@ -155,15 +155,12 @@ async function importSelected() {
 </script>
 
 <template>
-  <t-dialog
-    v-model:visible="dialogVisible"
-    :footer="false"
-    width="760px"
-    data-testid="review-v3-generate-dialog"
-  >
-    <template #header>
-      <div class="gen-head"><img :src="sparklesIcon" alt="" />{{ t('review.generateTitle') }}</div>
-    </template>
+  <section class="gen-page">
+    <header class="gen-page__head">
+      <t-button variant="text" @click="dialogVisible = false">← {{ t('review.v3.cardsPage.back') }}</t-button>
+      <h2 class="gen-head"><img :src="sparklesIcon" alt="" />{{ t('review.generateTitle') }}</h2>
+    </header>
+    <div class="gen-page__body">
     <div class="gen-form">
       <t-select
         v-model="form.knowledgeBaseId"
@@ -234,10 +231,37 @@ async function importSelected() {
         {{ t('review.importSelected') }} ({{ selected.length }})
       </t-button>
     </div>
-  </t-dialog>
+    </div>
+  </section>
 </template>
 
 <style lang="less" scoped>
+.gen-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0 24px;
+}
+
+.gen-page__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--rvn-border);
+
+  h2 {
+    margin: 0;
+    font-size: 22px;
+    line-height: 30px;
+    font-weight: 700;
+  }
+}
+
+.gen-page__body {
+  width: 100%;
+}
+
 .gen-form {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
