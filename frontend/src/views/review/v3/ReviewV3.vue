@@ -486,7 +486,7 @@ onMounted(() => {
         @imported="refreshAfterCardChange"
       />
 
-      <t-tabs v-if="!generateVisible" v-model="activeView" class="review-v3__tabs">
+      <t-tabs v-if="!generateVisible && !reviewVisible" v-model="activeView" class="review-v3__tabs">
         <t-tab-panel value="today" :label="t('review.v3.todayTab')">
           <div class="review-v3__today">
             <ReviewGroupRail

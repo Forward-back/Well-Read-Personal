@@ -414,11 +414,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 }
 
 .review-mode {
-  position: absolute;
-  inset: 0;
-  z-index: 2400;
-  overflow-y: auto;
-  background: var(--w-detail-bg, #f7f5f0);
+  width: 100%;
+  min-height: 100%;
+  background: transparent;
 }
 
 .review-mode__inner {
