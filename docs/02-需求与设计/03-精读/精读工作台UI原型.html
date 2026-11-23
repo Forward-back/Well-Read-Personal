@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WellRead 交互式文档精读 · UI 原型 V3</title>
+<style>
+/* ── Notion-style tokens: minimal lines, tiny radius, whitespace-first ── */
+:root{
+  --text:#37352F; --text2:#787774; --text3:#9B9A97;
+  --bg:#FFFFFF; --bg2:#F7F6F3; --hover:#F1EFEA;
+  --hair:#EBEBEA;
+  --green:#0F7B6C; --green-bg:#EDF3EC;
+  --yellow:#C29343; --yellow-bg:#FBF3DB;
+  --red:#E03E3A; --red-bg:#FDEBEC;
+  --purple:#9065B0; --purple-bg:#F6F3F9;
+  --blue:#337EA9; --blue-bg:#E7F3F8;
+  /* Morandi tints (saturation ≤12%, background-only) */
+  --side:#FAF9F7;          /* 暖雾灰 · 侧栏 */
+  --sage:#E9EFE7; --sage-d:#4E7A6C;   /* 鼠尾草绿 · 判定/结论/当前段落 */
+  --haze:#E7EDF1; --haze-d:#5D7B8A;   /* 雾霾蓝 · 提问 */
+  --oat:#F2EDE3;  --oat-d:#8A7A5C;    /* 燕麦米 · 待确认/未决 */
+  --clay:#F4EAE8; --clay-d:#A9766E;   /* 陶土粉 · 矛盾 */
+  --clay-deep:#F8E3DF;
+  --mauve:#F1EDF4; --mauve-d:#8E7396; /* 藕紫 · 术语 */
+  --r:3px; --r-pop:4px;
+  --shadow-pop:0 4px 16px rgba(15,15,15,.13);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.65;display:flex;flex-direction:column;overflow:hidden}
+/* hide all scrollbars */
+*::-webkit-scrollbar{display:none}
+*{scrollbar-width:none;-ms-overflow-style:none}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:var(--text);font-size:13px;border-radius:var(--r);transition:background .13s ease,color .13s ease}
+input,textarea{font-family:inherit;font-size:14px;color:var(--text);outline:none}
+
+/* ── topbar ── */
+.topbar{height:48px;flex:none;display:flex;align-items:center;gap:14px;padding:0 16px;border-bottom:1px solid var(--hair)}
+.brand{font-weight:600;font-size:14px}
+.brand .wb{color:var(--green)}
+.tb-doc{font-size:12.5px;color:var(--text3)}
+.tb-switch{display:flex;gap:2px;margin-left:6px}
+.tb-switch button{padding:3px 10px;color:var(--text2)}
+.tb-switch button.on{background:var(--bg2);color:var(--text);font-weight:500}
+.tb-spacer{flex:1}
+.tb-progress{display:flex;align-items:center;gap:10px}
+.pbar{width:140px;height:3px;background:var(--bg2);border-radius:2px;overflow:hidden}
+.pbar i{display:block;height:100%;background:var(--green);transition:width .5s ease}
+.tb-meta{font-size:12px;color:var(--text3);white-space:nowrap}
+.tb-actions{display:flex;gap:4px}
+.tb-actions button{padding:4px 10px;color:var(--text2)}
+.tb-actions button:hover{background:var(--hover);color:var(--text)}
+.tb-actions button.warn{color:var(--red)}
+
+/* ── views ── */
+.view{display:none;flex:1;min-height:0}
+.view.on{display:flex}
+
+/* ── config view ── */
+#view-config{justify-content:center;overflow-y:auto}
+.config{width:600px;padding:56px 0 80px}
+.config h1{font-size:22px;font-weight:700;margin-bottom:6px}
+.config .sub{color:var(--text3);font-size:13px;margin-bottom:36px}
+.sec{margin-bottom:30px}
+.sec-label{font-size:13px;font-weight:600;margin-bottom:10px}
+.sec-hint{font-size:12px;color:var(--text3);margin-top:6px}
+.doc-row{display:flex;align-items:baseline;gap:10px;padding:8px 12px;border-radius:var(--r);cursor:pointer;transition:background .13s}
+.doc-row:hover{background:var(--hover)}
+.doc-row.on{background:var(--green-bg)}
+.doc-name{font-weight:500}
+.doc-row.on .doc-name{color:var(--green)}
+.doc-meta{font-size:12px;color:var(--text3)}
+.depth-row{display:flex;align-items:baseline;gap:10px;padding:10px 12px;border-radius:var(--r);cursor:pointer;transition:background .13s}
+.depth-row:hover{background:var(--hover)}
+.depth-row.on{background:var(--green-bg)}
+.depth-name{font-weight:500;flex:none}
+.depth-row.on .depth-name{color:var(--green)}
+.depth-desc{font-size:12px;color:var(--text3)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip-pick{padding:5px 12px;background:var(--bg2);border-radius:var(--r);font-size:13px;color:var(--text2);transition:background .13s}
+.chip-pick:hover{background:var(--hover)}
+.chip-pick.on{background:var(--green-bg);color:var(--green);font-weight:500}
+.goal-ta{width:100%;background:var(--bg2);border:none;border-radius:var(--r);padding:10px 12px;resize:none;line-height:1.6;transition:background .13s}
+.goal-ta:focus{background:var(--hover)}
+.goal-ta::placeholder{color:var(--text3)}
+.est{display:flex;gap:24px;font-size:12.5px;color:var(--oat-d);background:var(--oat);border-radius:var(--r);padding:12px 16px;margin-bottom:28px}
+.est b{color:var(--green);font-weight:600}
+.config-actions{display:flex;align-items:center;gap:14px}
+.btn-primary{background:var(--green);color:#fff;padding:8px 22px;font-weight:500;font-size:13.5px}
+.btn-primary:hover{background:#0C6B5E}
+.btn-primary:disabled{background:var(--bg2);color:var(--text3);cursor:default}
+.btn-text{color:var(--text2);padding:8px 12px}
+.btn-text:hover{background:var(--hover);color:var(--text)}
+.model-note{font-size:12px;color:var(--text3);margin-left:auto}
+
+/* ── workbench layout: 2 hairlines total ── */
+#view-workbench{min-height:0}
+.col-left{width:256px;flex:none;background:var(--side);border-right:1px solid var(--hair);overflow-y:auto;padding:20px 12px}
+.col-main{flex:1;min-width:0;overflow-y:auto;padding:36px 0 120px}
+.read-wrap{max-width:680px;margin:0 auto;padding:0 40px}
+.col-right{width:312px;flex:none;background:var(--side);border-left:1px solid var(--hair);overflow-y:auto;padding:20px 16px 60px}
+
+/* ── left column ── */
+.side-head{font-size:14.5px;font-weight:600;line-height:1.4;margin-bottom:4px}
+.side-sub{font-size:12px;color:var(--text3);margin-bottom:22px;line-height:1.5}
+.side-sub .green{color:var(--green)}
+.sec-mini{font-size:11.5px;color:var(--text3);margin:18px 0 8px}
+.toc-row{display:block;width:100%;text-align:left;padding:6px 10px;border-radius:var(--r);font-size:13px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toc-row:hover{background:var(--hover)}
+.toc-row.cur{background:var(--green-bg);color:var(--green);font-weight:500}
+.toc-row .num{color:inherit;opacity:.65;margin-right:6px;font-size:12px}
+
+/* ── main stream ── */
+.chapter-head{margin-bottom:30px}
+.chapter-head h2{font-size:19px;font-weight:700;margin-bottom:6px}
+.chapter-head .meta{font-size:12.5px;color:var(--text3)}
+.block{margin-bottom:34px}
+.block-t{font-size:13px;font-weight:600;color:var(--text2);margin-bottom:12px}
+.prose{font-size:15px;line-height:1.75;color:var(--text)}
+.prose p{margin-bottom:12px}
+.prose p.hl{background:var(--sage);border-radius:var(--r);padding:7px 12px;margin:-1px -12px 12px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.cite{color:var(--green);font-size:11px;font-weight:600;cursor:pointer;position:relative;vertical-align:super;padding:0 2px}
+.cite:hover{text-decoration:underline}
+
+/* thinking chain: no boxes, numbered text */
+.chain{padding-left:2px}
+.step{display:flex;gap:12px;margin-bottom:10px}
+.step-n{flex:none;width:20px;font-size:12px;color:var(--haze-d);font-weight:600;font-variant-numeric:tabular-nums;padding-top:1px}
+.step-c{font-size:13.5px;line-height:1.65;color:var(--text2)}
+.step-c b{color:var(--text);font-weight:500}
+.step-c .g{color:var(--green)}
+
+/* drawer: text trigger only */
+.drawer-t{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--text3);padding:3px 6px;margin:4px 0 0 -6px;border-radius:var(--r)}
+.drawer-t:hover{background:var(--hover);color:var(--text2)}
+.drawer{display:none;background:var(--bg2);border-radius:var(--r-pop);padding:14px 16px;margin-top:8px;font-size:12.5px;color:var(--text2);line-height:1.7}
+.drawer.open{display:block}
+.drawer code{font-family:"SF Mono",Consolas,monospace;font-size:11.5px;background:var(--hover);padding:1px 5px;border-radius:var(--r);color:var(--text2)}
+
+/* interaction cards: semantic Morandi tints, no border */
+.icard{background:var(--bg2);border-radius:var(--r-pop);padding:20px 22px;margin:26px 0}
+.icard.q{background:var(--haze)}
+.icard.s{background:var(--oat)}
+.icard-tag{font-size:11.5px;font-weight:600;color:var(--green);margin-bottom:8px}
+.icard.q .icard-tag{color:var(--haze-d)}
+.icard.s .icard-tag{color:var(--oat-d)}
+.icard-tag.gray{color:var(--text3)}
+.icard-q{font-size:14.5px;line-height:1.7;margin-bottom:6px}
+.icard-hint{font-size:12.5px;color:var(--text3);margin-bottom:14px}
+.ans-row{display:flex;gap:8px;margin-bottom:4px}
+.ans-row textarea{flex:1;background:#fff;border-radius:var(--r);padding:9px 12px;resize:none;line-height:1.6;transition:background .13s}
+.ans-row textarea:focus{background:var(--bg2)}
+.icard-actions{display:flex;gap:6px;margin-top:10px}
+.icard-actions button{padding:5px 12px;font-size:12.5px;color:var(--text2)}
+.icard-actions button:hover{background:var(--hover);color:var(--text)}
+.icard-actions .act-main{background:#fff;color:var(--green);font-weight:500}
+.icard-actions .act-main:hover{background:var(--green-bg)}
+.verdict{display:none;font-size:13.5px;line-height:1.7;background:var(--sage);border-radius:var(--r);padding:10px 14px;margin-top:12px}
+.verdict.show{display:block}
+.verdict .ok{color:var(--green);font-weight:600}
+.verdict .part{color:var(--yellow);font-weight:600}
+
+/* contradiction: clay tint, quotes in haze/mauve */
+.contra{background:var(--clay);border-radius:var(--r-pop);padding:20px 22px;margin:26px 0}
+.contra.resolved{background:var(--bg)}
+.contra-tag{display:inline-block;font-size:11.5px;font-weight:600;color:var(--clay-d);background:var(--clay-deep);padding:2px 8px;border-radius:var(--r);margin-bottom:10px}
+.contra-q{font-size:14.5px;font-weight:600;margin-bottom:14px}
+.side-quote{margin-bottom:12px}
+.side-label{font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px}
+.side-q{font-size:13.5px;line-height:1.7;color:var(--text2);border-radius:var(--r);padding:8px 12px;margin-bottom:4px}
+.side-quote.a .side-q{background:var(--haze)}
+.side-quote.b .side-q{background:var(--mauve)}
+.contra-note{font-size:12.5px;color:var(--text3);margin:12px 0}
+
+/* ── right column: notes as flat text ── */
+.n-head{font-size:13px;font-weight:600;margin-bottom:14px;display:flex;align-items:baseline;justify-content:space-between}
+.n-count{font-size:11.5px;color:var(--text3);font-weight:400}
+.n-tabs{display:flex;gap:2px;margin-bottom:22px;flex-wrap:wrap}
+.n-tab{padding:3px 9px;font-size:12px;color:var(--text3)}
+.n-tab:hover{background:var(--hover);color:var(--text2)}
+.n-tab.on{background:var(--bg2);color:var(--text);font-weight:500}
+.note{position:relative;padding:12px;margin:0 -12px;border-radius:var(--r);transition:background .13s}
+.note:hover{background:var(--hover)}
+.note.draft:hover{background:var(--hover)}
+.note+.note{margin-top:6px}
+.n-type{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:var(--r);margin-bottom:6px}
+.n-type.term{color:var(--mauve-d);background:var(--mauve)}
+.n-type.concl{color:var(--sage-d);background:var(--sage)}
+.n-type.open{color:var(--oat-d);background:var(--oat)}
+.n-type.contra{color:var(--clay-d);background:var(--clay-deep)}
+.n-state{font-size:11px;color:var(--text3);margin-left:6px}
+.n-state.done{color:var(--green)}
+.n-text{font-size:13.5px;line-height:1.65;margin-bottom:6px}
+.n-cite{font-size:11.5px;color:var(--text3)}
+.n-cite .cite{font-size:10.5px}
+.n-acts{display:none;gap:2px;margin-top:8px}
+.note:hover .n-acts,.note.draft .n-acts{display:flex}
+.n-acts button{font-size:12px;padding:3px 8px;color:var(--text2)}
+.n-acts button:hover{background:var(--hover);color:var(--text)}
+.n-acts .a-ok{color:var(--green);font-weight:500}
+.n-acts .a-no{color:var(--red)}
+
+/* tooltip */
+.tip{position:fixed;z-index:50;max-width:320px;background:#fff;border-radius:var(--r-pop);box-shadow:var(--shadow-pop);padding:12px 14px;font-size:12.5px;line-height:1.65;display:none}
+.tip .q{color:var(--text2);margin-bottom:6px}
+.tip .src{font-size:11.5px;color:var(--text3)}
+
+/* toast */
+.toast{position:fixed;left:50%;bottom:32px;transform:translate(-50%,8px);background:var(--text);color:#fff;font-size:13px;padding:9px 18px;border-radius:var(--r-pop);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:60}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+
+<!-- ══ topbar ══ -->
+<header class="topbar">
+  <div class="brand">WellRead<span class="wb">.</span></div>
+  <div class="tb-doc">8.9 中断请求</div>
+  <nav class="tb-switch">
+    <button id="nav-work" class="on" onclick="switchView('work')">精读工作台</button>
+    <button id="nav-config" onclick="switchView('config')">创建配置</button>
+  </nav>
+  <div class="tb-spacer"></div>
+  <div class="tb-progress">
+    <div class="pbar"><i id="progFill" style="width:22%"></i></div>
+    <span class="tb-meta" id="progText">5 / 23 章 · 剩余约 18 分钟</span>
+  </div>
+  <div class="tb-actions">
+    <button onclick="toast('已导出 Markdown（仅含定稿笔记）')">导出</button>
+    <button onclick="toast('已暂停 · 现场已保存，7 天内可恢复')">暂停</button>
+    <button class="warn" onclick="toast('已停止 · 产出笔记已保留')">停止</button>
+  </div>
+</header>
+
+<!-- ══ view: workbench ══ -->
+<div class="view on" id="view-workbench">
+
+  <!-- left: outline -->
+  <aside class="col-left">
+    <div class="side-head">8.9 中断请求</div>
+    <div class="side-sub">内置策略 <span class="green">grill-with-docs</span> · 逐条精读 · 5 号模型</div>
+    <div class="sec-mini">章节目录</div>
+    <div id="tocList">
+      <button class="toc-row" onclick="jumpChap(this,'8.1 中断请求')"><span class="num">8.1</span>中断请求</button>
+      <button class="toc-row" onclick="jumpChap(this,'8.2 中断处理流程')"><span class="num">8.2</span>中断处理流程</button>
+      <button class="toc-row cur" onclick="jumpChap(this,'8.9 中断请求')"><span class="num">8.9</span>中断请求 <span style="font-size:11px;opacity:.7">· 本轮</span></button>
+      <button class="toc-row" onclick="jumpChap(this,'五、易错辨析')"><span class="num">五</span>易错辨析</button>
+      <button class="toc-row" onclick="jumpChap(this,'六、小结')"><span class="num">六</span>小结</button>
+    </div>
+    <div class="sec-mini">本会话</div>
+    <div style="font-size:12.5px;color:var(--text2);line-height:1.9;padding-left:2px">
+      已读 5 章 · 笔记 14 条 · 裁决矛盾 1 起<br>
+      跳过提问 1 次（连续 3 次将建议降级）
+    </div>
+  </aside>
+
+  <!-- main: reading stream -->
+  <main class="col-main"><div class="read-wrap">
+
+    <div class="chapter-head">
+      <h2 id="chapTitle">8.9 中断请求 · 第 1 轮</h2>
+      <div class="meta">本轮 4 次检索 · 4 个问题 · 用时 56 秒</div>
+    </div>
+
+    <div class="block">
+      <div class="block-t">思考链路</div>
+      <div class="chain">
+        <div class="step"><div class="step-n">01</div><div class="step-c">本轮焦点：<b>中断请求何时会被核心忽略</b>，与你的目标「找出易错点」相关</div></div>
+        <div class="step"><div class="step-n">02</div><div class="step-c">读取 §8.9 全文与 §8.2 的处理流程，<b>发现两处对中断返回值的描述不一致</b></div></div>
+        <div class="step"><div class="step-n">03</div><div class="step-c">检索术语表与历史勘误记录，<span class="g">确认构成矛盾而非笔误</span></div></div>
+        <div class="step"><div class="step-n">04</div><div class="step-c">产出：术语笔记 1 条、结论笔记 2 条、矛盾 1 起（待你裁决）</div></div>
+      </div>
+      <button class="drawer-t" id="drawerBtn" onclick="toggleDrawer()">原始推理 ▾</button>
+      <div class="drawer" id="drawerBody">
+        本区为脱敏后的原始推理，仅供调试。<br>
+        协议字段已映射：<code>kind=fact</code> → 结论笔记，<code>gap_type=ambiguity</code> → 未决问题，<code>search_query</code> → 思考链路第 03 步。<br>
+        原始输出：先以 <code>reading.phaseUnderstanding</code> 生成阶段陈述，再走 <code>grill.ask()</code> 出题，判定置信度 0.86 后降级为提示模式。
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="block-t">本轮阅读结论</div>
+      <div class="prose">
+        <p class="hl">当核心同时收到多个中断请求时，优先级仲裁发生在<strong>登记之后、现场保存之前</strong><span class="cite" onmouseenter="showTip(event,0)" onmouseleave="hideTip()">[1]</span>。这意味着高优先级请求不会打断已开始的现场保存动作——这是本章最容易被忽略的设计决策。</p>
+        <p>作者用「先到先服务」描述默认策略，但 §8.2 中出现了与之冲突的表述<span class="cite" onmouseenter="showTip(event,1)" onmouseleave="hideTip()">[2]</span>，已列入下方矛盾卡。</p>
+      </div>
+    </div>
+
+    <!-- question card -->
+    <div class="icard q" id="qcard">
+      <div class="icard-tag">概念确认 · 第 1 问 / 2</div>
+      <div class="icard-q">为什么高优先级中断请求不会打断已开始的现场保存？用一句话说明。</div>
+      <div class="icard-hint">可结合 §8.9 第二段的「登记时机」作答，答错不扣分，AI 会补充讲解。</div>
+      <div class="ans-row"><textarea id="ansInput" rows="2" placeholder="写下你的理解…"></textarea></div>
+      <div class="icard-actions">
+        <button class="act-main" onclick="submitAnswer()">提交回答</button>
+        <button onclick="skipQ()">跳过此问</button>
+      </div>
+      <div class="verdict" id="verdictQ"></div>
+    </div>
+
+    <!-- statement confirm card -->
+    <div class="icard s">
+      <div class="icard-tag">阶段理解确认 · §8.9</div>
+      <div class="icard-q">我对本章的理解：中断请求的处理是「登记 → 仲裁 → 保存现场 → 转入处理」四步，仲裁结果决定保存现场的优先级顺序。<span class="cite" onmouseenter="showTip(event,0)" onmouseleave="hideTip()">[1]</span></div>
+      <div class="icard-hint">这个理解准确吗？若有偏差会进入一轮快速澄清。</div>
+      <div class="icard-actions">
+        <button class="act-main" onclick="decide('确认无误')">✓ 确认</button>
+        <button onclick="decide('需要纠正')">需要纠正</button>
+        <button onclick="skipS()">跳过</button>
+      </div>
+      <div class="verdict" id="verdictS"></div>
+    </div>
+
+    <!-- contradiction card -->
+    <div class="contra" id="contraCard">
+      <div class="contra-tag">发现矛盾 · 第 1 起</div>
+      <div class="contra-q">中断仲裁的策略，两处描述冲突</div>
+      <div class="side-quote a">
+        <div class="side-label">说法 A · §8.9 第二段</div>
+        <div class="side-q">多个中断请求同时到达时，核心按「先到先服务」的顺序逐个登记。</div>
+      </div>
+      <div class="side-quote b">
+        <div class="side-label">说法 B · §8.2 处理流程</div>
+        <div class="side-q">仲裁器在每个时钟周期重新扫描请求队列，优先级最高者先登记。</div>
+      </div>
+      <div class="contra-note">差异点：静态顺序（先到先服务）vs 动态抢占（按优先级重扫）。两处均未标注适用条件，可能是版本迭代遗留。建议结合 §8.9 的勘误记录裁决。</div>
+      <div class="icard-actions" id="contraActions">
+        <button class="act-main" onclick="resolveContra('A')">采纳说法 A</button>
+        <button class="act-main" onclick="resolveContra('B')">采纳说法 B</button>
+        <button onclick="resolveContra('Q')">标记存疑</button>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="block-t">本轮产出</div>
+      <div class="prose" style="font-size:13.5px;color:var(--text2)">
+        <p>本轮已写入笔记 3 条（草稿），裁决矛盾 1 起后进入下一章「五、易错辨析」。下一轮将重点核对易错辨析与本章结论的一致性。</p>
+      </div>
+    </div>
+
+  </div></main>
+
+  <!-- right: notes -->
+  <aside class="col-right">
+    <div class="n-head">阅读笔记 <span class="n-count" id="nCount">14 条 · 2 条待确认</span></div>
+    <div class="n-tabs">
+      <button class="n-tab on" onclick="tabNotes(this,'all')">全部</button>
+      <button class="n-tab" onclick="tabNotes(this,'term')">术语</button>
+      <button class="n-tab" onclick="tabNotes(this,'concl')">结论</button>
+      <button class="n-tab" onclick="tabNotes(this,'open')">未决</button>
+      <button class="n-tab" onclick="tabNotes(this,'contra')">矛盾</button>
+    </div>
+
+    <div class="note draft term">
+      <span class="n-type term">术语</span><span class="n-state">草稿</span>
+      <div class="n-text">仲裁器（Arbiter）：位于登记与现场保存之间的裁决单元，只在一个完整的保存动作结束后才重新接受仲裁。<span class="cite" onmouseenter="showTip(event,0)" onmouseleave="hideTip()">[1]</span></div>
+      <div class="n-cite">8.9 中断请求 · 第二段 <span class="cite">[1]</span></div>
+      <div class="n-acts">
+        <button class="a-ok" onclick="noteAct(this,'确认')">✓ 确认</button>
+        <button onclick="noteAct(this,'编辑')">编辑</button>
+        <button class="a-no" onclick="noteAct(this,'驳回')">驳回</button>
+      </div>
+    </div>
+
+    <div class="note draft concl">
+      <span class="n-type concl">结论</span><span class="n-state">草稿</span>
+      <div class="n-text">现场保存具备原子性：已开始的保存不会被更高优先级请求打断，仲裁等待其完成。<span class="cite" onmouseenter="showTip(event,0)" onmouseleave="hideTip()">[1]</span></div>
+      <div class="n-cite">8.9 中断请求 · 第二段 <span class="cite">[1]</span></div>
+      <div class="n-acts">
+        <button class="a-ok" onclick="noteAct(this,'确认')">✓ 确认</button>
+        <button onclick="noteAct(this,'编辑')">编辑</button>
+        <button class="a-no" onclick="noteAct(this,'驳回')">驳回</button>
+      </div>
+    </div>
+
+    <div class="note concl">
+      <span class="n-type concl">结论</span><span class="n-state done">已确认</span>
+      <div class="n-text">中断返回值有三类：完成码、待处理掩码、错误码；调用方必须先判错误码再读完成码。</div>
+      <div class="n-cite">8.9 中断请求 · 五、易错辨析</div>
+    </div>
+
+    <div class="note open">
+      <span class="n-type open">未决</span><span class="n-state done">待检索</span>
+      <div class="n-text">勘误记录未覆盖 §8.2 的表述差异，需要补充 8.2 节的定向检索。</div>
+      <div class="n-cite">8.9 中断请求 · 附录 B</div>
+    </div>
+  </aside>
+</div>
+
+<!-- ══ view: config ══ -->
+<div class="view" id="view-config">
+  <div class="config">
+    <h1>创建精读</h1>
+    <div class="sub">选择文档，设定深度与目标，先看预估再开始</div>
+
+    <div class="sec">
+      <div class="sec-label">精读文档</div>
+      <div class="doc-row on" onclick="pickDoc(this)"><span class="doc-name">8.9 中断请求</span><span class="doc-meta">23 章 · 约 1.2 万字 · 已入知识库</span></div>
+      <div class="doc-row" onclick="pickDoc(this)"><span class="doc-name">8.2 中断处理流程</span><span class="doc-meta">11 章 · 约 6 千字</span></div>
+      <div class="doc-row" onclick="pickDoc(this)"><span class="doc-name">附录 B 勘误记录</span><span class="doc-meta">4 章 · 约 2 千字</span></div>
+      <div class="sec-hint">最多 5 篇，可拖动调整阅读顺序</div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-label">阅读深度</div>
+      <div class="depth-row on" onclick="pickDepth(this,'逐条精读 · 预计 6 轮 / 章 · 每章提问 2–4 次 · 约 35 分钟')"><span class="depth-name">逐条精读</span><span class="depth-desc">预计划分 6 轮 / 章，关键概念必提问，适合核心制度与易错内容</span></div>
+      <div class="depth-row" onclick="pickDepth(this,'标准精读 · 预计 3 轮 / 章 · 每章提问 1–2 次 · 约 18 分钟')"><span class="depth-name">标准精读</span><span class="depth-desc">预计划分 3 轮 / 章，仅对冲突和目标相关内容提问</span></div>
+      <div class="depth-row" onclick="pickDepth(this,'快速通读 · 预计 1 轮 / 章 · 不提问，只产出笔记 · 约 8 分钟')"><span class="depth-name">快速通读</span><span class="depth-desc">单轮读完，只总结不提问，适合背景性材料</span></div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-label">阅读目标</div>
+      <div class="chips">
+        <button class="chip-pick on" onclick="pickGoal(this)">总结制度要点</button>
+        <button class="chip-pick" onclick="pickGoal(this)">找出前后矛盾</button>
+        <button class="chip-pick" onclick="pickGoal(this)">梳理关键术语</button>
+        <button class="chip-pick" onclick="pickGoal(this)">整理易错点</button>
+        <button class="chip-pick" onclick="pickGoal(this)">自定义…</button>
+      </div>
+      <textarea class="goal-ta" id="goalTa" rows="2" placeholder="补充说明你的目标，或留空使用所选模板…">重点找出各章对中断处理描述不一致的地方</textarea>
+    </div>
+
+    <div class="est" id="estRow">
+      <span>预计 <b>35 分钟</b></span><span>约 <b>138 轮</b>对话</span><span>预估 <b>42k</b> tokens</span><span>提问 <b>2–4 次 / 章</b></span>
+    </div>
+
+    <div class="config-actions">
+      <button class="btn-primary" onclick="toast('已生成阅读计划：23 章 · 138 轮 · 按 8.9 → 8.2 → 附录 B 顺序')">生成阅读计划</button>
+      <button class="btn-text" onclick="toast('阅读计划草稿已保存')">存为草稿</button>
+      <span class="model-note">精读使用空间配置的独立模型，不消耗日常问答额度</span>
+    </div>
+  </div>
+</div>
+
+<!-- tooltip & toast -->
+<div class="tip" id="tip"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const quotes=[
+  {q:'当核心同时收到多个中断请求时，优先级仲裁发生在登记之后、现场保存之前；已开始的保存动作不会被新到的请求打断。',s:'8.9 中断请求 · 第二段'},
+  {q:'仲裁器在每个时钟周期重新扫描请求队列，优先级最高者先登记。',s:'8.2 中断处理流程 · 第三节'},
+];
+let tipTimer;
+function showTip(e,i){
+  clearTimeout(tipTimer);
+  const t=$('tip'),r=e.target.getBoundingClientRect();
+  t.innerHTML='<div class="q">「'+quotes[i].q+'」</div><div class="src">'+quotes[i].s+' · 点击角标可定位原文</div>';
+  t.style.display='block';
+  const w=t.offsetWidth,x=Math.min(r.left,w+24>innerWidth?innerWidth-w-12:r.left-40),y=r.bottom+8;
+  t.style.left=Math.max(12,x)+'px';t.style.top=Math.min(y,innerHeight-t.offsetHeight-12)+'px';
+  t.onclick=()=>{hideTip();toast('已在左栏定位到原文段落')};
+}
+function hideTip(){tipTimer=setTimeout(()=>$('tip').style.display='none',120)}
+
+let toastTimer;
+function toast(msg){
+  const t=$('toast');t.textContent=msg;t.classList.add('show');
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2400);
+}
+
+/* view switch */
+function switchView(v){
+  $('view-workbench').classList.toggle('on',v==='work');
+  $('view-config').classList.toggle('on',v==='config');
+  $('nav-work').classList.toggle('on',v==='work');
+  $('nav-config').classList.toggle('on',v==='config');
+}
+
+/* chapter jump */
+function jumpChap(btn,title){
+  document.querySelectorAll('.toc-row').forEach(r=>r.classList.remove('cur'));
+  btn.classList.add('cur');
+  $('chapTitle').textContent=title+' · 第 1 轮';
+  document.querySelector('.col-main').scrollTop=0;
+  toast('已切换到「'+title+'」· 会话现场已保存');
+}
+
+/* drawer */
+function toggleDrawer(){
+  const d=$('drawerBody'),open=d.classList.toggle('open');
+  $('drawerBtn').textContent=open?'原始推理 ▴':'原始推理 ▾';
+}
+
+/* question card */
+function submitAnswer(){
+  const v=$('ansInput').value.trim();
+  const box=$('verdictQ');
+  box.classList.add('show');
+  if(!v){
+    box.innerHTML='<span style="color:var(--text3)">还没有作答。写下理解后提交，或者跳过——连续跳过 3 次会建议降低阅读深度。</span>';
+    return;
+  }
+  const good=v.length>18;
+  box.innerHTML=good
+    ?'<span class="ok">✓ 判定：正确。</span>你抓住了「保存动作的原子性」这个关键。补充一点：仲裁等待保存完成后才重新接受请求，因此不会出现保存到一半切换优先级的情况。<span class="cite">[1]</span>'
+    :'<span class="part">判定：部分正确。</span>方向对，但漏了关键机制——保存动作本身具备原子性，仲裁必须等它完成。可回看 §8.9 第二段「登记时机」。';
+  $('ansInput').value='';
+  bumpProgress();
+}
+function skipQ(){
+  $('verdictQ').classList.add('show');
+  $('verdictQ').innerHTML='<span style="color:var(--text3)">已跳过 · 本题将记入「未决」，AI 不再追问本概念。</span>';
+}
+function decide(r){
+  const box=$('verdictS');
+  box.classList.add('show');
+  box.innerHTML=(r==='确认无误')
+    ?'<span class="ok">✓ 已确认。</span>本阶段理解已定稿，相关笔记转为可导出状态，继续下一轮。'
+    :'已记录你的纠正，AI 将针对偏差点补充一次定向检索后更新理解陈述。';
+  if(r==='确认无误')bumpProgress();
+}
+function skipS(){
+  $('verdictS').classList.add('show');
+  $('verdictS').innerHTML='<span style="color:var(--text3)">已跳过 · 阶段陈述按 AI 理解存档，不影响继续阅读。</span>';
+}
+
+/* notes */
+function noteAct(btn,act){
+  const note=btn.closest('.note');
+  if(act==='确认'){
+    note.classList.remove('draft');
+    const s=note.querySelector('.n-state');
+    s.textContent='已确认';s.classList.add('done');
+    btn.closest('.n-acts').style.display='none';
+    toast('笔记已定稿 · 计入导出');
+    bumpProgress();
+  }else if(act==='驳回'){
+    note.style.opacity='.35';
+    note.querySelector('.n-acts').style.display='none';
+    note.querySelector('.n-state').textContent='已驳回';
+    toast('已驳回 · 该反馈将调整后续提问策略');
+  }else{
+    toast('已进入编辑（原型内以 hover 编辑示意）');
+  }
+}
+function tabNotes(tab,type){
+  document.querySelectorAll('.n-tab').forEach(t=>t.classList.remove('on'));
+  tab.classList.add('on');
+  document.querySelectorAll('.note').forEach(n=>{
+    n.style.display=(type==='all'||n.classList.contains(type))?'block':'none';
+  });
+}
+
+/* contradiction */
+function resolveContra(c){
+  const card=$('contraCard');
+  card.classList.add('resolved');
+  const label={A:'已裁决 · 采纳说法 A（先到先服务）',B:'已裁决 · 采纳说法 B（优先级抢占）',Q:'已标记存疑 · 待补充检索'}[c];
+  $('contraActions').innerHTML='<span style="font-size:12.5px;font-weight:600;color:var(--green)">'+label+'</span><span style="font-size:11.5px;color:var(--text3)">　裁决已写入「矛盾」笔记</span>';
+  document.querySelectorAll('.contra-tag').forEach(t=>{t.textContent='矛盾 · 已处理';t.style.color='var(--green)';t.style.background='var(--green-bg)'});
+  bumpProgress();
+  toast('矛盾已裁决，可继续阅读');
+}
+function bumpProgress(){
+  const cur=parseFloat($('progFill').style.width);
+  $('progFill').style.width=Math.min(cur+3,100)+'%';
+}
+
+/* config picks */
+function pickDoc(row){
+  row.classList.toggle('on');
+}
+function pickDepth(row,est){
+  document.querySelectorAll('.depth-row').forEach(r=>r.classList.remove('on'));
+  row.classList.add('on');
+  const m=est.match(/预计 [\u4e00-\u9fa50-9 ]*分钟/);
+  $('estRow').children[0].innerHTML='预计 <b>'+(est.match(/约 [0-9]+ 分钟/)||['约 35 分钟'])[0].slice(2)+'</b>';
+  $('estRow').children[1].innerHTML='约 <b>'+(est.match(/[0-9]+ 轮 \/ 章/)||['3 轮'])[0].split(' ')[0]+' 轮 / 章</b>';
+  $('estRow').children[3].innerHTML=(est.match(/提问 [0-9–]+ 次 \/ 章|不提问/)||['提问 2–4 次 / 章'])[0].replace('提问','提问 <b>').replace(/$/,'</b>');
+  toast('已切换深度 · 预估已更新');
+}
+function pickGoal(chip){
+  if(chip.textContent==='自定义…'){ $('goalTa').focus(); return; }
+  chip.classList.toggle('on');
+}
+</script>
+</body>
+</html>
