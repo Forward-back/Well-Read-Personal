@@ -259,12 +259,12 @@ function select(groupId: string) {
 }
 
 .group-row--active {
-  background: var(--rvn-sage-bg);
+  background: var(--rvn-brand-bg);
 
   .group-row__name,
   .group-row__icon,
   .group-row__cards {
-    color: var(--rvn-sage-deep);
+    color: var(--rvn-brand);
   }
 }
 
@@ -346,7 +346,7 @@ function select(groupId: string) {
   min-width: 16px;
   padding: 0 4px;
   border-radius: var(--td-radius-round);
-  background: var(--rvn-sage);
+  background: var(--rvn-brand);
   color: #fff;
   font-size: 10px;
   line-height: 16px;

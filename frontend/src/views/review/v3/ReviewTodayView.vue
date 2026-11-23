@@ -211,8 +211,8 @@ const canStart = computed(() => hasQueue.value || hasActiveSession.value)
 
 .task-card {
   padding: 16px 18px;
-  background: var(--rvn-sage-bg);
-  border: 1px solid var(--rvn-sage-line);
+  background: var(--rvn-brand-bg);
+  border: 1px solid var(--rvn-brand-line);
   border-radius: var(--rvn-radius);
 }
 
@@ -279,7 +279,7 @@ const canStart = computed(() => hasQueue.value || hasActiveSession.value)
   gap: 12px;
   margin-top: 18px;
   padding-top: 16px;
-  border-top: 1px solid var(--rvn-sage-line);
+  border-top: 1px solid var(--rvn-brand-line);
 }
 
 .metric {

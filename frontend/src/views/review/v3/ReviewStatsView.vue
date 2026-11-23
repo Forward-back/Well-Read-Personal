@@ -84,8 +84,8 @@ function cssVar(name: string, fallback: string) {
 function palette() {
   const dark = document.documentElement.getAttribute('theme-mode') === 'dark'
   return {
-    brand: '#8fa88b',
-    success: '#8fa88b',
+    brand: '#07c05f',
+    success: '#07c05f',
     warning: '#c9a96e',
     error: '#c9a4a0',
     info: '#9db0be',
