@@ -195,9 +195,9 @@ function select(groupId: string) {
   flex: 0 0 200px;
   min-width: 0;
   padding: 10px 8px;
-  background: var(--td-bg-color-container);
-  border: 1px solid var(--td-component-stroke);
-  border-radius: 0;
+  background: var(--rvn-panel);
+  border: 1px solid var(--rvn-border);
+  border-radius: var(--rvn-radius);
   align-self: stretch;
   position: static;
   max-height: none;
@@ -259,12 +259,12 @@ function select(groupId: string) {
 }
 
 .group-row--active {
-  background: var(--td-brand-color-light);
+  background: var(--rvn-sage-bg);
 
   .group-row__name,
   .group-row__icon,
   .group-row__cards {
-    color: var(--td-brand-color);
+    color: var(--rvn-sage-deep);
   }
 }
 
@@ -346,8 +346,8 @@ function select(groupId: string) {
   min-width: 16px;
   padding: 0 4px;
   border-radius: var(--td-radius-round);
-  background: var(--td-warning-color-light);
-  color: var(--td-warning-color);
+  background: var(--rvn-sage);
+  color: #fff;
   font-size: 10px;
   line-height: 16px;
   font-variant-numeric: tabular-nums;

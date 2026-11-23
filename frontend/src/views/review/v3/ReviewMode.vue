@@ -457,7 +457,6 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   background: var(--td-bg-color-container);
   border: 1px solid var(--td-component-stroke);
   border-radius: var(--td-radius-medium);
-  box-shadow: 0 6px 24px color-mix(in srgb, var(--td-text-color-primary) 5%, transparent);
 }
 
 .review-mode__severe {
@@ -703,7 +702,6 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   background: var(--td-bg-color-container);
   border: 1px solid var(--td-component-stroke);
   border-radius: var(--td-radius-medium);
-  box-shadow: 0 6px 24px color-mix(in srgb, var(--td-text-color-primary) 5%, transparent);
   text-align: center;
 
   h2 {

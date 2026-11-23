@@ -611,6 +611,66 @@ onMounted(() => {
   height: 100%;
   overflow-y: auto;
   background: transparent;
+  color: #373530;
+  font-size: 14px;
+  line-height: 1.65;
+  --rvn-border: #e9e7e2;
+  --rvn-panel: #f1f1ef;
+  --rvn-panel-hover: #ececea;
+  --rvn-sage: #8fa88b;
+  --rvn-sage-deep: #5e7059;
+  --rvn-sage-bg: #eef3ed;
+  --rvn-sage-line: #d5dfd2;
+  --rvn-milk: #f2efe4;
+  --rvn-milk-deep: #b5a89c;
+  --rvn-blue: #9db0be;
+  --rvn-blue-bg: #edf2f5;
+  --rvn-rose: #c9a4a0;
+  --rvn-rose-bg: #f7eeed;
+  --rvn-rose-text: #9e5a54;
+  --rvn-gold: #c9a96e;
+  --rvn-gray: #a9a9a2;
+  --rvn-radius: 10px;
+  --rvn-radius-sm: 6px;
+  --rv-vuln-severe: #c9a4a0;
+  --rv-vuln-warning: #c9a96e;
+  --rv-vuln-observe: #9db0be;
+  --rv-vuln-healthy: #8fa88b;
+  --td-brand-color: #8fa88b;
+  --td-brand-color-hover: #5e7059;
+  --td-brand-color-active: #5e7059;
+  --td-brand-color-focus: #5e7059;
+  --td-brand-color-light: #eef3ed;
+  --td-text-color-primary: #373530;
+  --td-text-color-secondary: #787774;
+  --td-text-color-placeholder: #9b9a95;
+  --td-component-stroke: #e9e7e2;
+  --td-component-border: #d5dfd2;
+  --td-success-color: #8fa88b;
+  --td-success-color-light: #eef3ed;
+  --td-warning-color: #c9a96e;
+  --td-warning-color-light: #f2efe4;
+  --td-error-color: #9e5a54;
+  --td-error-color-light: #f7eeed;
+  --td-info-color: #5b7891;
+  --td-info-color-light: #edf2f5;
+}
+
+:global([theme-mode='dark']) .review-v3 {
+  color: #f2f1ee;
+  --rvn-border: #3d3b37;
+  --rvn-panel: #2a2926;
+  --rvn-panel-hover: #33322e;
+  --rvn-sage-bg: #26302a;
+  --rvn-sage-line: #3f4a40;
+  --rvn-milk: #302d26;
+  --rvn-blue-bg: #263039;
+  --rvn-rose-bg: #332827;
+  --rvn-rose-text: #d8a8a3;
+  --td-text-color-primary: #f2f1ee;
+  --td-text-color-secondary: #b8b6b0;
+  --td-text-color-placeholder: #8f8d87;
+  --td-component-stroke: #3d3b37;
 }
 
 .review-v3__inner {
@@ -660,6 +720,23 @@ onMounted(() => {
     padding: 0;
     overflow: visible;
   }
+}
+
+.review-v3 :deep(.t-card) {
+  background: transparent;
+  box-shadow: none;
+  border: 1px solid var(--rvn-border);
+  border-radius: var(--rvn-radius);
+}
+
+.review-v3 :deep(.t-tabs__nav-item) {
+  font-size: 13.5px;
+  color: var(--td-text-color-secondary);
+}
+
+.review-v3 :deep(.t-tabs__nav-item.t-is-active) {
+  color: var(--rvn-sage-deep);
+  font-weight: 600;
 }
 
 .review-v3__today {

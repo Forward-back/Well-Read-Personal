@@ -76,21 +76,23 @@ const kpis = computed(() => [
 ])
 
 function cssVar(name: string, fallback: string) {
-  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  const root = document.querySelector('.review-v3') || document.documentElement
+  const value = getComputedStyle(root).getPropertyValue(name).trim()
   return value || fallback
 }
 
 function palette() {
+  const dark = document.documentElement.getAttribute('theme-mode') === 'dark'
   return {
-    brand: cssVar('--td-brand-color', '#00a870'),
-    success: cssVar('--td-success-color', '#2ba471'),
-    warning: cssVar('--td-warning-color', '#e37318'),
-    error: cssVar('--td-error-color', '#d54941'),
-    info: cssVar('--td-info-color', '#0052d9'),
-    text: cssVar('--td-text-color-secondary', '#666666'),
-    primary: cssVar('--td-text-color-primary', '#1a1a1a'),
-    border: cssVar('--td-component-stroke', '#e7e7e7'),
-    background: cssVar('--td-bg-color-container', '#ffffff'),
+    brand: '#8fa88b',
+    success: '#8fa88b',
+    warning: '#c9a96e',
+    error: '#c9a4a0',
+    info: '#9db0be',
+    text: cssVar('--td-text-color-secondary', '#787774'),
+    primary: cssVar('--td-text-color-primary', '#373530'),
+    border: cssVar('--td-component-stroke', '#e9e7e2'),
+    background: dark ? '#2a2926' : '#ffffff',
   }
 }
 

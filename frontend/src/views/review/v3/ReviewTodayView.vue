@@ -210,11 +210,10 @@ const canStart = computed(() => hasQueue.value || hasActiveSession.value)
 }
 
 .task-card {
-  padding: 20px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--td-brand-color) 4%, var(--td-bg-color-container)) 0%, var(--td-bg-color-container) 42%);
-  border: 1px solid var(--td-component-stroke);
-  border-radius: 0 0 var(--td-radius-medium) var(--td-radius-medium);
+  padding: 16px 18px;
+  background: var(--rvn-sage-bg);
+  border: 1px solid var(--rvn-sage-line);
+  border-radius: var(--rvn-radius);
 }
 
 .task-card__head {
@@ -280,7 +279,7 @@ const canStart = computed(() => hasQueue.value || hasActiveSession.value)
   gap: 12px;
   margin-top: 18px;
   padding-top: 16px;
-  border-top: 1px solid var(--td-component-stroke);
+  border-top: 1px solid var(--rvn-sage-line);
 }
 
 .metric {
@@ -293,7 +292,7 @@ const canStart = computed(() => hasQueue.value || hasActiveSession.value)
   gap: 4px;
   font-size: 12px;
   line-height: 18px;
-  color: var(--td-text-color-placeholder);
+  color: var(--td-text-color-secondary);
 }
 
 .metric__value {

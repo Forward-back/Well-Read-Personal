@@ -1077,10 +1077,9 @@ onMounted(() => {
 
 .cards-panel {
   padding: 16px 20px 18px;
-  background: var(--td-bg-color-container);
-  border: 1px solid var(--td-component-stroke);
-  border-top: 0;
-  border-radius: 0 0 var(--td-radius-medium) var(--td-radius-medium);
+  background: transparent;
+  border: 1px solid var(--rvn-border);
+  border-radius: var(--rvn-radius);
 
   &__head {
     display: flex;

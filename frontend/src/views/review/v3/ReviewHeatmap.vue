@@ -348,7 +348,7 @@ function levelClass(level: string | undefined) {
 .heatmap__corner,
 .heatmap__rowhead,
 .heatmap__colhead {
-  background: var(--td-bg-color-container);
+  background: var(--rvn-panel);
 }
 
 .heatmap__rowhead {
@@ -446,7 +446,8 @@ button.heatmap__rowhead {
   }
 
   &.is-emphasis {
-    box-shadow: inset 0 0 0 2px var(--td-brand-color);
+    outline: 2px solid var(--td-brand-color);
+    outline-offset: -2px;
   }
 }
 

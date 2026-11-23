@@ -131,16 +131,16 @@ function nameOf(cell: ReviewHeatmapCell) {
   gap: 4px;
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--td-component-stroke);
-  border-radius: var(--td-radius-default);
-  background: var(--td-bg-color-container);
+  border: 1px solid transparent;
+  border-radius: var(--rvn-radius-sm);
+  background: transparent;
   font-family: inherit;
   text-align: left;
   cursor: pointer;
 
   &:hover {
-    background: var(--td-bg-color-container-hover);
-    border-color: var(--td-component-border);
+    background: var(--rvn-panel-hover);
+    border-color: var(--rvn-border);
   }
 
   &:focus-visible {
