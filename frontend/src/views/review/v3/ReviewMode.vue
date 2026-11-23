@@ -418,14 +418,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   inset: 0;
   z-index: 2400;
   overflow-y: auto;
-  background: transparent;
+  background: var(--w-detail-bg, #f7f5f0);
 }
 
 .review-mode__inner {
-  width: min(760px, 100%);
+  width: 100%;
   min-height: 100%;
-  margin: 0 auto;
-  padding: 18px 20px 40px;
+  margin: 0;
+  padding: 18px 32px 40px;
   display: flex;
   flex-direction: column;
 }
