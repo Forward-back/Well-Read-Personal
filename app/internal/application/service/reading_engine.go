@@ -722,8 +722,15 @@ func (s *readingRunService) callReadingRoundModel(
 			return parsed, resp.Content, joinReasoning(), totalUsage, nil
 		}
 		lastErr = err
+		// Thinking providers reject assistant turns with no content, tool_calls
+		// or reasoning_content, and some require the original reasoning to be
+		// round-tripped. Keep it when asking the model to repair its JSON.
+		if strings.TrimSpace(resp.Content) != "" || strings.TrimSpace(resp.ReasoningContent) != "" {
+			messages = append(messages, chat.Message{
+				Role: "assistant", Content: resp.Content, ReasoningContent: resp.ReasoningContent,
+			})
+		}
 		messages = append(messages,
-			chat.Message{Role: "assistant", Content: resp.Content},
 			chat.Message{Role: "user", Content: "上次输出不是有效 JSON。请只返回严格 JSON，不要包含解释或 Markdown。"},
 		)
 	}
