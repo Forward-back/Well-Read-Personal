@@ -564,12 +564,13 @@ onBeforeUnmount(() => {
 .stats-kpis {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 16px;
+  margin-bottom: 20px;
 }
 
 .stats-kpi {
   :deep(.t-card__body) {
-    padding: 16px 18px;
+    padding: 18px 20px;
   }
 
   &__main {
@@ -617,7 +618,8 @@ onBeforeUnmount(() => {
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 16px;
+  margin-bottom: 20px;
 }
 
 .stats-card-title {
