@@ -1842,6 +1842,21 @@ function normalizeDocumentText(value: string) {
   return { text, map }
 }
 
+// Quotes come from raw chunks (Markdown, tables, emphasis); rendered text has
+// none of those markers. Compare only letters, digits and CJK characters and
+// map the match back to raw offsets.
+function normalizeForLocate(value: string) {
+  let text = ''
+  const map: number[] = []
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i]
+    if (!/[\p{L}\p{N}]/u.test(char)) continue
+    text += char.toLowerCase()
+    map.push(i)
+  }
+  return { text, map }
+}
+
 function locateEvidenceInPreview(root: HTMLElement, evidence: ReadingEvidence) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
   const nodes: Array<{ node: Text; start: number; end: number }> = []
@@ -1878,6 +1893,40 @@ function locateEvidenceInPreview(root: HTMLElement, evidence: ReadingEvidence) {
     if (index >= 0) {
       const rawStart = normalized.map[index]
       const rawEnd = normalized.map[index + target.length - 1] + 1
+      const from = nodeAt(rawStart)
+      const to = nodeAt(rawEnd - 1)
+      try {
+        const range = document.createRange()
+        range.setStart(from.node, rawStart - from.start)
+        range.setEnd(to.node, rawEnd - to.start)
+        const block = (from.node.parentElement?.closest('p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th, pre') as HTMLElement | null)
+          || from.node.parentElement
+        const mark = document.createElement('mark')
+        mark.className = 'rv-doc-locate-mark'
+        try {
+          range.surroundContents(mark)
+          scrollPreviewToElement(mark)
+        } catch {
+          block?.classList.add('rv-doc-locate-block')
+          scrollPreviewToElement(block || root)
+        }
+        return true
+      } catch {
+        // Fall through to the compact match.
+      }
+    }
+  }
+  const compactTarget = normalizeForLocate(evidence.quote || '').text
+  if (compactTarget) {
+    const compactRaw = normalizeForLocate(raw)
+    let index = compactRaw.text.indexOf(compactTarget)
+    while (index >= 0 && compactRaw.map[index] < searchFrom) {
+      index = compactRaw.text.indexOf(compactTarget, index + 1)
+    }
+    if (index < 0) index = compactRaw.text.indexOf(compactTarget)
+    if (index >= 0) {
+      const rawStart = compactRaw.map[index]
+      const rawEnd = compactRaw.map[index + compactTarget.length - 1] + 1
       const from = nodeAt(rawStart)
       const to = nodeAt(rawEnd - 1)
       try {
