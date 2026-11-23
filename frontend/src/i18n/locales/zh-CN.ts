@@ -6545,6 +6545,7 @@ export default {
         status: '状态',
         reviewInfo: '复习进度',
         neverReviewed: '从未复习',
+        back: '返回',
         newCard: '新建卡片',
         createTitle: '新建卡片',
         edit: '编辑卡片',

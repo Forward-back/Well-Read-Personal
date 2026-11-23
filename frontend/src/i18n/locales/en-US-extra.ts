@@ -641,6 +641,7 @@ export default {
   "review.v3.cardsPage.status": "Status",
   "review.v3.cardsPage.reviewInfo": "Review progress",
   "review.v3.cardsPage.neverReviewed": "Never reviewed",
+  "review.v3.cardsPage.back": "Back",
   "review.v3.cardsPage.newCard": "New card",
   "review.v3.cardsPage.createTitle": "New card",
   "review.v3.cardsPage.edit": "Edit card",
