@@ -83,11 +83,11 @@ func readingStructuredTokenBudget(depth string) int {
 func readingRoundMaxTokens(depth string) int {
 	switch normalizeReadingDepth(depth) {
 	case types.ReadingDepthQuick:
-		return 3000
+		return 5000
 	case types.ReadingDepthDeep:
-		return 6000
+		return 12000
 	default:
-		return 4000
+		return 8000
 	}
 }
 
