@@ -51,7 +51,7 @@ func newTestSessionService(t *testing.T) (*sessionService, *gorm.DB) {
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
-	require.NoError(t, db.AutoMigrate(&types.Session{}))
+	require.NoError(t, db.AutoMigrate(&types.Session{}, &types.Message{}))
 
 	return &sessionService{
 		sessionRepo: repository.NewSessionRepository(db),
