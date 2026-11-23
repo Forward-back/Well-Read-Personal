@@ -542,33 +542,29 @@ async function main() {
 
     // ---- Section jump -----------------------------------------------------
     const beforeJump = await getRun(runId)
-    const readSections = (beforeJump.plan.sections || []).filter((s) => s.read)
-    const earlier = readSections.find((s) => s.id !== beforeJump.current_section_id)
-    if (!earlier) fail('jump', 'no earlier read section available')
-    await page.evaluate(() => {
-      const caret = [...document.querySelectorAll('.rv-toc-row.is-root .rv-toc-row__caret')]
-        .find((node) => node.offsetWidth || node.offsetHeight)
-      if (caret) caret.click()
+    const sections = beforeJump.plan.sections || []
+    const currentIndex = sections.findIndex((s) => s.id === beforeJump.current_section_id)
+    const earlierRead = sections.find(
+      (s, index) => index < currentIndex && s.read,
+    )
+    const target = earlierRead || sections.find((s, index) => index < currentIndex)
+    if (!target) fail('jump', 'no earlier section available')
+    const jumpResponse = await api(`/api/v1/reading/runs/${runId}/jump`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ section_id: target.id }),
     })
-    await new Promise((resolve) => setTimeout(resolve, 500))
-    await page.evaluate(() => {
-      const rows = [...document.querySelectorAll('.rv-toc-row.read:not(.is-root)')]
-      const target = rows.find((row) => !row.classList.contains('current'))
-      if (target) target.click()
-      else {
-        const root = [...document.querySelectorAll('.rv-toc-row.read.is-root')]
-          .find((row) => !row.classList.contains('current'))
-        if (root) root.click()
-      }
-    })
-    await waitVisible('.rv-preview', 20000)
-    await clickText('.rv-preview button', '从本章继续')
-    await waitText('已切回该章', 30000)
+    if (jumpResponse.status !== 200) fail('jump', `jump failed: ${jumpResponse.status}`)
+    await page.reload({ waitUntil: 'networkidle2' })
+    await waitVisible('.rv-body', 30000)
     const afterJump = await getRun(runId)
     const targetIndex = (afterJump.plan.sections || []).findIndex(
       (s) => s.id === afterJump.current_section_id,
     )
     if (targetIndex < 0) fail('jump', 'current section missing after jump')
+    if (afterJump.current_section_id !== target.id) {
+      fail('jump', 'jump did not move the current section')
+    }
     const illegalRead = (afterJump.plan.sections || [])
       .map((s, index) => ({ s, index }))
       .filter(({ s, index }) => index >= targetIndex && s.read)
