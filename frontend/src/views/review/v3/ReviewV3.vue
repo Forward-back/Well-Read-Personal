@@ -23,13 +23,12 @@ import {
   type ReviewSessionState,
 } from '@/api/review'
 import ReviewGenerateDialog from './ReviewGenerateDialog.vue'
-import ReviewGroupRail from './ReviewGroupRail.vue'
 import ReviewMode from './ReviewMode.vue'
 import ReviewTodayView from './ReviewTodayView.vue'
+import ReviewIcon from './ReviewIcon.vue'
 import type { ReviewFlatGroup } from './types'
 import './vulnerability.css'
 import './review-ui.css'
-import calendarIcon from '@/assets/icons/static/calendar.png'
 
 const ReviewCardsView = defineAsyncComponent(() => import('./ReviewCardsView.vue'))
 const ReviewStatsView = defineAsyncComponent(() => import('./ReviewStatsView.vue'))
@@ -39,6 +38,15 @@ const route = useRoute()
 const router = useRouter()
 
 const activeView = ref<'today' | 'cards' | 'stats'>('today')
+const viewMeta = computed(() => {
+  if (activeView.value === 'cards') {
+    return { label: t('review.v3.cardsPageTitle'), subtitle: t('review.v3.cardsPage.subtitle') }
+  }
+  if (activeView.value === 'stats') {
+    return { label: t('review.v3.statsTab'), subtitle: t('review.v3.statsSubtitle') }
+  }
+  return { label: t('review.v3.todayTab'), subtitle: t('review.subtitle') }
+})
 const pageRoot = ref<HTMLElement | null>(null)
 const groups = ref<ReviewGroupNode[]>([])
 const flatGroups = ref<ReviewFlatGroup[]>([])
@@ -51,6 +59,7 @@ const reviewState = ref<ReviewSessionState | null>(null)
 const reviewLabel = ref('')
 const reviewStarting = ref(false)
 const heatmapExpanded = ref(false)
+const heatmapRowGroupIds = ref<string[]>([])
 const loading = ref(true)
 const queueLoading = ref(false)
 const heatmapLoading = ref(false)
@@ -75,6 +84,7 @@ const cardConflictVisible = ref(false)
 const cardConflictBusy = ref(false)
 
 const generateVisible = ref(false)
+const cardsDetail = ref(false)
 const moreOptions = computed(() => [
   { content: t('review.v3.generateCards'), value: 'generate' },
   { content: t('review.v3.exportJson'), value: 'export' },
@@ -166,6 +176,7 @@ async function loadHeatmap() {
   try {
     const response = await getReviewHeatmap({
       group_id: selectedGroupId.value || undefined,
+      row_group_ids: heatmapRowGroupIds.value.length ? heatmapRowGroupIds.value : undefined,
       expand: heatmapExpanded.value || undefined,
     })
     if (seq !== heatmapRequestSeq) return
@@ -202,10 +213,22 @@ async function refresh() {
 
 function selectGroup(groupId: string) {
   selectedGroupId.value = groupId
+  heatmapRowGroupIds.value = []
   const query = { ...route.query }
   if (groupId) query.scope = groupId
   else delete query.scope
   void router.replace({ query })
+}
+
+function selectHeatmapRows(ids: string[]) {
+  heatmapRowGroupIds.value = ids
+  void loadHeatmap()
+}
+
+function selectView(view: string) {
+  if (view === 'today' || view === 'cards' || view === 'stats') {
+    activeView.value = view
+  }
 }
 
 function sessionLabel(state: ReviewSessionState) {
@@ -461,19 +484,32 @@ onMounted(() => {
 <template>
   <div ref="pageRoot" class="review-v3 rv-vuln-scope">
     <div class="review-v3__inner">
-      <header class="rv-page-head">
+      <header v-if="!generateVisible && !reviewVisible && !cardsDetail" class="rv-page-head">
         <div class="rv-page-head__main">
-          <img class="rv-page-head__icon" :src="calendarIcon" alt="" />
-          <div>
-            <h1>{{ t('review.title') }}</h1>
-            <p>{{ t('review.subtitle') }}</p>
-          </div>
+          <h1>{{ viewMeta.label }}</h1>
         </div>
         <div class="rv-page-head__actions">
+          <nav class="review-v3__nav">
+            <button
+              v-for="view in [
+                { key: 'today', label: t('review.v3.todayTab') },
+                { key: 'cards', label: t('review.v3.cardsTab') },
+                { key: 'stats', label: t('review.v3.statsTab') },
+              ]"
+              :key="view.key"
+              type="button"
+              class="t-tabs__nav-item"
+              :class="{ 't-is-active': activeView === view.key }"
+              @click="selectView(view.key)"
+            >
+              {{ view.label }}
+            </button>
+          </nav>
           <t-dropdown :options="moreOptions" placement="bottom-right" @click="onMoreAction">
-            <t-button variant="outline" data-testid="review-v3-more">
+            <button type="button" class="rv-btn rv-btn--ghost rv-btn--sm" data-testid="review-v3-more">
               {{ t('review.v3.moreActions') }}
-            </t-button>
+              <ReviewIcon name="chevron-down" :size="12" />
+            </button>
           </t-dropdown>
         </div>
       </header>
@@ -486,56 +522,49 @@ onMounted(() => {
         @imported="refreshAfterCardChange"
       />
 
-      <t-tabs v-if="!generateVisible && !reviewVisible" v-model="activeView" class="review-v3__tabs">
-        <t-tab-panel value="today" :label="t('review.v3.todayTab')">
-          <div class="review-v3__today">
-            <ReviewGroupRail
-              :groups="flatGroups"
-              :selected-group-id="selectedGroupId"
-              :all-card-count="allCardCount"
-              :all-due-count="allDueCount"
-              @select="selectGroup"
-              @create="openCreateGroup"
-              @rename="openRenameGroup"
-              @delete="openDeleteGroup"
-            />
-            <main class="review-v3__main">
-              <ReviewTodayView
-                :queue="queue"
-                :active-session="activeSession"
-                :selected-group-name="selectedGroupName"
-                :selected-group-id="selectedGroupId"
-                :group-options="groupOptions"
-                :heatmap="heatmap"
-                :heatmap-loading="heatmapLoading"
-                :heatmap-error="heatmapError"
-                :loading="loading || queueLoading"
-                :error="error"
-                @start="handleStart"
-                @retry="refresh"
-                @retry-heatmap="loadHeatmap"
-                @open-cluster="openCluster"
-                @drill="drillGroup"
-                @expand="expandHeatmap"
-                @update:group-id="selectGroup"
-              />
-            </main>
-          </div>
-        </t-tab-panel>
+      <ReviewTodayView
+        v-if="!generateVisible && !reviewVisible && !cardsDetail && activeView === 'today'"
+        :queue="queue"
+        :active-session="activeSession"
+        :selected-group-name="selectedGroupName"
+        :selected-group-id="selectedGroupId"
+        :group-options="groupOptions"
+        :groups="flatGroups"
+        :all-card-count="allCardCount"
+        :all-due-count="allDueCount"
+        :heatmap="heatmap"
+        :heatmap-loading="heatmapLoading"
+        :heatmap-error="heatmapError"
+        :row-group-ids="heatmapRowGroupIds"
+        :loading="loading || queueLoading"
+        :error="error"
+        @select-group="selectGroup"
+        @create-group="openCreateGroup"
+        @rename-group="openRenameGroup"
+        @delete-group="openDeleteGroup"
+        @start="handleStart"
+        @retry="refresh"
+        @retry-heatmap="loadHeatmap"
+        @update:row-group-ids="selectHeatmapRows"
+        @open-cluster="openCluster"
+        @drill="drillGroup"
+        @expand="expandHeatmap"
+        @update:group-id="selectGroup"
+      />
 
-        <t-tab-panel value="cards" :label="t('review.v3.cardsTab')">
-          <ReviewCardsView
-            :flat-groups="flatGroups"
-            :initial-group-id="selectedGroupId"
-            @review-card="handleCardReview"
-            @updated="refreshAfterCardChange"
-          />
-        </t-tab-panel>
+      <ReviewCardsView
+        v-if="!generateVisible && !reviewVisible && activeView === 'cards'"
+        :flat-groups="flatGroups"
+        :initial-group-id="selectedGroupId"
+        @review-card="handleCardReview"
+        @updated="refreshAfterCardChange"
+        @detail="cardsDetail = $event"
+      />
 
-        <t-tab-panel value="stats" :label="t('review.v3.statsTab')">
-          <ReviewStatsView @review-group="handleStatsReview" />
-        </t-tab-panel>
-      </t-tabs>
+      <ReviewStatsView
+        v-if="!generateVisible && !reviewVisible && !cardsDetail && activeView === 'stats'"
+        @review-group="handleStatsReview"
+      />
 
       <footer class="rv-attribution">
         <a href="https://icons8.com" target="_blank" rel="noopener noreferrer">Icons by Icons8</a>
@@ -613,72 +642,113 @@ onMounted(() => {
   height: 100%;
   overflow-y: auto;
   background: transparent;
-  color: #373530;
-  font-size: 14px;
-  line-height: 1.65;
-  --rvn-border: #e9e7e2;
-  --rvn-panel: #f1f1ef;
-  --rvn-panel-hover: #ececea;
-  --rvn-brand: #07c05f;
-  --rvn-brand-deep: #06b04d;
-  --rvn-brand-bg: #e9f8ec;
-  --rvn-brand-line: #bcebdc;
-  --rvn-milk: #f2efe4;
-  --rvn-milk-deep: #b5a89c;
-  --rvn-blue: #9db0be;
-  --rvn-blue-bg: #edf2f5;
-  --rvn-rose: #c9a4a0;
-  --rvn-rose-bg: #f7eeed;
-  --rvn-rose-text: #9e5a54;
-  --rvn-gold: #c9a96e;
-  --rvn-gray: #a9a9a2;
-  --rvn-radius: 10px;
-  --rvn-radius-sm: 6px;
-  --rv-vuln-severe: #c9a4a0;
-  --rv-vuln-warning: #c9a96e;
-  --rv-vuln-observe: #9db0be;
-  --rv-vuln-healthy: #07c05f;
-  --td-brand-color: #07c05f;
-  --td-brand-color-hover: #08dd6e;
-  --td-brand-color-active: #06b04d;
-  --td-brand-color-focus: #06b04d;
-  --td-brand-color-light: #e9f8ec;
-  --td-text-color-primary: #373530;
-  --td-text-color-secondary: #787774;
-  --td-text-color-placeholder: #9b9a95;
-  --td-component-stroke: #e9e7e2;
-  --td-component-border: #d5dfd2;
-  --td-success-color: #07c05f;
-  --td-success-color-light: #e9f8ec;
-  --td-warning-color: #c9a96e;
-  --td-warning-color-light: #f2efe4;
-  --td-error-color: #9e5a54;
-  --td-error-color-light: #f7eeed;
-  --td-info-color: #5b7891;
-  --td-info-color-light: #edf2f5;
+  color: var(--rvn-ink, #3f3a34);
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: -0.003em;
+  --rvn-canvas: #f1ede6;
+  --rvn-paper: #fbf9f5;
+  --rvn-surface: #f0ece5;
+  --rvn-surface-deep: #e9e4db;
+  --rvn-ink: #3f3a34;
+  --rvn-ink-soft: #6e675e;
+  --rvn-muted: #857c70;
+  --rvn-line: #e0dbd1;
+  --rvn-line-strong: rgba(63, 58, 52, 0.15);
+  --rvn-gray-soft: #ede7dd;
+  --rvn-accent: #6e93a8;
+  --rvn-accent-deep: #47677a;
+  --rvn-accent-soft: #dfe7ea;
+  --rvn-red: #b0716b;
+  --rvn-red-deep: #8a4e47;
+  --rvn-red-soft: #ebdcd7;
+  --rvn-orange: #b18e6e;
+  --rvn-orange-deep: #7e5e42;
+  --rvn-orange-soft: #ece3d8;
+  --rvn-yellow: #b3a26e;
+  --rvn-yellow-deep: #7c6e42;
+  --rvn-yellow-soft: #ede8da;
+  --rvn-green: #8ca08c;
+  --rvn-green-deep: #5e7261;
+  --rvn-green-soft: #e3e9df;
+  --rvn-purple: #978ba8;
+  --rvn-purple-deep: #6b5f7a;
+  --rvn-purple-soft: #e6e1ea;
+  --rvn-brand: #5a7688;
+  --rvn-brand-deep: #4c6678;
+  --rvn-brand-bg: #e7ecef;
+  --rvn-brand-line: #c9d4db;
+  --rvn-radius: 11px;
+  --rvn-radius-sm: 7px;
+  --rvn-border: var(--rvn-line);
+  --rvn-panel: var(--rvn-surface);
+  --rvn-panel-hover: var(--rvn-surface-deep);
+  --rv-vuln-severe: #8a4e47;
+  --rv-vuln-warning: #7e5e42;
+  --rv-vuln-observe: #47677a;
+  --rv-vuln-healthy: #5e7261;
+  --td-brand-color: #5a7688;
+  --td-brand-color-hover: #6e93a8;
+  --td-brand-color-active: #4c6678;
+  --td-brand-color-focus: #4c6678;
+  --td-brand-color-light: #e7ecef;
+  --td-text-color-primary: #3f3a34;
+  --td-text-color-secondary: #6e675e;
+  --td-text-color-placeholder: #857c70;
+  --td-text-color-brand: #4c6678;
+  --td-component-stroke: #e0dbd1;
+  --td-component-border: #e0dbd1;
+  --td-bg-color-container: #fbf9f5;
+  --td-bg-color-container-hover: #f0ece5;
+  --td-bg-color-container-active: #e9e4db;
+  --td-success-color: #5e7261;
+  --td-success-color-light: #e3e9df;
+  --td-warning-color: #7e5e42;
+  --td-warning-color-light: #ece3d8;
+  --td-error-color: #8a4e47;
+  --td-error-color-light: #ebdcd7;
+  --td-info-color: #47677a;
+  --td-info-color-light: #dfe7ea;
 }
 
 :global([theme-mode='dark']) .review-v3 {
   color: #f2f1ee;
-  --rvn-border: #3d3b37;
-  --rvn-panel: #2a2926;
-  --rvn-panel-hover: #33322e;
-  --rvn-brand-bg: #06b04d33;
-  --rvn-brand-line: #06b04d4d;
-  --td-brand-color-light: #06b04d33;
-  --rvn-milk: #302d26;
-  --rvn-blue-bg: #263039;
-  --rvn-rose-bg: #332827;
-  --rvn-rose-text: #d8a8a3;
+  --rvn-canvas: #262420;
+  --rvn-paper: #2b2925;
+  --rvn-surface: #33302a;
+  --rvn-surface-deep: #3b3731;
+  --rvn-ink: #f2f1ee;
+  --rvn-ink-soft: #c7c2b9;
+  --rvn-muted: #9c948a;
+  --rvn-line: #403c35;
+  --rvn-line-strong: rgba(242, 241, 238, 0.18);
+  --rvn-gray-soft: #35312b;
+  --rvn-brand-bg: #28323a;
+  --rvn-brand-line: #3b4a55;
+  --rvn-accent-soft: #263039;
+  --rvn-red-soft: #332827;
+  --rvn-orange-soft: #332d25;
+  --rvn-yellow-soft: #333026;
+  --rvn-green-soft: #28302a;
+  --rvn-purple-soft: #2e2936;
+  --td-brand-color-light: #28323a;
   --td-text-color-primary: #f2f1ee;
-  --td-text-color-secondary: #b8b6b0;
-  --td-text-color-placeholder: #8f8d87;
-  --td-component-stroke: #3d3b37;
+  --td-text-color-secondary: #c7c2b9;
+  --td-text-color-placeholder: #9c948a;
+  --td-component-stroke: #403c35;
+  --td-bg-color-container: #2b2925;
+  --td-bg-color-container-hover: #33302a;
+  --td-bg-color-container-active: #3b3731;
 }
 
 .review-v3__inner {
   width: 100%;
-  padding: 24px 32px 48px;
+  max-width: none;
+  margin: 0;
+  padding: 24px 10% 48px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
 }
 
 .review-v3__head {
@@ -697,7 +767,7 @@ onMounted(() => {
 
   p {
     margin: 4px 0 0;
-    font-size: 13px;
+    font-size: 14px;
     line-height: 20px;
     color: var(--td-text-color-secondary);
   }
@@ -709,19 +779,68 @@ onMounted(() => {
   gap: 8px;
 }
 
-.review-v3__tabs {
-  margin-top: 14px;
-  overflow: visible;
+.review-v3__nav {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  margin-right: 10px;
+}
+
+.review-v3__nav .t-tabs__nav-item {
+  padding: 3px 1px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--rvn-muted);
+  cursor: pointer;
   background: transparent;
+  border: 0;
+}
 
-  :deep(.t-tabs) {
-    background: transparent;
-  }
+.review-v3__nav .t-tabs__nav-item:hover {
+  color: var(--rvn-ink);
+}
 
-  :deep(.t-tabs__content) {
-    padding: 0;
-    overflow: visible;
-  }
+.review-v3__nav .t-tabs__nav-item.t-is-active {
+  font-weight: 600;
+  color: var(--rvn-brand-deep);
+}
+
+.review-v3__tabs {
+  display: flex;
+  gap: 0;
+  margin: 6px 0 24px;
+  border-bottom: 1px solid var(--rvn-line);
+}
+
+.review-v3__tabs .t-tabs__nav-item {
+  position: relative;
+  padding: 8px 2px 10px;
+  margin-right: 28px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--rvn-muted);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+}
+
+.review-v3__tabs .t-tabs__nav-item:hover {
+  color: var(--rvn-ink);
+}
+
+.review-v3__tabs .t-tabs__nav-item.t-is-active {
+  font-weight: 600;
+  color: var(--rvn-brand-deep);
+}
+
+.review-v3__tabs .t-tabs__nav-item.t-is-active::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  content: '';
+  background: var(--rvn-brand);
 }
 
 .review-v3 :deep(.t-card) {
@@ -729,16 +848,6 @@ onMounted(() => {
   box-shadow: none;
   border: 1px solid var(--rvn-border);
   border-radius: var(--rvn-radius);
-}
-
-.review-v3 :deep(.t-tabs__nav-item) {
-  font-size: 13.5px;
-  color: var(--td-text-color-secondary);
-}
-
-.review-v3 :deep(.t-tabs__nav-item.t-is-active) {
-  color: var(--rvn-brand);
-  font-weight: 600;
 }
 
 .review-v3__today {
@@ -767,13 +876,13 @@ onMounted(() => {
 
 .review-v3__note {
   margin: 0;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--td-text-color-placeholder);
 }
 
 .review-v3__dialog-text {
   margin: 0 0 12px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 21px;
   color: var(--td-text-color-secondary);
 }
@@ -787,10 +896,6 @@ onMounted(() => {
 @media (max-width: 760px) {
   .review-v3__inner {
     padding: 16px 20px 32px;
-  }
-
-  .review-v3__today {
-    display: block;
   }
 }
 </style>

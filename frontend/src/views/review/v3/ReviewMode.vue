@@ -16,12 +16,8 @@ import { getKnowledgeDetails } from '@/api/knowledge-base'
 import { createChatMarkdownRenderer, renderChatMarkdown } from '@/utils/chatMarkdownRenderer'
 import { sanitizeMarkdownHTML } from '@/utils/security'
 import ReviewLevelTag from './ReviewLevelTag.vue'
+import ReviewIcon from './ReviewIcon.vue'
 import { fallbackVulnerability, holdDays, scheduledIntervalDays } from './vulnerability'
-import trophyIcon from '@/assets/icons/static/trophy.png'
-import backIcon from '@/assets/icons/static/arrow-left.png'
-import arrowRightIcon from '@/assets/icons/static/arrow-right.png'
-import helpIcon from '@/assets/icons/static/help.png'
-import infoIcon from '@/assets/icons/static/info.png'
 
 const props = defineProps<{
   state: ReviewSessionState
@@ -77,6 +73,15 @@ const intervals = computed(() => ({
 
 const answerHTML = computed(() => renderMarkdown(currentCard.value?.answer))
 const explanationHTML = computed(() => renderMarkdown(currentCard.value?.explanation))
+
+const cardTags = computed(() => {
+  const raw = currentCard.value?.tags
+  if (Array.isArray(raw)) return raw.filter(Boolean)
+  if (typeof raw === 'string' && raw.trim()) {
+    return raw.split(',').map(tag => tag.trim()).filter(Boolean)
+  }
+  return []
+})
 
 const sources = computed(() =>
   (detail.value?.sources ?? []).filter(source => source.status === 'active' && source.knowledge_id),
@@ -224,37 +229,42 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 <template>
   <div class="review-mode rv-vuln-scope" data-testid="review-v3-mode">
     <div class="review-mode__inner">
+      <div class="rv-crumb">正在复习：<b>{{ queueLabel }}</b></div>
+
       <header class="review-mode__head">
-        <t-button variant="text" size="small" data-testid="review-v3-suspend" @click="suspend">
-          <template #icon><img class="inline-hand-icon" :src="backIcon" alt="" /></template>
-          {{ t('review.v3.suspendExit') }}
-        </t-button>
         <span class="review-mode__progress" data-testid="review-v3-mode-progress">
           {{ t('review.v3.modeProgress', { current: progressCurrent, total }) }}
         </span>
-        <span class="review-mode__queue">{{ queueLabel }}</span>
+        <div class="review-mode__bar">
+          <i :style="{ width: `${total ? Math.min(100, Math.round((ratedCount / total) * 100)) : 0}%` }" />
+        </div>
+        <span class="rv-note">{{ t('review.v3.streakDays', { count: streakDays }) }}</span>
+        <button type="button" class="rv-btn rv-btn--ghost rv-btn--sm" data-testid="review-v3-suspend" @click="suspend">
+          <ReviewIcon name="arrow-left" :size="13" />
+          {{ t('review.v3.suspendExit') }}
+        </button>
       </header>
 
       <section v-if="finished" class="review-mode__done" data-testid="review-v3-mode-done">
         <div class="review-mode__done-icon">
-          <img :src="trophyIcon" alt="" />
+          <ReviewIcon name="check" :size="34" />
         </div>
         <h2>{{ t('review.v3.modeDoneTitle') }}</h2>
         <p>{{ t('review.v3.modeDoneHint', { count: ratedCount }) }}</p>
         <div class="review-mode__counts">
-          <div class="review-mode__count">
+          <div class="review-mode__count is-forgot">
             <strong>{{ counts.forgot }}</strong>
             <span>{{ t('review.v3.rating.forgot') }}</span>
           </div>
-          <div class="review-mode__count">
+          <div class="review-mode__count is-fuzzy">
             <strong>{{ counts.fuzzy }}</strong>
             <span>{{ t('review.v3.rating.fuzzy') }}</span>
           </div>
-          <div class="review-mode__count">
+          <div class="review-mode__count is-remembered">
             <strong>{{ counts.remembered }}</strong>
             <span>{{ t('review.v3.rating.remembered') }}</span>
           </div>
-          <div class="review-mode__count">
+          <div class="review-mode__count is-easy">
             <strong>{{ counts.easy }}</strong>
             <span>{{ t('review.v3.rating.easy') }}</span>
           </div>
@@ -269,77 +279,81 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
             <strong>{{ t('review.v3.modeNextDueValue') }}</strong>
           </div>
         </div>
-        <t-button theme="primary" @click="suspend">{{ t('review.v3.backReviewHome') }}</t-button>
+        <button type="button" class="rv-btn rv-btn--primary" @click="suspend">
+          {{ t('review.v3.backReviewHome') }}
+        </button>
       </section>
 
       <section v-else-if="currentCard" class="review-mode__card">
-        <div v-if="isSevere" class="review-mode__severe" data-testid="review-v3-severe-banner">
-          <img class="inline-hand-icon" :src="infoIcon" alt="" />
-          <span>{{ severeText }}</span>
-          <ReviewLevelTag level="severe" />
-        </div>
-        <div v-else-if="isWarning" class="review-mode__weak" data-testid="review-v3-warning-tag">
-          <ReviewLevelTag level="warning" />
-          <span>{{ t('review.v3.recentWeak') }}</span>
-        </div>
-
-        <div class="review-mode__question" data-testid="review-v3-question">{{ currentCard.question }}</div>
-
-        <div v-if="isSevere || isWarning" class="review-mode__params" data-testid="review-v3-params">
-          <div>
-            <span>{{ t('review.v3.holdMetric') }}</span>
-            <strong>{{ t('review.v3.daysValue', { count: intervals.hold }) }}</strong>
+        <article class="qcard rv-wob">
+          <div class="qcard__tags">
+            <span class="rv-tag rv-tag--blue">{{ queueLabel }}</span>
+            <span v-if="isSevere" class="rv-tag rv-tag--red" data-testid="review-v3-severe-banner">{{ severeText }}</span>
+            <span v-else-if="isWarning" data-testid="review-v3-warning-tag">
+              <ReviewLevelTag level="warning" />
+            </span>
+            <span v-for="tag in cardTags" :key="tag" class="rv-tag rv-tag--gray">#{{ tag }}</span>
           </div>
-          <div>
-            <span>{{ t('review.v3.lapsesMetric') }}</span>
-            <strong>{{ t('review.v3.timesValue', { count: currentCard.lapses }) }}</strong>
+          <div class="qcard__question" data-testid="review-v3-question">{{ currentCard.question }}</div>
+          <div v-if="isSevere || isWarning" class="qcard__params" data-testid="review-v3-params">
+            <div>
+              <span>{{ t('review.v3.holdMetric') }}</span>
+              <strong>{{ t('review.v3.daysValue', { count: intervals.hold }) }}</strong>
+            </div>
+            <div>
+              <span>{{ t('review.v3.lapsesMetric') }}</span>
+              <strong>{{ t('review.v3.timesValue', { count: currentCard.lapses }) }}</strong>
+            </div>
+            <div>
+              <span>{{ t('review.v3.intervalMetric') }}</span>
+              <strong>{{ intervals.interval ? t('review.v3.daysValue', { count: intervals.interval }) : '—' }}</strong>
+            </div>
           </div>
-          <div>
-            <span>{{ t('review.v3.intervalMetric') }}</span>
-            <strong>
-              {{ intervals.interval ? t('review.v3.daysValue', { count: intervals.interval }) : '—' }}
-            </strong>
+          <div class="qcard__meta">
+            <span v-if="primarySource" class="rv-note">
+              {{ t('review.v3.sourceExcerpt') }}
+              <b class="qcard__source">{{ primarySource.path || t('review.v3.openSource') }}</b>
+            </span>
           </div>
-        </div>
+        </article>
 
-        <template v-if="!showingAnswer">
-          <t-button
-            class="review-mode__flip"
-            theme="primary"
-            size="large"
+        <div v-if="!showingAnswer" class="show-answer-wrap">
+          <button
+            type="button"
+            class="rv-btn rv-btn--ghost"
             data-testid="review-v3-show-answer"
             @click="showAnswer"
           >
-            {{ t('review.v3.showAnswerSpace') }}
-          </t-button>
+            {{ t('review.showAnswer') }}
+          </button>
           <p class="review-mode__hint">
-            <img class="inline-hand-icon inline-hand-icon--13" :src="helpIcon" alt="" />{{ t('review.v3.modeShortcutHint') }}
+            <ReviewIcon name="help" :size="13" />
+            {{ t('review.v3.modeShortcutHint') }}
           </p>
-        </template>
+        </div>
 
         <template v-else>
-          <div class="review-mode__answer" data-testid="review-v3-answer">
-            <div class="review-mode__answer-label">{{ t('review.v3.answer') }}</div>
-            <div class="review-mode__markdown" v-html="answerHTML"></div>
-            <template v-if="currentCard.explanation">
-              <div class="review-mode__answer-label">{{ t('review.v3.explanation') }}</div>
+          <div class="answer-zone rv-wob" data-testid="review-v3-answer">
+            <div class="answer-zone__label">Answer · {{ t('review.v3.answer') }}</div>
+            <div class="answer-zone__text review-mode__markdown" v-html="answerHTML"></div>
+            <div v-if="currentCard.explanation" class="rv-callout rv-callout--gray answer-zone__explain">
+              <ReviewIcon name="lightbulb" :size="18" :tilt="1" />
               <div class="review-mode__markdown" v-html="explanationHTML"></div>
-            </template>
-            <div v-if="primarySource" class="review-mode__source" data-testid="review-v3-source">
-              <div class="review-mode__source-head">
+            </div>
+            <div v-if="primarySource" class="answer-zone__source" data-testid="review-v3-source">
+              <div class="answer-zone__source-head">
                 <span>{{ t('review.v3.sourceExcerpt') }}</span>
-                <t-button
-                  size="small"
-                  variant="text"
-                  theme="primary"
-                  :loading="sourceOpening"
+                <button
+                  type="button"
+                  class="rv-btn rv-btn--text rv-btn--sm"
+                  :disabled="sourceOpening"
                   @click="openSource"
                 >
-                  <template #icon><img class="inline-hand-icon inline-hand-icon--13" :src="arrowRightIcon" alt="" /></template>
                   {{ t('review.v3.openSource') }}
-                </t-button>
+                  <ReviewIcon name="arrow-right" :size="12" />
+                </button>
               </div>
-              <p v-if="primarySource?.path" class="review-mode__source-path" :title="primarySource.path">
+              <p v-if="primarySource?.path" class="answer-zone__source-path" :title="primarySource.path">
                 {{ primarySource.path }}
               </p>
               <p>{{ sourceExcerpt || t('review.v3.sourceNoExcerpt') }}</p>
@@ -348,53 +362,60 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
           <div v-if="ratingError" class="review-mode__error">
             <t-alert theme="error" :message="ratingError" />
-            <t-button size="small" variant="outline" @click="skipCard">{{ t('review.v3.skipCard') }}</t-button>
+            <button type="button" class="rv-btn rv-btn--ghost rv-btn--sm" @click="skipCard">
+              {{ t('review.v3.skipCard') }}
+            </button>
           </div>
 
-          <div class="review-mode__ratings" data-testid="review-v3-ratings">
-            <t-button
-              class="rating-btn rating-btn--forgot"
-              theme="danger"
-              :loading="pendingRating === 'forgot'"
+          <div class="rate-row" data-testid="review-v3-ratings">
+            <button
+              type="button"
+              class="rate rate--forgot rv-wob-sm"
               :disabled="Boolean(pendingRating)"
               data-testid="review-v3-rate-forgot"
               @click="rate('forgot')"
             >
-              {{ t('review.v3.rating.forgot') }}<span class="rating-btn__key">1</span>
-            </t-button>
-            <t-button
-              class="rating-btn rating-btn--fuzzy"
-              theme="warning"
-              :loading="pendingRating === 'fuzzy'"
+              <span class="rate__name"><i class="rate__dot" />{{ t('review.v3.rating.forgot') }}</span>
+              <span class="rate__interval">{{ t('review.v3.intervalForgot') }}</span>
+              <span class="rate__key">1</span>
+            </button>
+            <button
+              type="button"
+              class="rate rate--fuzzy rv-wob-sm"
               :disabled="Boolean(pendingRating)"
               data-testid="review-v3-rate-fuzzy"
               @click="rate('fuzzy')"
             >
-              {{ t('review.v3.rating.fuzzy') }}<span class="rating-btn__key">2</span>
-            </t-button>
-            <t-button
-              class="rating-btn rating-btn--remembered"
-              theme="success"
-              :loading="pendingRating === 'remembered'"
+              <span class="rate__name"><i class="rate__dot" />{{ t('review.v3.rating.fuzzy') }}</span>
+              <span class="rate__interval">{{ t('review.v3.intervalFuzzy') }}</span>
+              <span class="rate__key">2</span>
+            </button>
+            <button
+              type="button"
+              class="rate rate--remembered rv-wob-sm"
               :disabled="Boolean(pendingRating)"
               data-testid="review-v3-rate-remembered"
               @click="rate('remembered')"
             >
-              {{ t('review.v3.rating.remembered') }}<span class="rating-btn__key">3</span>
-            </t-button>
-            <t-button
-              class="rating-btn rating-btn--easy"
-              theme="default"
-              :loading="pendingRating === 'easy'"
+              <span class="rate__name"><i class="rate__dot" />{{ t('review.v3.rating.remembered') }}</span>
+              <span class="rate__interval">{{ t('review.v3.intervalRemembered') }}</span>
+              <span class="rate__key">3</span>
+            </button>
+            <button
+              type="button"
+              class="rate rate--easy rv-wob-sm"
               :disabled="Boolean(pendingRating)"
               data-testid="review-v3-rate-easy"
               @click="rate('easy')"
             >
-              {{ t('review.v3.rating.easy') }}<span class="rating-btn__key">4</span>
-            </t-button>
+              <span class="rate__name"><i class="rate__dot" />{{ t('review.v3.rating.easy') }}</span>
+              <span class="rate__interval">{{ t('review.v3.intervalEasy') }}</span>
+              <span class="rate__key">4</span>
+            </button>
           </div>
           <p class="review-mode__hint">
-            <img class="inline-hand-icon inline-hand-icon--13" :src="helpIcon" alt="" />{{ t('review.v3.modeShortcutHint') }}
+            <ReviewIcon name="help" :size="13" />
+            {{ t('review.v3.modeShortcutHint') }}
           </p>
         </template>
       </section>
@@ -438,13 +459,13 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 }
 
 .review-mode__progress {
-  font-size: 13px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
   color: var(--td-text-color-secondary);
 }
 
 .review-mode__queue {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--td-text-color-placeholder);
 }
 
@@ -467,7 +488,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   border-radius: var(--td-radius-default);
   background: color-mix(in srgb, var(--rv-vuln-severe) 10%, var(--td-bg-color-container));
   color: var(--rv-vuln-severe);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
 }
 
@@ -476,7 +497,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   align-items: center;
   gap: 6px;
   margin-bottom: 12px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--td-text-color-secondary);
 }
 
@@ -507,12 +528,12 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   }
 
   span {
-    font-size: 11px;
+    font-size: 14px;
     color: var(--td-text-color-placeholder);
   }
 
   strong {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     color: var(--td-text-color-primary);
@@ -536,7 +557,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 .review-mode__answer-label {
   margin: 12px 0 6px;
-  font-size: 11px;
+  font-size: 14px;
   color: var(--td-text-color-placeholder);
 
   &:first-child {
@@ -567,7 +588,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     border-radius: var(--td-radius-default);
     background: var(--td-bg-color-container);
     border: 1px solid var(--td-component-stroke);
-    font-size: 12px;
+    font-size: 14px;
     line-height: 19px;
   }
 
@@ -579,7 +600,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     padding: 1px 4px;
     border-radius: 3px;
     background: var(--td-bg-color-component);
-    font-size: 12px;
+    font-size: 14px;
   }
 
   :deep(img) {
@@ -591,7 +612,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     width: 100%;
     margin-bottom: 8px;
     border-collapse: collapse;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   :deep(th),
@@ -616,7 +637,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
   p {
     margin: 4px 0 0;
-    font-size: 12px;
+    font-size: 14px;
     line-height: 19px;
     color: var(--td-text-color-secondary);
   }
@@ -627,7 +648,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-size: 11px;
+  font-size: 14px;
   color: var(--td-text-color-placeholder);
 }
 
@@ -635,7 +656,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 11px !important;
+  font-size: 14px !important;
   color: var(--td-text-color-placeholder) !important;
 }
 
@@ -675,7 +696,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 .rating-btn__key {
   margin-left: 6px;
-  font-size: 11px;
+  font-size: 14px;
   opacity: 0.7;
 }
 
@@ -685,7 +706,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   justify-content: center;
   gap: 5px;
   margin: 12px 0 0;
-  font-size: 11px;
+  font-size: 14px;
   color: var(--td-text-color-placeholder);
 }
 
@@ -712,7 +733,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
   > p {
     margin: 0;
-    font-size: 13px;
+    font-size: 14px;
     color: var(--td-text-color-secondary);
   }
 
@@ -767,7 +788,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   }
 
   span {
-    font-size: 11px;
+    font-size: 14px;
     color: var(--td-text-color-secondary);
   }
 }
@@ -786,7 +807,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   }
 
   span {
-    font-size: 11px;
+    font-size: 14px;
     color: var(--td-text-color-placeholder);
   }
 
@@ -817,6 +838,434 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
   .review-mode__params {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+</style>
+
+<style lang="less" scoped>
+/* Paper-journal layout for the review overlay. */
+.review-mode {
+  color: var(--rvn-ink, #3f3a34);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.review-mode__inner {
+  width: 80%;
+  max-width: none;
+  margin: 0 auto;
+  padding: 28px 0 56px;
+}
+
+.review-mode__head {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 26px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--rvn-line);
+}
+
+.review-mode__progress {
+  flex: none;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--rvn-ink-soft);
+}
+
+.review-mode__bar {
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+  background: var(--rvn-line);
+  border-radius: 999px;
+
+  i {
+    display: block;
+    height: 100%;
+    background: var(--rvn-accent);
+    border-radius: 999px;
+    transition: width 0.25s ease;
+  }
+}
+
+.review-mode__card {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.qcard {
+  padding: 28px 32px;
+  background: var(--rvn-paper);
+  border: 1.3px solid var(--rvn-line);
+}
+
+.qcard__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.qcard__question {
+  margin: 12px 0 6px;
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+  color: var(--rvn-ink);
+  white-space: pre-wrap;
+}
+
+.qcard__params {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: var(--rvn-surface);
+  border-radius: 7px;
+
+  div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  span {
+    font-size: 14px;
+    color: var(--rvn-muted);
+  }
+
+  strong {
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--rvn-ink);
+  }
+}
+
+.qcard__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.qcard__source {
+  font-weight: 500;
+  color: var(--rvn-accent-deep);
+  cursor: pointer;
+}
+
+.show-answer-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 22px 0 6px;
+
+  .rv-btn {
+    min-width: 128px;
+    padding: 7px 20px;
+  }
+}
+
+.answer-zone {
+  padding: 24px 28px;
+  margin-top: 14px;
+  background: var(--rvn-surface);
+  border: 1.3px dashed var(--rvn-line-strong);
+}
+
+.answer-zone__label {
+  margin-bottom: 10px;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rvn-muted);
+}
+
+.answer-zone__text {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--rvn-ink);
+}
+
+.answer-zone__explain {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  font-size: 14px;
+}
+
+.answer-zone__source {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rvn-line);
+
+  p {
+    margin: 4px 0 0;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--rvn-ink-soft);
+  }
+}
+
+.answer-zone__source-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  color: var(--rvn-muted);
+}
+
+.answer-zone__source-path {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14px !important;
+  color: var(--rvn-muted) !important;
+}
+
+.rate-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 26px;
+}
+
+.rate {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+  padding: 12px 10px;
+  font-family: inherit;
+  cursor: pointer;
+  background: var(--rvn-paper);
+  border: 1.5px solid var(--rvn-line);
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.12s ease;
+
+  &:hover:not(:disabled) {
+    border-color: var(--rvn-line-strong);
+    background: var(--rvn-surface);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  &:disabled {
+    cursor: progress;
+    opacity: 0.65;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--rvn-brand);
+    outline-offset: 2px;
+  }
+}
+
+.rate__name {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.rate__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.rate__interval {
+  font-size: 14px;
+  color: var(--rvn-muted);
+}
+
+.rate__key {
+  position: absolute;
+  top: 5px;
+  right: 8px;
+  font-size: 14px;
+  color: var(--rvn-muted);
+  opacity: 0.75;
+}
+
+.rate--forgot {
+  color: var(--rvn-red-deep);
+  background: var(--rvn-red-soft);
+  border-color: var(--rvn-red);
+}
+
+.rate--fuzzy {
+  color: var(--rvn-orange-deep);
+  background: var(--rvn-orange-soft);
+  border-color: var(--rvn-orange);
+}
+
+.rate--remembered {
+  color: var(--rvn-green-deep);
+  background: var(--rvn-green-soft);
+  border-color: var(--rvn-green);
+}
+
+.rate--easy {
+  color: var(--rvn-accent-deep);
+  background: var(--rvn-accent-soft);
+  border-color: var(--rvn-accent);
+}
+
+.review-mode__hint {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+  margin: 10px 0 0;
+  font-size: 14px;
+  color: var(--rvn-muted);
+}
+
+.review-mode__error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+
+  :deep(.t-alert) {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.review-mode__done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 36px 28px;
+  text-align: center;
+  background: var(--rvn-paper);
+  border: 1.3px solid var(--rvn-line);
+  border-radius: 12px 9px 13px 10px / 10px 13px 9px 12px;
+
+  h2 {
+    margin: 4px 0 0;
+    font-size: 21px;
+    font-weight: 700;
+    color: var(--rvn-ink);
+  }
+
+  > p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--rvn-ink-soft);
+  }
+
+  .rv-btn {
+    margin-top: 10px;
+  }
+}
+
+.review-mode__done-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  color: var(--rvn-brand-deep);
+  background: var(--rvn-brand-bg);
+  border-radius: 50%;
+}
+
+.review-mode__counts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  max-width: 460px;
+  margin-top: 10px;
+}
+
+.review-mode__count {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 6px;
+  background: var(--rvn-surface);
+  border-radius: 7px;
+
+  strong {
+    font-size: 19px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  span {
+    font-size: 14px;
+    color: var(--rvn-ink-soft);
+  }
+
+  &.is-forgot strong { color: var(--rvn-red-deep); }
+  &.is-fuzzy strong { color: var(--rvn-orange-deep); }
+  &.is-remembered strong { color: var(--rvn-green-deep); }
+  &.is-easy strong { color: var(--rvn-accent-deep); }
+}
+
+.review-mode__done-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 32px;
+  margin: 6px 0 10px;
+
+  div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  span {
+    font-size: 14px;
+    color: var(--rvn-muted);
+  }
+
+  strong {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--rvn-ink);
+  }
+}
+
+@media (max-width: 600px) {
+  .review-mode__inner {
+    padding: 18px 14px 40px;
+  }
+
+  .qcard {
+    padding: 18px 16px;
+  }
+
+  .qcard__question {
+    font-size: 19px;
+    line-height: 1.55;
+  }
+
+  .qcard__params,
+  .rate-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .answer-zone {
+    padding: 18px 16px;
   }
 }
 </style>

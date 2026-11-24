@@ -24,41 +24,36 @@ const normalized = computed(() => normalizeVulnerability(props.level))
   display: inline-flex;
   align-items: center;
   height: 20px;
-  padding: 0 7px;
-  border-radius: var(--td-radius-round);
-  font-size: 11px;
-  line-height: 18px;
+  padding: 0 8px;
+  font-size: 14px;
   font-weight: 500;
+  line-height: 18px;
   white-space: nowrap;
+  border-radius: 999px;
 }
 
 .rv-level-tag--severe {
-  color: var(--rv-vuln-severe);
-  background: color-mix(in srgb, var(--rv-vuln-severe) 12%, var(--td-bg-color-container));
-  border: 1px solid color-mix(in srgb, var(--rv-vuln-severe) 32%, transparent);
+  color: var(--rvn-red-deep, #8a4e47);
+  background: var(--rvn-red-soft, #ebdcd7);
 }
 
 .rv-level-tag--warning {
-  color: var(--rv-vuln-warning);
-  background: color-mix(in srgb, var(--rv-vuln-warning) 12%, var(--td-bg-color-container));
-  border: 1px solid color-mix(in srgb, var(--rv-vuln-warning) 32%, transparent);
+  color: var(--rvn-orange-deep, #7e5e42);
+  background: var(--rvn-orange-soft, #ece3d8);
 }
 
 .rv-level-tag--observe {
-  color: var(--rv-vuln-observe);
-  background: color-mix(in srgb, var(--rv-vuln-observe) 10%, var(--td-bg-color-container));
-  border: 1px solid color-mix(in srgb, var(--rv-vuln-observe) 28%, transparent);
+  color: var(--rvn-accent-deep, #47677a);
+  background: var(--rvn-accent-soft, #dfe7ea);
 }
 
 .rv-level-tag--healthy {
-  color: var(--rv-vuln-healthy);
-  background: color-mix(in srgb, var(--rv-vuln-healthy) 10%, var(--td-bg-color-container));
-  border: 1px solid color-mix(in srgb, var(--rv-vuln-healthy) 28%, transparent);
+  color: var(--rvn-green-deep, #5e7261);
+  background: var(--rvn-green-soft, #e3e9df);
 }
 
 .rv-level-tag--none {
-  color: var(--td-text-color-placeholder);
-  background: var(--td-bg-color-container-hover);
-  border: 1px solid var(--td-component-stroke);
+  color: var(--rvn-ink-soft, #6e675e);
+  background: var(--rvn-gray-soft, #ede7dd);
 }
 </style>

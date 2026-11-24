@@ -401,6 +401,7 @@ type ReviewHeatmap struct {
 
 type ReviewHeatmapOptions struct {
 	GroupID     string
+	RowGroupIDs []string
 	RowLimit    int
 	ColumnLimit int
 	Expand      bool

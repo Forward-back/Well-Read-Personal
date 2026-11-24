@@ -14,15 +14,11 @@ import {
   type ReviewSessionState,
 } from '@/api/review'
 import ReviewCardAIDialog from './ReviewCardAIDialog.vue'
+import ReviewIcon from './ReviewIcon.vue'
 import ReviewLevelTag from './ReviewLevelTag.vue'
 import type { ReviewSourceTarget } from './types'
 import { formatIntensity, holdDays, ratingLabelKey } from './vulnerability'
-import brainIcon from '@/assets/icons/static/brain.png'
-import bookIcon from '@/assets/icons/static/book.png'
-import rocketIcon from '@/assets/icons/static/rocket.png'
-import sparklesIcon from '@/assets/icons/static/sparkles.png'
-import goalIcon from '@/assets/icons/static/goal.png'
-import backIcon from '@/assets/icons/static/arrow-left.png'
+import './review-ui.css'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -252,10 +248,14 @@ function onAIDialogApplied() {
   <div class="cluster-page rv-vuln-scope" data-testid="review-v3-cluster-page">
     <div class="cluster-page__inner">
       <div class="cluster-page__topbar">
-        <t-button variant="text" size="small" data-testid="review-v3-cluster-back" @click="goBack">
-          <template #icon><img class="inline-hand-icon" :src="backIcon" alt="" /></template>
+        <div class="rv-crumb">
+          <span>复习 / 漏洞热力图 /</span>
+          <b>{{ detail?.column.title || t('review.v3.clusterPage.vulnerabilityCluster') }}</b>
+        </div>
+        <button type="button" class="rv-btn rv-btn--ghost rv-btn--sm" data-testid="review-v3-cluster-back" @click="goBack">
+          <ReviewIcon name="arrow-left" :size="13" />
           {{ t('review.v3.clusterPage.backToday') }}
-        </t-button>
+        </button>
       </div>
 
       <t-loading :loading="loading" size="small">
@@ -267,34 +267,39 @@ function onAIDialogApplied() {
         <template v-else-if="detail">
           <section class="cluster-hero">
             <div class="cluster-hero__main">
-              <div class="cluster-hero__eyebrow">
+              <h1>
+                {{ detail.column.title }}
                 <ReviewLevelTag :level="detail.cell.level" />
-                <span>{{ detail.row.path }}</span>
-              </div>
-              <div class="cluster-hero__title-row">
-                <img class="rv-icon rv-icon--lg" :src="goalIcon" alt="" />
-                <h1>{{ detail.column.title }}</h1>
-              </div>
-              <p class="cluster-hero__subtitle">{{ detail.row.path }} · {{ t('review.v3.clusterPage.vulnerabilityCluster') }}</p>
-              <div class="cluster-formula">
-                <span>{{ t('review.v3.clusterPage.formula') }}</span>
-                <strong>{{ formatIntensity(detail.cell.intensity) }}</strong>
-                <span class="cluster-formula__detail">
-                  ({{ detail.cell.severe }}×1 + {{ detail.cell.warning }}×0.5 + {{ detail.cell.observe }}×0.25) ÷ {{ detail.cell.total }}
-                </span>
+              </h1>
+              <div class="rv-props">
+                <div class="rv-prop">
+                  <span class="rv-prop__key">{{ t('review.v3.clusterPage.cardsCount') }}</span>
+                  <b>{{ detail.cell.total }}</b>
+                </div>
+                <div class="rv-prop">
+                  <span class="rv-prop__key">{{ t('review.v3.clusterPage.formula') }}</span>
+                  <strong>{{ formatIntensity(detail.cell.intensity) }}</strong>
+                  <span class="rv-note">
+                    ({{ detail.cell.severe }}×1 + {{ detail.cell.warning }}×0.5 + {{ detail.cell.observe }}×0.25) ÷ {{ detail.cell.total }}
+                  </span>
+                </div>
+                <div class="rv-prop">
+                  <span class="rv-prop__key">{{ t('review.v3.clusterPage.scope') }}</span>
+                  <b>{{ detail.row.path }}</b>
+                </div>
               </div>
               <div class="cluster-bar"><i :style="{ width: `${intensityPercent}%` }" /></div>
             </div>
-            <t-button
-              theme="primary"
-              size="large"
+            <button
+              type="button"
+              class="rv-btn rv-btn--primary cluster-hero__cta"
               :disabled="!relearnCards.length || conflictBusy"
               data-testid="review-v3-cluster-relearn"
               @click="startRelearn"
             >
-              <img class="rv-icon rv-icon--sm cluster-cta-icon" :src="rocketIcon" alt="" />
               {{ t('review.v3.relearnCount', { count: relearnCards.length }) }}
-            </t-button>
+              <ReviewIcon name="arrow-right" :size="13" />
+            </button>
           </section>
 
           <div v-if="detail.reasons.length" class="cluster-reasons" data-testid="review-v3-cluster-reasons">
@@ -378,20 +383,20 @@ function onAIDialogApplied() {
           <section class="cluster-root-cause" data-testid="review-v3-cluster-root-cause">
             <div class="cluster-root-cause__head">
               <div class="cluster-root-cause__title">
-                <img class="rv-icon" :src="brainIcon" alt="" />
+                <ReviewIcon name="lightbulb" :size="18" :tilt="1" />
                 <h2>{{ t('review.v3.clusterPage.rootCause') }}</h2>
                 <span class="cluster-root-cause__source">{{ rootCauseSource }}</span>
               </div>
-              <t-button
-                size="small"
-                variant="outline"
-                :loading="aiLoading"
+              <button
+                type="button"
+                class="rv-btn rv-btn--ghost rv-btn--sm"
+                :disabled="aiLoading"
                 data-testid="review-v3-cluster-ai"
                 @click="analyzeRootCause"
               >
-                <img v-if="!aiLoading" class="rv-icon rv-icon--sm" :src="sparklesIcon" alt="" />
+                <ReviewIcon name="refresh" :size="13" />
                 {{ aiLoading ? t('review.v3.clusterPage.analyzing') : t('review.v3.clusterPage.analyze') }}
-              </t-button>
+              </button>
             </div>
             <p class="cluster-root-cause__summary">{{ rootCauseSummary }}</p>
             <div v-if="reasons.length" class="cluster-root-cause__chips">
@@ -415,46 +420,46 @@ function onAIDialogApplied() {
           <section class="cluster-actions" data-testid="review-v3-cluster-actions">
             <button
               type="button"
-              class="cluster-action cluster-action--primary"
+              class="cluster-action cluster-action--relearn"
               :disabled="!relearnCards.length || conflictBusy"
               data-testid="review-v3-action-relearn"
               @click="startRelearn"
             >
-              <img class="rv-icon rv-icon--lg cluster-action__icon" :src="rocketIcon" alt="" />
+              <ReviewIcon name="arrow-right" :size="18" />
               <strong>{{ t('review.v3.actions.relearn', { count: relearnCards.length }) }}</strong>
               <span>{{ t('review.v3.actions.relearnHint') }}</span>
             </button>
             <button
               type="button"
-              class="cluster-action"
+              class="cluster-action cluster-action--source"
               :disabled="!selectedTarget"
               :title="selectedTarget ? undefined : t('review.v3.clusterPage.noSource')"
               data-testid="review-v3-action-source"
               @click="openSource(selectedTarget)"
             >
-              <img class="rv-icon rv-icon--lg cluster-action__icon" :src="bookIcon" alt="" />
+              <ReviewIcon name="book" :size="18" />
               <strong>{{ t('review.v3.actions.openSource') }}</strong>
               <span>{{ t('review.v3.actions.openSourceHint') }}</span>
             </button>
             <button
               type="button"
-              class="cluster-action"
+              class="cluster-action cluster-action--split"
               :disabled="!selectedTarget"
               data-testid="review-v3-action-split"
               @click="openAIDialog('split')"
             >
-              <img class="rv-icon rv-icon--lg cluster-action__icon" :src="sparklesIcon" alt="" />
+              <ReviewIcon name="scissors" :size="18" />
               <strong>{{ t('review.v3.actions.split') }}</strong>
               <span>{{ t('review.v3.actions.splitHint') }}</span>
             </button>
             <button
               type="button"
-              class="cluster-action"
+              class="cluster-action cluster-action--angles"
               :disabled="!selectedTarget"
               data-testid="review-v3-action-angles"
               @click="openAIDialog('angles')"
             >
-              <img class="rv-icon rv-icon--lg cluster-action__icon" :src="sparklesIcon" alt="" />
+              <ReviewIcon name="edit" :size="18" />
               <strong>{{ t('review.v3.actions.angles') }}</strong>
               <span>{{ t('review.v3.actions.anglesHint') }}</span>
             </button>
@@ -556,7 +561,7 @@ function onAIDialogApplied() {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--td-text-color-secondary);
 }
 
@@ -576,7 +581,7 @@ function onAIDialogApplied() {
 
 .cluster-hero__subtitle {
   margin: 0 0 10px;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 18px;
   color: var(--td-text-color-secondary);
 }
@@ -590,7 +595,7 @@ function onAIDialogApplied() {
   align-items: baseline;
   flex-wrap: wrap;
   gap: 8px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--td-text-color-secondary);
 
   strong {
@@ -632,7 +637,7 @@ function onAIDialogApplied() {
   border: 1px solid color-mix(in srgb, var(--td-warning-color) 28%, transparent);
   border-radius: var(--td-radius-default);
   background: color-mix(in srgb, var(--td-warning-color) 7%, var(--td-bg-color-container));
-  font-size: 12px;
+  font-size: 14px;
   color: var(--td-text-color-secondary);
 }
 
@@ -664,7 +669,7 @@ function onAIDialogApplied() {
   width: 100%;
   min-width: 980px;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--td-text-color-primary);
 }
 
@@ -679,7 +684,7 @@ function onAIDialogApplied() {
 
 .cluster-table th {
   height: 40px;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--td-text-color-placeholder);
   background: var(--td-bg-color-container);
@@ -753,14 +758,14 @@ function onAIDialogApplied() {
   padding: 1px 7px;
   border-radius: var(--td-radius-round);
   background: var(--td-bg-color-container-hover);
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 400;
   color: var(--td-text-color-placeholder);
 }
 
 .cluster-root-cause__summary {
   margin: 10px 0 0;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 22px;
   color: var(--td-text-color-secondary);
 }
@@ -776,7 +781,7 @@ function onAIDialogApplied() {
     border-radius: var(--td-radius-round);
     background: color-mix(in srgb, var(--td-error-color) 8%, var(--td-bg-color-container));
     border: 1px solid color-mix(in srgb, var(--td-error-color) 20%, transparent);
-    font-size: 11px;
+    font-size: 14px;
     color: var(--rv-vuln-severe);
   }
 }
@@ -784,7 +789,7 @@ function onAIDialogApplied() {
 .cluster-root-cause__suggestions,
 .cluster-root-cause__evidence {
   margin-top: 10px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--td-text-color-secondary);
 
   > span {
@@ -844,7 +849,7 @@ function onAIDialogApplied() {
   }
 
   span {
-    font-size: 11px;
+    font-size: 14px;
     line-height: 18px;
     color: var(--td-text-color-placeholder);
   }
@@ -877,7 +882,7 @@ function onAIDialogApplied() {
 
 .cluster-dialog-text {
   margin: 0 0 12px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 21px;
   color: var(--td-text-color-secondary);
 }
@@ -899,11 +904,11 @@ function onAIDialogApplied() {
 
   p {
     margin: 0;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   p + p {
-    font-size: 12px;
+    font-size: 14px;
     color: var(--td-text-color-placeholder);
   }
 }
@@ -934,6 +939,354 @@ function onAIDialogApplied() {
 
   .cluster-actions {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+</style>
+
+<style lang="less" scoped>
+/* Paper-journal presentation of the cluster detail page. */
+.cluster-page {
+  min-height: 100%;
+  background: transparent;
+  color: var(--rvn-ink, #3f3a34);
+  font-size: 15px;
+  --rvn-paper: #fbf9f5;
+  --rvn-surface: #f0ece5;
+  --rvn-surface-deep: #e9e4db;
+  --rvn-ink: #3f3a34;
+  --rvn-ink-soft: #6e675e;
+  --rvn-muted: #857c70;
+  --rvn-line: #e0dbd1;
+  --rvn-line-strong: rgba(63, 58, 52, 0.15);
+  --rvn-gray-soft: #ede7dd;
+  --rvn-accent: #6e93a8;
+  --rvn-accent-deep: #47677a;
+  --rvn-accent-soft: #dfe7ea;
+  --rvn-red: #b0716b;
+  --rvn-red-deep: #8a4e47;
+  --rvn-red-soft: #ebdcd7;
+  --rvn-orange: #b18e6e;
+  --rvn-orange-deep: #7e5e42;
+  --rvn-orange-soft: #ece3d8;
+  --rvn-yellow: #b3a26e;
+  --rvn-yellow-deep: #7c6e42;
+  --rvn-yellow-soft: #ede8da;
+  --rvn-green: #8ca08c;
+  --rvn-green-deep: #5e7261;
+  --rvn-green-soft: #e3e9df;
+  --rvn-purple-deep: #6b5f7a;
+  --rvn-purple-soft: #e6e1ea;
+  --rvn-brand: #5a7688;
+  --rvn-brand-deep: #4c6678;
+  --rvn-brand-bg: #e7ecef;
+  --rvn-brand-line: #c9d4db;
+}
+
+.cluster-page__inner {
+  max-width: none;
+  margin: 0;
+  padding: 24px 10% 48px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.cluster-page__topbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.cluster-page__topbar .rv-crumb {
+  margin-bottom: 0;
+}
+
+.cluster-hero {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 0;
+  margin-bottom: 8px;
+  background: transparent;
+  border: 0;
+}
+
+.cluster-hero__main {
+  min-width: 0;
+}
+
+.cluster-hero h1 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin: 0 0 14px;
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--rvn-ink);
+}
+
+.cluster-hero__cta {
+  flex: none;
+  padding: 8px 18px;
+}
+
+.cluster-bar {
+  height: 6px;
+  margin-top: 4px;
+  overflow: hidden;
+  background: var(--rvn-line);
+  border-radius: 999px;
+
+  i {
+    display: block;
+    height: 100%;
+    background: var(--rvn-red);
+    border-radius: 999px;
+  }
+}
+
+.cluster-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 14px;
+  margin: 16px 0;
+  background: var(--rvn-red-soft);
+  border: 1px solid var(--rvn-red);
+  border-radius: 7px 6px 8px 7px / 6px 8px 7px 6px;
+}
+
+.cluster-reasons__label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--rvn-red-deep);
+}
+
+.cluster-reason {
+  padding: 2px 8px;
+  font-size: 14px;
+  color: var(--rvn-red-deep);
+  background: var(--rvn-paper);
+  border-radius: 999px;
+}
+
+.cluster-panel {
+  margin-top: 28px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.cluster-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.cluster-table th {
+  padding: 8px 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--rvn-muted);
+  text-align: left;
+  border-bottom: 1px solid var(--rvn-line);
+}
+
+.cluster-table td {
+  padding: 9px 10px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--rvn-line);
+}
+
+.cluster-table tbody tr {
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.cluster-table tbody tr:hover td {
+  background: var(--rvn-surface);
+}
+
+.cluster-table tbody tr.is-selected td {
+  background: var(--rvn-brand-bg);
+}
+
+.cluster-table__question {
+  font-weight: 500;
+  color: var(--rvn-ink);
+
+  &:hover {
+    color: var(--rvn-brand-deep);
+  }
+}
+
+.cluster-root-cause {
+  padding: 14px 16px;
+  margin-top: 24px;
+  background: var(--rvn-yellow-soft);
+  border: 1px solid var(--rvn-yellow-soft);
+  border-radius: 7px 6px 8px 7px / 6px 8px 7px 6px;
+}
+
+.cluster-root-cause__title {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+
+  h2 {
+    margin: 0;
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--rvn-ink);
+  }
+}
+
+.cluster-root-cause__source {
+  padding: 1px 7px;
+  font-size: 14px;
+  color: var(--rvn-yellow-deep);
+  background: var(--rvn-paper);
+  border-radius: 999px;
+}
+
+.cluster-root-cause__summary {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--rvn-ink);
+}
+
+.cluster-root-cause__chips span {
+  color: var(--rvn-yellow-deep);
+  background: var(--rvn-paper);
+}
+
+.cluster-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 26px;
+}
+
+.cluster-action {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: flex-start;
+  width: 100%;
+  min-height: 132px;
+  padding: 18px 20px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: var(--rvn-paper);
+  border: 1px solid var(--rvn-line);
+  border-radius: 7px 6px 8px 7px / 6px 8px 7px 6px;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+
+  strong {
+    margin-top: 4px;
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--rvn-ink);
+  }
+
+  span {
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--rvn-ink-soft);
+  }
+
+  &:hover:not(:disabled) {
+    filter: brightness(0.97);
+    transform: translateY(-1px);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+}
+
+.cluster-action--relearn {
+  color: var(--rvn-red-deep);
+  background: var(--rvn-red-soft);
+  border-color: #dcc3bc;
+
+  strong {
+    color: var(--rvn-red-deep);
+  }
+
+  span {
+    color: var(--rvn-red-deep);
+    opacity: 0.82;
+  }
+}
+
+.cluster-action--source {
+  color: var(--rvn-accent-deep);
+  background: var(--rvn-accent-soft);
+  border-color: #c9d6de;
+
+  strong {
+    color: var(--rvn-accent-deep);
+  }
+
+  span {
+    color: var(--rvn-accent-deep);
+    opacity: 0.82;
+  }
+}
+
+.cluster-action--split {
+  color: var(--rvn-yellow-deep);
+  background: var(--rvn-yellow-soft);
+  border-color: #ddd2b8;
+
+  strong {
+    color: var(--rvn-yellow-deep);
+  }
+
+  span {
+    color: var(--rvn-yellow-deep);
+    opacity: 0.82;
+  }
+}
+
+.cluster-action--angles {
+  color: var(--rvn-purple-deep);
+  background: var(--rvn-purple-soft);
+  border-color: #d3ccd9;
+
+  strong {
+    color: var(--rvn-purple-deep);
+  }
+
+  span {
+    color: var(--rvn-purple-deep);
+    opacity: 0.82;
+  }
+}
+
+@media (max-width: 1100px) {
+  .cluster-page__inner {
+    margin: 0;
+    padding: 28px 24px 40px;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .cluster-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

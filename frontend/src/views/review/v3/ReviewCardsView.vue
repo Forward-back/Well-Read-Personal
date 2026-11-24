@@ -28,13 +28,11 @@ import {
 } from '@/api/review'
 import { listKnowledgeBases, listKnowledgeFiles } from '@/api/knowledge-base'
 import ReviewLevelTag from './ReviewLevelTag.vue'
+import ReviewIcon from './ReviewIcon.vue'
+import ReviewCardAIDialog from './ReviewCardAIDialog.vue'
 import type { ReviewFlatGroup } from './types'
 import { holdDays, normalizeVulnerability } from './vulnerability'
 import { useConfirmDelete } from '@/components/settings/useConfirmDelete'
-import checklistIcon from '@/assets/icons/static/checklist.png'
-import bookIcon from '@/assets/icons/static/book.png'
-import searchIcon from '@/assets/icons/static/search.png'
-import moreIcon from '@/assets/icons/static/more.png'
 
 const props = defineProps<{
   flatGroups: ReviewFlatGroup[]
@@ -44,6 +42,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'review-card', card: ReviewCard): void
   (e: 'updated'): void
+  (e: 'detail', open: boolean): void
 }>()
 
 const { t } = useI18n()
@@ -69,6 +68,8 @@ const performanceVisible = ref(false)
 const performanceLoading = ref(false)
 const performance = ref<ReviewCardPerformance | null>(null)
 const performanceCardId = ref('')
+const aiDialogVisible = ref(false)
+const aiDialogMode = ref<'split' | 'angles'>('split')
 
 const editVisible = ref(false)
 const editSaving = ref(false)
@@ -89,6 +90,28 @@ const createForm = reactive({
 const kbOptions = ref<Array<{ label: string; value: string }>>([])
 const docOptions = ref<Array<{ label: string; value: string }>>([])
 const docsLoading = ref(false)
+const createTagDraft = ref('')
+const editTagDraft = ref('')
+const sourceEditing = ref(false)
+
+const createSourceLabel = computed(() => {
+  if (!createForm.knowledgeId) return t('review.v3.cardsPage.sourceRequired')
+  return docOptions.value.find(item => item.value === createForm.knowledgeId)?.label || createForm.knowledgeId
+})
+
+function addTag(target: 'create' | 'edit') {
+  const form = target === 'create' ? createForm : editForm
+  const draft = target === 'create' ? createTagDraft : editTagDraft
+  const value = draft.value.trim()
+  if (!value) return
+  if (!form.tags.includes(value)) form.tags.push(value)
+  draft.value = ''
+}
+
+function removeTag(target: 'create' | 'edit', tag: string) {
+  const form = target === 'create' ? createForm : editForm
+  form.tags = form.tags.filter(item => item !== tag)
+}
 
 const moveVisible = ref(false)
 const moveSaving = ref(false)
@@ -209,6 +232,74 @@ function showsLevel(card: ReviewCard) {
   const level = levelOf(card)
   return card.status === 'active' && (level === 'severe' || level === 'warning' || level === 'observe')
 }
+
+function dueLabel(card: ReviewCard) {
+  if (!card.due_at || card.status !== 'active') return '—'
+  const due = new Date(card.due_at)
+  if (Number.isNaN(due.getTime())) return '—'
+  const today = new Date()
+  const sameDay = due.toDateString() === today.toDateString()
+  if (sameDay) return t('review.v3.cardsPage.dueToday')
+  return due.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+}
+
+function isDueToday(card: ReviewCard) {
+  if (!card.due_at || card.status !== 'active') return false
+  return new Date(card.due_at).toDateString() === new Date().toDateString()
+}
+
+function errorRate(card: ReviewCard) {
+  if (!card.review_count) return 0
+  return Math.min(100, Math.round((card.lapses / card.review_count) * 100))
+}
+
+function ratingTone(rating: string) {
+  if (rating === 'forgot') return 'red'
+  if (rating === 'fuzzy') return 'orange'
+  if (rating === 'remembered') return 'green'
+  return 'blue'
+}
+
+function distributionPercent(count: number, total: number) {
+  if (!total) return 0
+  return Math.round((count / total) * 100)
+}
+
+function openPerformanceSplit() {
+  if (!performance.value?.card) return
+  aiDialogMode.value = 'split'
+  aiDialogVisible.value = true
+}
+
+function onPerformanceAIDialogApplied() {
+  void reloadPerformance()
+}
+
+const performanceWeekAdded = computed(() => {
+  const logs = performance.value?.logs ?? []
+  const since = Date.now() - 7 * 24 * 3600 * 1000
+  return logs.filter(log => new Date(log.reviewed_at).getTime() >= since).length
+})
+
+const performanceRecentRetention = computed(() => {
+  const logs = (performance.value?.logs ?? []).slice(0, 5)
+  if (!logs.length) return null
+  const good = logs.filter(log => log.rating === 'remembered' || log.rating === 'easy').length
+  return Math.round((good / logs.length) * 100)
+})
+
+const performanceTrend = computed(() => {
+  const logs = [...(performance.value?.logs ?? [])].reverse().slice(-14)
+  if (logs.length < 2) return ''
+  let good = 0
+  const points = logs.map((log, index) => {
+    if (log.rating === 'remembered' || log.rating === 'easy') good += 1
+    const x = (index / (logs.length - 1)) * 320
+    const y = 104 - (good / (index + 1)) * 84
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  })
+  return points.join(' ')
+})
 
 async function loadCards({ append = false } = {}) {
   const seq = ++loadSeq
@@ -618,12 +709,14 @@ function openCreate() {
   createForm.knowledgeBaseId = ''
   createForm.knowledgeId = ''
   createForm.excerpt = ''
+  createTagDraft.value = ''
+  sourceEditing.value = false
   docOptions.value = []
   createVisible.value = true
   void loadKnowledgeBases()
 }
 
-async function saveCreate() {
+async function saveCreate(closeAfter = true) {
   if (!createForm.question.trim() || !createForm.answer.trim()) {
     MessagePlugin.warning(t('review.v3.cardsPage.questionRequired'))
     return
@@ -648,7 +741,16 @@ async function saveCreate() {
       tags: createForm.tags,
       sources,
     })
-    createVisible.value = false
+    if (closeAfter) {
+      createVisible.value = false
+    } else {
+      createForm.question = ''
+      createForm.answer = ''
+      createForm.explanation = ''
+      createForm.tags = []
+      createForm.excerpt = ''
+      createTagDraft.value = ''
+    }
     MessagePlugin.success(t('review.v3.cardsPage.created'))
     await loadCards()
     emit('updated')
@@ -662,183 +764,312 @@ async function saveCreate() {
 onMounted(() => {
   void loadCards()
 })
+
+watch(
+  () => performanceVisible.value || createVisible.value || editVisible.value,
+  (open) => emit('detail', open),
+)
 </script>
 
 <template>
   <section v-if="performanceVisible" class="cards-subpage" data-testid="review-v3-card-performance">
     <header class="cards-subpage__head">
-      <t-button variant="text" @click="performanceVisible = false">← {{ t('review.v3.cardsPage.back') }}</t-button>
-      <h2>{{ t('review.v3.cardsPage.performance') }}</h2>
+      <h1>{{ t('review.v3.cardsPage.performance') }}</h1>
+      <button type="button" class="rv-btn rv-btn--ghost rv-btn--sm" @click="performanceVisible = false">
+        <ReviewIcon name="arrow-left" :size="13" />
+        {{ t('review.v3.cardsPage.back') }}
+      </button>
     </header>
-    <div class="cards-subpage__body">
+    <div class="cards-subpage__body performance-page">
       <t-loading :loading="performanceLoading" size="small">
         <template v-if="performance">
-          <div class="perf-card">
-            <h3>{{ performance.card.question }}</h3>
-            <p v-if="performance.warning !== 'none'" class="perf-warning">
-              {{ performance.warning_reason || t('review.warningBadge') }}
-            </p>
-            <div class="perf-counts">
-              <div><span>{{ t('review.v3.rating.easy') }}</span><strong>{{ performance.counts.easy }}</strong></div>
-              <div><span>{{ t('review.v3.rating.remembered') }}</span><strong>{{ performance.counts.remembered }}</strong></div>
-              <div><span>{{ t('review.v3.rating.fuzzy') }}</span><strong>{{ performance.counts.fuzzy }}</strong></div>
-              <div><span>{{ t('review.v3.rating.forgot') }}</span><strong>{{ performance.counts.forgot }}</strong></div>
+          <div class="rv-props">
+            <div class="rv-prop">
+              <span class="rv-prop__key">{{ t('review.v3.cardsPage.card') }}</span>
+              <b>{{ performance.card.question }}</b>
+              <span class="rv-tag rv-tag--gray">{{ t('review.v3.cardsPage.learning') }}</span>
             </div>
-            <div class="perf-meta">
-              <span>{{ t('review.v3.cardsPage.recentCounts') }}：{{ performance.recent_counts.easy }}/{{ performance.recent_counts.remembered }}/{{ performance.recent_counts.fuzzy }}/{{ performance.recent_counts.forgot }}</span>
-              <span>{{ t('review.v3.cardsPage.forgetRate') }}：{{ Math.round(performance.recent_forget_rate * 100) }}%</span>
-              <span>{{ t('review.forgetStreak') }}：{{ performance.forget_streak }}</span>
-              <span>{{ t('review.stability') }}：{{ t('review.v3.cardsPage.holdDays', { count: holdDays(performance.card.stability) }) }}</span>
+            <div class="rv-prop">
+              <span class="rv-prop__key">{{ t('review.groupName') }}</span>
+              <span>{{ groupName(performance.card) }}</span>
             </div>
-            <div class="perf-tags">
-              <t-tag v-for="tag in cardTags(performance.card)" :key="tag" size="small" variant="light">{{ tag }}</t-tag>
+            <div class="rv-prop">
+              <span class="rv-prop__key">{{ t('review.v3.cardsPage.nextReview') }}</span>
+              <span :class="{ 'is-due-today': isDueToday(performance.card) }">
+                {{ dueLabel(performance.card) }}
+              </span>
+              <span class="rv-note">· {{ t('review.v3.cardsPage.holdDays', { count: holdDays(performance.card.stability) }) }}</span>
             </div>
           </div>
 
-          <div class="perf-history">
-            <h4>{{ t('review.history') }}</h4>
-            <div v-if="performance.logs.length" class="perf-log-list">
-              <div v-for="log in performance.logs.slice(0, 12)" :key="log.id" class="perf-log">
-                <span :class="`perf-log__rating perf-log__rating--${log.rating}`">{{ t(`review.v3.rating.${log.rating}`) }}</span>
-                <span class="perf-log__time">{{ new Date(log.reviewed_at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }}</span>
+          <div class="perf-kpis">
+            <div class="perf-kpi">
+              <div class="perf-kpi__label">{{ t('review.v3.cardsPage.totalReviews') }}</div>
+              <div class="perf-kpi__value">{{ performance.card.review_count }}</div>
+              <div class="perf-kpi__hint">{{ t('review.v3.cardsPage.weekAdded', { count: performanceWeekAdded }) }}</div>
+            </div>
+            <div class="perf-kpi">
+              <div class="perf-kpi__label">{{ t('review.v3.cardsPage.retention') }}</div>
+              <div class="perf-kpi__value">{{ Math.round((1 - performance.recent_forget_rate) * 100) }}%</div>
+              <div class="perf-kpi__hint" :class="{ 'is-down': (performanceRecentRetention ?? 100) < 80 }">
+                {{ performanceRecentRetention === null ? '—' : t('review.v3.cardsPage.recentRetention', { count: performanceRecentRetention }) }}
               </div>
             </div>
-            <p v-else class="cards-state__hint">{{ t('review.noHistory') }}</p>
+            <div class="perf-kpi">
+              <div class="perf-kpi__label">{{ t('review.v3.cardsPage.currentInterval') }}</div>
+              <div class="perf-kpi__value">{{ t('review.v3.cardsPage.holdDays', { count: holdDays(performance.card.stability) }) }}</div>
+              <div class="perf-kpi__hint is-down">{{ t('review.v3.cardsPage.intervalHint') }}</div>
+            </div>
+            <div class="perf-kpi">
+              <div class="perf-kpi__label">{{ t('review.forgetStreak') }}</div>
+              <div class="perf-kpi__value">{{ performance.forget_streak }}</div>
+              <div class="perf-kpi__hint">{{ t('review.v3.cardsPage.streakHint') }}</div>
+            </div>
+          </div>
+
+          <div class="perf-grid">
+            <div class="rv-chart-card">
+              <div class="rv-chart-card__title">{{ t('review.v3.cardsPage.retentionTrend') }}</div>
+              <div class="rv-chart-card__sub">{{ t('review.v3.cardsPage.retentionTrendSub') }}</div>
+              <svg v-if="performanceTrend" class="perf-trend" viewBox="0 0 320 110" preserveAspectRatio="none">
+                <line x1="0" y1="20" x2="320" y2="20" stroke="#E0DBD1" stroke-dasharray="3 3" />
+                <line x1="0" y1="62" x2="320" y2="62" stroke="#E0DBD1" stroke-dasharray="3 3" />
+                <line x1="0" y1="104" x2="320" y2="104" stroke="#E0DBD1" />
+                <text x="2" y="17" font-size="14" fill="#9C948A">100%</text>
+                <text x="2" y="59" font-size="14" fill="#9C948A">50%</text>
+                <polyline fill="none" stroke="#5C7E92" stroke-width="2" :points="performanceTrend" />
+              </svg>
+              <p v-else class="cards-state__hint">{{ t('review.noHistory') }}</p>
+            </div>
+            <div class="rv-chart-card">
+              <div class="rv-chart-card__title">{{ t('review.v3.cardsPage.ratingHistory') }}</div>
+              <div class="rv-chart-card__sub">{{ t('review.v3.cardsPage.recentRatings') }}</div>
+              <div v-if="performance.logs.length" class="perf-history-list">
+                <div v-for="log in performance.logs.slice(0, 8)" :key="log.id" class="perf-history-row">
+                  <span class="rv-tag" :class="`rv-tag--${ratingTone(log.rating)}`">{{ t(`review.v3.rating.${log.rating}`) }}</span>
+                  <span class="rv-note">{{ new Date(log.reviewed_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) }}</span>
+                  <span class="rv-note perf-history-row__interval">{{ t('review.v3.cardsPage.holdDays', { count: log.interval_days || 0 }) }}</span>
+                </div>
+              </div>
+              <p v-else class="cards-state__hint">{{ t('review.noHistory') }}</p>
+            </div>
+          </div>
+
+          <div class="rv-callout rv-callout--yellow perf-split">
+            <ReviewIcon name="scissors" :size="20" :tilt="1" />
+            <div>
+              <strong>{{ t('review.v3.cardsPage.splitSuggestion') }}</strong>
+              {{ t('review.v3.cardsPage.splitSuggestionHint') }}
+            </div>
+            <span class="rv-callout__act">
+              <button type="button" class="rv-btn rv-btn--primary rv-btn--sm" @click="openPerformanceSplit">
+                {{ t('review.v3.cardsPage.oneClickSplit') }}
+              </button>
+            </span>
           </div>
 
           <div class="perf-actions">
-            <t-button
-              theme="primary"
+            <button
+              type="button"
+              class="rv-btn rv-btn--primary"
               :disabled="performance.card.status !== 'active'"
               data-testid="review-v3-card-review-now"
               @click="reviewCard(performance.card)"
             >
               {{ t('review.v3.cardsPage.reviewNow') }}
-            </t-button>
-            <t-button variant="outline" data-testid="review-v3-card-edit" @click="openEdit(performance.card)">
+            </button>
+            <button type="button" class="rv-btn rv-btn--ghost" data-testid="review-v3-card-edit" @click="openEdit(performance.card)">
               {{ t('review.v3.cardsPage.edit') }}
-            </t-button>
-            <t-button variant="outline" data-testid="review-v3-card-reset" @click="resetCard(performance.card)">
+            </button>
+            <button type="button" class="rv-btn rv-btn--ghost" data-testid="review-v3-card-reset" @click="resetCard(performance.card)">
               {{ t('review.v3.cardsPage.reset') }}
-            </t-button>
+            </button>
           </div>
         </template>
       </t-loading>
     </div>
+
+    <ReviewCardAIDialog
+      v-model:visible="aiDialogVisible"
+      :mode="aiDialogMode"
+      :card="performance?.card || null"
+      @applied="onPerformanceAIDialogApplied"
+    />
   </section>
 
   <section v-else-if="editVisible" class="cards-subpage" data-testid="review-v3-card-edit-page">
     <header class="cards-subpage__head">
-      <t-button variant="text" @click="editVisible = false">← {{ t('review.v3.cardsPage.back') }}</t-button>
-      <h2>{{ t('review.v3.cardsPage.edit') }}</h2>
+      <h1>{{ t('review.v3.cardsPage.edit') }}</h1>
+      <button type="button" class="rv-btn rv-btn--ghost rv-btn--sm" @click="editVisible = false">
+        <ReviewIcon name="arrow-left" :size="13" />
+        {{ t('review.v3.cardsPage.back') }}
+      </button>
     </header>
-    <div class="cards-subpage__body">
+    <div class="cards-subpage__body card-form">
       <div class="form-stack">
         <label class="form-field">
-          <span>{{ t('review.v3.cardsPage.createQuestion') }}</span>
-          <t-textarea v-model="editForm.question" data-testid="review-v3-card-edit-question" :autosize="{ minRows: 2, maxRows: 4 }" />
+          <span>{{ t('review.v3.cardsPage.createQuestion') }}<em>{{ t('review.v3.cardsPage.questionHint') }}</em></span>
+          <t-textarea v-model="editForm.question" data-testid="review-v3-card-edit-question" :autosize="{ minRows: 3, maxRows: 5 }" />
         </label>
         <label class="form-field">
-          <span>{{ t('review.v3.cardsPage.createAnswer') }}</span>
-          <t-textarea v-model="editForm.answer" data-testid="review-v3-card-edit-answer" :autosize="{ minRows: 2, maxRows: 4 }" />
+          <span>{{ t('review.v3.cardsPage.createAnswer') }}<em>{{ t('review.v3.cardsPage.answerHint') }}</em></span>
+          <t-textarea v-model="editForm.answer" data-testid="review-v3-card-edit-answer" :autosize="{ minRows: 3, maxRows: 5 }" />
         </label>
         <label class="form-field">
-          <span>{{ t('review.v3.cardsPage.createExplanation') }}</span>
+          <span>{{ t('review.v3.cardsPage.createExplanation') }}<em>{{ t('review.v3.cardsPage.explanationHint') }}</em></span>
           <t-textarea v-model="editForm.explanation" data-testid="review-v3-card-edit-explanation" :autosize="{ minRows: 2, maxRows: 4 }" />
         </label>
-        <label class="form-field">
-          <span>{{ t('review.v3.cardsPage.tags') }}</span>
-          <t-tag-input v-model="editForm.tags" data-testid="review-v3-card-edit-tags" :placeholder="t('review.v3.cardsPage.tagsPlaceholder')" />
-        </label>
+        <div class="form-field">
+          <span>{{ t('review.v3.cardsPage.tags') }}<em>{{ t('review.v3.cardsPage.tagsHint') }}</em></span>
+          <div class="tag-editor" data-testid="review-v3-card-edit-tags">
+            <span v-for="tag in editForm.tags" :key="tag" class="rv-tag rv-tag--blue">
+              {{ tag }}<button type="button" @click="removeTag('edit', tag)">×</button>
+            </span>
+            <input
+              v-model="editTagDraft"
+              class="tag-editor__input"
+              :placeholder="t('review.v3.cardsPage.tagsPlaceholder')"
+              @keyup.enter="addTag('edit')"
+            />
+          </div>
+        </div>
+        <div class="form-field">
+          <span>{{ t('review.v3.cardsPage.memoryParams') }}</span>
+          <div class="memory-params">
+            <span class="toggle-demo"><i />{{ t('review.v3.cardsPage.bidirectional') }}</span>
+            <span class="radio-demo is-on"><i />FSRS</span>
+            <span class="radio-demo"><i />SM-2</span>
+            <em>{{ t('review.v3.cardsPage.memoryParamsHint') }}</em>
+          </div>
+        </div>
       </div>
     </div>
     <footer class="cards-subpage__foot">
-      <t-button variant="outline" @click="editVisible = false">{{ t('review.cancel') }}</t-button>
-      <t-button theme="primary" :loading="editSaving" @click="saveEdit">{{ t('review.save') }}</t-button>
+      <button type="button" class="rv-btn rv-btn--primary" :disabled="editSaving" @click="saveEdit">
+        {{ t('review.save') }}
+      </button>
+      <button type="button" class="rv-btn rv-btn--ghost" @click="editVisible = false">{{ t('review.cancel') }}</button>
     </footer>
   </section>
 
   <section v-else-if="createVisible" class="cards-subpage" data-testid="review-v3-card-create-page">
     <header class="cards-subpage__head">
-      <t-button variant="text" @click="createVisible = false">← {{ t('review.v3.cardsPage.back') }}</t-button>
-      <h2>{{ t('review.v3.cardsPage.createTitle') }}</h2>
+      <h1>{{ t('review.v3.cardsPage.createTitle') }}</h1>
+      <button type="button" class="rv-btn rv-btn--ghost rv-btn--sm" @click="createVisible = false">
+        <ReviewIcon name="arrow-left" :size="13" />
+        {{ t('review.v3.cardsPage.back') }}
+      </button>
     </header>
-    <div class="cards-subpage__body">
+    <div class="cards-subpage__body card-form">
       <div class="form-stack">
-        <t-select v-model="createForm.groupId" data-testid="review-v3-card-create-group" :label="t('review.groupName')" :options="groupOptions.filter(item => item.value)" filterable />
+        <div class="form-field">
+          <span>{{ t('review.v3.cardsPage.group') }}</span>
+          <t-select
+            v-model="createForm.groupId"
+            data-testid="review-v3-card-create-group"
+            :options="groupOptions.filter(item => item.value)"
+            filterable
+            class="card-form__select"
+          />
+        </div>
         <label class="form-field">
-          <span>{{ t('review.v3.cardsPage.createQuestion') }}</span>
-          <t-textarea v-model="createForm.question" data-testid="review-v3-card-create-question" :autosize="{ minRows: 2, maxRows: 4 }" />
+          <span>{{ t('review.v3.cardsPage.createQuestion') }}<em>{{ t('review.v3.cardsPage.questionHint') }}</em></span>
+          <t-textarea v-model="createForm.question" data-testid="review-v3-card-create-question" :autosize="{ minRows: 3, maxRows: 5 }" />
         </label>
         <label class="form-field">
-          <span>{{ t('review.v3.cardsPage.createAnswer') }}</span>
-          <t-textarea v-model="createForm.answer" data-testid="review-v3-card-create-answer" :autosize="{ minRows: 2, maxRows: 4 }" />
+          <span>{{ t('review.v3.cardsPage.createAnswer') }}<em>{{ t('review.v3.cardsPage.answerHint') }}</em></span>
+          <t-textarea v-model="createForm.answer" data-testid="review-v3-card-create-answer" :autosize="{ minRows: 3, maxRows: 5 }" />
         </label>
         <label class="form-field">
-          <span>{{ t('review.v3.cardsPage.createExplanation') }}</span>
+          <span>{{ t('review.v3.cardsPage.createExplanation') }}<em>{{ t('review.v3.cardsPage.explanationHint') }}</em></span>
           <t-textarea v-model="createForm.explanation" data-testid="review-v3-card-create-explanation" :autosize="{ minRows: 2, maxRows: 4 }" />
         </label>
-        <label class="form-field">
-          <span>{{ t('review.v3.cardsPage.tags') }}</span>
-          <t-tag-input v-model="createForm.tags" data-testid="review-v3-card-create-tags" :placeholder="t('review.v3.cardsPage.tagsPlaceholder')" />
-        </label>
-        <div class="form-grid">
-          <t-select
-            v-model="createForm.knowledgeBaseId"
-            data-testid="review-v3-card-create-kb"
-            :label="t('review.knowledgeBase')"
-            :options="kbOptions"
-            :placeholder="t('review.selectKnowledgeBase')"
-            filterable
-            @change="(value: string) => loadDocuments(value)"
-          />
-          <t-select
-            v-model="createForm.knowledgeId"
-            data-testid="review-v3-card-create-doc"
-            :label="t('review.v3.cardsPage.selectKnowledge')"
-            :options="docOptions"
-            :loading="docsLoading"
-            :placeholder="t('review.v3.cardsPage.selectKnowledge')"
-            filterable
-          />
+        <div class="form-field">
+          <span>{{ t('review.v3.cardsPage.tags') }}<em>{{ t('review.v3.cardsPage.tagsHint') }}</em></span>
+          <div class="tag-editor" data-testid="review-v3-card-create-tags">
+            <span v-for="tag in createForm.tags" :key="tag" class="rv-tag rv-tag--blue">
+              {{ tag }}<button type="button" @click="removeTag('create', tag)">×</button>
+            </span>
+            <input
+              v-model="createTagDraft"
+              class="tag-editor__input"
+              :placeholder="t('review.v3.cardsPage.tagsPlaceholder')"
+              @keyup.enter="addTag('create')"
+            />
+          </div>
+        </div>
+        <div class="form-field">
+          <span>{{ t('review.v3.cardsPage.source') }}<em>{{ t('review.v3.cardsPage.sourceHint') }}</em></span>
+          <div class="source-card">
+            <ReviewIcon name="file" :size="16" :tilt="1" />
+            <b>{{ createSourceLabel }}</b>
+            <button type="button" class="rv-btn rv-btn--ghost rv-btn--sm" @click="sourceEditing = !sourceEditing">
+              {{ sourceEditing ? t('review.cancel') : t('review.v3.cardsPage.changeSource') }}
+            </button>
+          </div>
+          <div v-if="sourceEditing || !createForm.knowledgeId" class="source-picker">
+            <t-select
+              v-model="createForm.knowledgeBaseId"
+              data-testid="review-v3-card-create-kb"
+              :options="kbOptions"
+              :placeholder="t('review.selectKnowledgeBase')"
+              filterable
+              @change="(value: string) => loadDocuments(value)"
+            />
+            <t-select
+              v-model="createForm.knowledgeId"
+              data-testid="review-v3-card-create-doc"
+              :options="docOptions"
+              :loading="docsLoading"
+              :placeholder="t('review.v3.cardsPage.selectKnowledge')"
+              filterable
+            />
+          </div>
+        </div>
+        <div class="form-field">
+          <span>{{ t('review.v3.cardsPage.memoryParams') }}</span>
+          <div class="memory-params">
+            <span class="toggle-demo"><i />{{ t('review.v3.cardsPage.bidirectional') }}</span>
+            <span class="radio-demo is-on"><i />FSRS</span>
+            <span class="radio-demo"><i />SM-2</span>
+            <em>{{ t('review.v3.cardsPage.memoryParamsHint') }}</em>
+          </div>
         </div>
       </div>
     </div>
     <footer class="cards-subpage__foot">
-      <t-button variant="outline" @click="createVisible = false">{{ t('review.cancel') }}</t-button>
-      <t-button theme="primary" :loading="createSaving" @click="saveCreate">{{ t('review.create') }}</t-button>
+      <button type="button" class="rv-btn rv-btn--primary" :disabled="createSaving" @click="saveCreate(false)">
+        {{ t('review.v3.cardsPage.saveAndNext') }}
+      </button>
+      <button type="button" class="rv-btn rv-btn--ghost" :disabled="createSaving" @click="saveCreate(true)">
+        {{ t('review.v3.cardsPage.saveAndClose') }}
+      </button>
+      <span class="rv-note cards-subpage__shortcut">⌘ + Enter {{ t('review.v3.cardsPage.quickSave') }}</span>
     </footer>
   </section>
 
   <div v-else class="cards-page" data-testid="review-v3-cards">
     <div class="cards-panel">
-      <div class="cards-panel__head">
-        <div class="cards-panel__title">
-          <img class="rv-icon rv-icon--lg" :src="checklistIcon" alt="" />
-          <div>
-            <h3>{{ t('review.cards') }}</h3>
-            <p>{{ t('review.v3.cardsPage.subtitle') }}</p>
-          </div>
-        </div>
-        <div class="cards-panel__head-actions">
-          <t-button theme="primary" data-testid="review-v3-card-create" @click="openCreate">
-            {{ t('review.v3.cardsPage.newCard') }}
-          </t-button>
+      <div class="rv-props">
+        <div class="rv-prop">
+          <span class="cards-total">
+            <b>{{ t('review.v3.cardsPage.total') }} {{ cards.length }} {{ t('review.v3.cardsPage.totalCards') }}</b>
+            <i>·</i>
+            <span>{{ props.flatGroups.length }} {{ t('review.v3.cardsPage.groupsUnit') }}</span>
+          </span>
         </div>
       </div>
 
       <div class="cards-toolbar">
-        <t-input
-          v-model="filters.keyword"
-          class="cards-toolbar__search"
-          data-testid="review-v3-cards-search"
-          :placeholder="t('review.searchPlaceholder')"
-          clearable
-          @enter="loadCards()"
-          @clear="loadCards()"
-        >
-          <template #prefix-icon><img class="inline-hand-icon" :src="searchIcon" alt="" /></template>
-        </t-input>
+        <div class="rv-search cards-toolbar__search">
+          <ReviewIcon name="search" :size="15" :tilt="-1" />
+          <input
+            v-model="filters.keyword"
+            data-testid="review-v3-cards-search"
+            :placeholder="t('review.searchPlaceholder')"
+            @keyup.enter="loadCards()"
+          />
+        </div>
         <t-select v-model="filters.status" class="cards-toolbar__select" data-testid="review-v3-cards-status" :options="statusOptions" />
         <t-popup
           v-model:visible="groupFilterOpen"
@@ -908,6 +1139,16 @@ onMounted(() => {
           @clear="loadCards()"
         />
         <t-checkbox v-model="filters.dueOnly" data-testid="review-v3-cards-due">{{ t('review.v3.cardsPage.dueOnly') }}</t-checkbox>
+        <span class="cards-toolbar__spacer" />
+        <button
+          type="button"
+          class="rv-btn rv-btn--primary rv-btn--sm"
+          data-testid="review-v3-card-create"
+          @click="openCreate"
+        >
+          <ReviewIcon name="plus" :size="13" />
+          {{ t('review.v3.cardsPage.newCard') }}
+        </button>
       </div>
     </div>
 
@@ -929,82 +1170,86 @@ onMounted(() => {
     </div>
 
     <t-loading :loading="loading" size="small" class="cards-loading">
-      <div v-if="cards.length" class="card-list" data-testid="review-v3-card-list">
-        <div class="card-list__head">
-          <span />
-          <span>{{ t('review.v3.cardsPage.question') }}</span>
-          <span>{{ t('review.v3.cardsPage.group') }}</span>
-          <span>{{ t('review.v3.cardsPage.status') }}</span>
-          <span>{{ t('review.v3.cardsPage.reviewInfo') }}</span>
-          <span />
-        </div>
-        <div
-          v-for="card in cards"
-          :key="card.id"
-          class="card-row"
-          :class="{ 'is-selected': selectedIds.includes(card.id), 'is-deleted': card.status === 'deleted' }"
-          :data-card-id="card.id"
-          data-testid="review-v3-card-row"
-          @click="openPerformance(card)"
-        >
-          <span class="card-row__check" @click.stop>
-            <t-checkbox
-              :checked="selectedIds.includes(card.id)"
-              :disabled="card.status === 'deleted'"
-              @change="(value: boolean) => toggleSelection(card.id, Boolean(value))"
-            />
-          </span>
-          <div class="card-row__main">
-            <div class="card-row__title">
-              <span class="card-row__question">{{ card.question }}</span>
-            </div>
-            <div class="card-row__meta">
-              <span v-if="cardTags(card).length" class="card-row__tags">
-                <t-tag v-for="tag in cardTags(card).slice(0, 2)" :key="tag" size="small" variant="light">{{ tag }}</t-tag>
-                <span v-if="cardTags(card).length > 2">+{{ cardTags(card).length - 2 }}</span>
-              </span>
-              <span v-else class="card-row__muted">{{ t('review.v3.cardsPage.noTags') }}</span>
-            </div>
-          </div>
-          <span class="card-row__group" :title="groupName(card)">{{ groupName(card) }}</span>
-          <span class="card-row__status">
-            <ReviewLevelTag v-if="showsLevel(card)" :level="levelOf(card)" />
-            <t-tag v-if="card.status === 'suspended'" size="small" variant="outline">{{ t('review.status.suspended') }}</t-tag>
-            <t-tag v-else-if="card.status === 'orphaned'" size="small" theme="danger" variant="outline">{{ t('review.status.orphaned') }}</t-tag>
-            <t-tag v-else-if="card.status === 'deleted'" size="small" variant="outline">{{ t('review.status.deleted') }}</t-tag>
-            <span v-if="!showsLevel(card) && card.status === 'active'" class="card-row__healthy">
-              {{ t('review.v3.level.healthy') }}
-            </span>
-          </span>
-          <span class="card-row__review">
-            <span v-if="card.review_count">{{ t('review.stats.reviewCount', { count: card.review_count }) }}</span>
-            <span v-else class="card-row__muted">{{ t('review.v3.cardsPage.neverReviewed') }}</span>
-            <span class="card-row__hold">{{ t('review.v3.cardsPage.holdDays', { count: holdDays(card.stability) }) }}</span>
-          </span>
-          <div class="card-row__actions" @click.stop>
-            <t-dropdown :options="rowMenu(card)" placement="bottom-right" @click="(item: { value: string }) => onRowMenu(item, card)">
-              <t-button variant="text" shape="square" size="small">
-                <img class="inline-hand-icon" :src="moreIcon" alt="" />
-              </t-button>
-            </t-dropdown>
-          </div>
-        </div>
-      </div>
+      <table v-if="cards.length" class="rv-db card-table" data-testid="review-v3-card-list">
+        <thead>
+          <tr>
+            <th class="card-table__check"><ReviewIcon name="box" :size="15" /></th>
+            <th>{{ t('review.v3.cardsPage.question') }}</th>
+            <th>{{ t('review.v3.cardsPage.group') }}</th>
+            <th>{{ t('review.v3.cardsPage.status') }}</th>
+            <th>{{ t('review.v3.cardsPage.interval') }}</th>
+            <th>{{ t('review.v3.cardsPage.due') }}</th>
+            <th>{{ t('review.v3.cardsPage.errorRate') }}</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="card in cards"
+            :key="card.id"
+            :class="{ 'is-selected': selectedIds.includes(card.id), 'is-deleted': card.status === 'deleted' }"
+            :data-card-id="card.id"
+            data-testid="review-v3-card-row"
+            @click="openPerformance(card)"
+          >
+            <td class="card-table__check" @click.stop>
+              <t-checkbox
+                :checked="selectedIds.includes(card.id)"
+                :disabled="card.status === 'deleted'"
+                @change="(value: boolean) => toggleSelection(card.id, Boolean(value))"
+              />
+            </td>
+            <td class="card-table__main">
+              <div class="card-table__question">{{ card.question }}</div>
+              <div class="card-table__tags">
+                <template v-if="cardTags(card).length">
+                  <span v-for="tag in cardTags(card).slice(0, 2)" :key="tag" class="rv-tag rv-tag--gray">#{{ tag }}</span>
+                  <span v-if="cardTags(card).length > 2" class="rv-note">+{{ cardTags(card).length - 2 }}</span>
+                </template>
+                <span v-else class="rv-note">{{ t('review.v3.cardsPage.noTags') }}</span>
+              </div>
+            </td>
+            <td>{{ groupName(card) }}</td>
+            <td>
+              <ReviewLevelTag v-if="showsLevel(card)" :level="levelOf(card)" />
+              <span v-if="card.status === 'suspended'" class="rv-tag rv-tag--gray">{{ t('review.status.suspended') }}</span>
+              <span v-else-if="card.status === 'orphaned'" class="rv-tag rv-tag--red">{{ t('review.status.orphaned') }}</span>
+              <span v-else-if="card.status === 'deleted'" class="rv-tag rv-tag--gray">{{ t('review.status.deleted') }}</span>
+              <span v-else-if="!showsLevel(card)" class="rv-tag rv-tag--gray">{{ t('review.v3.level.healthy') }}</span>
+            </td>
+            <td>{{ t('review.v3.cardsPage.holdDays', { count: holdDays(card.stability) }) }}</td>
+            <td :class="{ 'is-due-today': isDueToday(card) }">{{ dueLabel(card) }}</td>
+            <td>
+              <div class="card-table__err">
+                <span class="card-table__err-track"><i :style="{ width: `${errorRate(card)}%` }" /></span>
+                <b>{{ errorRate(card) }}%</b>
+              </div>
+            </td>
+            <td class="card-table__actions card-row__actions" @click.stop>
+              <t-dropdown :options="rowMenu(card)" placement="bottom-right" @click="(item: { value: string }) => onRowMenu(item, card)">
+                <button type="button" class="rv-btn rv-btn--text rv-btn--sm" :aria-label="t('review.groupMoreActions')">
+                  <ReviewIcon name="more" :size="15" />
+                </button>
+              </t-dropdown>
+            </td>
+          </tr>
+        </tbody>
+      </table>
       <div v-else-if="!loading" class="cards-state" data-testid="review-v3-cards-empty">
-        <img class="rv-icon rv-icon--lg" :src="bookIcon" alt="" />
+        <ReviewIcon name="book" :size="28" />
         <p>{{ t('review.v3.cardsPage.emptyTitle') }}</p>
         <p class="cards-state__hint">{{ t('review.v3.cardsPage.emptyHint') }}</p>
         <div class="cards-state__actions">
-          <t-button v-if="filters.keyword || filters.tag || filters.status !== 'all' || filters.dueOnly" variant="outline" size="small" @click="resetFilters">
+          <button v-if="filters.keyword || filters.tag || filters.status !== 'all' || filters.dueOnly" type="button" class="rv-btn rv-btn--ghost rv-btn--sm" @click="resetFilters">
             {{ t('review.v3.cardsPage.clearFilters') }}
-          </t-button>
-          <t-button theme="primary" size="small" @click="openCreate">{{ t('review.v3.cardsPage.newCard') }}</t-button>
+          </button>
+          <button type="button" class="rv-btn rv-btn--primary rv-btn--sm" @click="openCreate">{{ t('review.v3.cardsPage.newCard') }}</button>
         </div>
       </div>
       <div v-if="hasMore" class="cards-more">
-        <t-button size="small" variant="outline" :loading="loadingMore" @click="loadCards({ append: true })">
+        <button type="button" class="rv-btn rv-btn--ghost rv-btn--sm" :disabled="loadingMore" @click="loadCards({ append: true })">
           {{ t('review.v3.cardsPage.loadMore') }}
-        </t-button>
+        </button>
       </div>
     </t-loading>
 
@@ -1098,7 +1343,7 @@ onMounted(() => {
 
     p {
       margin: 1px 0 0;
-      font-size: 12px;
+      font-size: 14px;
       line-height: 18px;
       color: var(--td-text-color-secondary);
     }
@@ -1241,7 +1486,7 @@ onMounted(() => {
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
@@ -1257,7 +1502,7 @@ onMounted(() => {
   justify-content: space-between;
   gap: 10px;
   padding: 9px 14px;
-  font-size: 13px;
+  font-size: 14px;
   background: var(--td-brand-color-light);
   border: 1px solid var(--td-brand-color-focus);
   border-radius: 0;
@@ -1286,7 +1531,7 @@ onMounted(() => {
     align-items: center;
     min-height: 40px;
     padding: 0 14px;
-    font-size: 12px;
+    font-size: 14px;
     color: var(--td-text-color-secondary);
     background: var(--td-bg-color-secondarycontainer);
     border-bottom: 1px solid var(--td-component-stroke);
@@ -1334,7 +1579,7 @@ onMounted(() => {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 500;
     color: var(--td-text-color-primary);
   }
@@ -1345,7 +1590,7 @@ onMounted(() => {
     align-items: center;
     gap: 8px;
     margin-top: 3px;
-    font-size: 12px;
+    font-size: 14px;
     color: var(--td-text-color-secondary);
   }
 
@@ -1359,7 +1604,7 @@ onMounted(() => {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 13px;
+    font-size: 14px;
     color: var(--td-text-color-secondary);
   }
 
@@ -1371,7 +1616,7 @@ onMounted(() => {
   }
 
   &__healthy {
-    font-size: 12px;
+    font-size: 14px;
     color: var(--td-success-color);
   }
 
@@ -1379,7 +1624,7 @@ onMounted(() => {
     display: flex;
     flex-direction: column;
     gap: 1px;
-    font-size: 12px;
+    font-size: 14px;
     color: var(--td-text-color-secondary);
     font-variant-numeric: tabular-nums;
   }
@@ -1407,7 +1652,7 @@ onMounted(() => {
 
   &__hint {
     margin: 0;
-    font-size: 12px;
+    font-size: 14px;
     color: var(--td-text-color-placeholder);
   }
 
@@ -1523,7 +1768,7 @@ onMounted(() => {
 .perf-warning {
   margin: 0 0 10px;
   padding: 8px 10px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--td-error-color);
   background: var(--td-error-color-light);
   border-radius: var(--td-radius-default);
@@ -1542,7 +1787,7 @@ onMounted(() => {
 
   span {
     display: block;
-    font-size: 12px;
+    font-size: 14px;
     color: var(--td-text-color-secondary);
   }
 
@@ -1560,7 +1805,7 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: 8px 16px;
   margin-top: 10px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--td-text-color-secondary);
 }
 
@@ -1576,7 +1821,7 @@ onMounted(() => {
 
   h4 {
     margin: 0 0 8px;
-    font-size: 13px;
+    font-size: 14px;
     color: var(--td-text-color-primary);
   }
 }
@@ -1593,7 +1838,7 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 7px 10px;
-  font-size: 12px;
+  font-size: 14px;
   border-bottom: 1px solid var(--td-component-stroke);
 
   &:last-child { border-bottom: 0; }
@@ -1625,7 +1870,7 @@ onMounted(() => {
   gap: 6px;
 
   > span {
-    font-size: 13px;
+    font-size: 14px;
     color: var(--td-text-color-primary);
   }
 }
@@ -1643,5 +1888,642 @@ onMounted(() => {
   }
 
   .form-grid { grid-template-columns: 1fr; }
+}
+</style>
+
+<style lang="less" scoped>
+/* Paper-journal presentation for card management and its detail pages. */
+.cards-page {
+  gap: 0;
+}
+
+.cards-panel {
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.cards-toolbar {
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 0;
+  border-top: 0;
+
+  :deep(.t-input),
+  :deep(.t-select__wrap) {
+    background: var(--rvn-surface);
+    border: 1px solid var(--rvn-line);
+    border-radius: 7px 6px 8px 7px / 6px 8px 7px 6px;
+    box-shadow: none;
+  }
+
+  :deep(.t-input__inner) {
+    background: transparent;
+    border: 0 !important;
+    outline: none;
+    box-shadow: none !important;
+  }
+
+  :deep(.t-select__wrap .t-input) {
+    background: transparent;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  :deep(.t-input:focus-within),
+  :deep(.t-select__wrap:focus-within),
+  :deep(.t-is-focused) {
+    border-color: var(--rvn-accent) !important;
+    box-shadow: 0 0 0 2px var(--rvn-accent-soft) !important;
+  }
+
+  &__search {
+    flex: 0 0 320px;
+    width: 320px;
+    min-width: 220px;
+    height: 38px;
+    padding: 0 12px;
+    background: var(--rvn-surface);
+    border: 1px solid var(--rvn-line);
+    border-radius: 7px 6px 8px 7px / 6px 8px 7px 6px;
+
+    input {
+      flex: 1;
+      min-width: 0;
+      height: 36px;
+      padding: 0;
+      font: inherit;
+      font-size: 14px;
+      line-height: 36px;
+      color: var(--rvn-ink);
+      background: transparent;
+      border: 0;
+      outline: none;
+
+      &::placeholder {
+        color: var(--rvn-muted);
+      }
+    }
+  }
+
+  &__select {
+    width: 148px;
+
+    :deep(input),
+    :deep(.t-input__inner) {
+      cursor: pointer;
+      caret-color: transparent;
+    }
+  }
+
+  &__spacer {
+    flex: 1;
+  }
+
+  &__group-trigger {
+    height: 32px;
+    background: var(--rvn-surface);
+    border-color: var(--rvn-line);
+    border-radius: 7px 6px 8px 7px / 6px 8px 7px 6px;
+  }
+}
+
+.cards-total {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 14px;
+  color: var(--rvn-ink-soft);
+
+  b {
+    font-weight: 600;
+    color: var(--rvn-ink);
+  }
+
+  i {
+    font-style: normal;
+    color: var(--rvn-muted);
+  }
+}
+
+.card-table {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+
+  th,
+  td {
+    padding: 10px 10px;
+    font-size: 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--rvn-line);
+  }
+
+  th {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--rvn-muted);
+  }
+
+  tbody tr {
+    cursor: pointer;
+    transition: background 0.18s ease;
+  }
+
+  tbody tr:hover td {
+    background: var(--rvn-surface);
+  }
+
+  tbody tr.is-selected td {
+    background: var(--rvn-brand-bg);
+  }
+
+  tbody tr.is-deleted {
+    opacity: 0.6;
+  }
+}
+
+.card-table__check {
+  width: 34px;
+  color: var(--rvn-muted);
+}
+
+.card-table__question {
+  overflow: hidden;
+  font-weight: 500;
+  color: var(--rvn-ink);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+
+  .card-table tbody tr:hover & {
+    color: var(--rvn-brand-deep);
+  }
+}
+
+.card-table__tags {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.card-table__err {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+
+  b {
+    min-width: 34px;
+    font-size: 14px;
+    color: var(--rvn-red-deep);
+  }
+}
+
+.card-table__err-track {
+  width: 64px;
+  height: 5px;
+  overflow: hidden;
+  background: var(--rvn-line);
+  border-radius: 999px;
+
+  i {
+    display: block;
+    height: 100%;
+    background: var(--rvn-red);
+    border-radius: 999px;
+  }
+}
+
+.is-due-today {
+  font-weight: 600;
+  color: var(--rvn-red-deep) !important;
+}
+
+.batch-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--rvn-ink-soft);
+  background: var(--rvn-gray-soft);
+  border: 1px solid var(--rvn-line);
+  border-radius: 7px 6px 8px 7px / 6px 8px 7px 6px;
+}
+
+.cards-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 40px 16px;
+  color: var(--rvn-muted);
+  text-align: center;
+}
+
+.cards-subpage {
+  min-height: 100%;
+}
+
+.cards-subpage__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+
+  h1 {
+    margin: 0;
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    color: var(--rvn-ink);
+  }
+}
+
+.cards-subpage__body {
+  max-width: none;
+}
+
+.performance-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.cards-subpage__foot,
+.form-foot {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: min(920px, 100%);
+  margin: 26px auto 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--rvn-line);
+}
+
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.card-form {
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  > span {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--rvn-ink);
+
+    em {
+      margin-left: 8px;
+      font-size: 14px;
+      font-style: normal;
+      font-weight: 400;
+      color: var(--rvn-muted);
+    }
+  }
+
+  :deep(.t-textarea__inner) {
+    min-height: 92px !important;
+    padding: 11px 12px;
+    font-size: 14px;
+    line-height: 1.6;
+    background: var(--rvn-paper);
+    border-color: var(--rvn-line-strong);
+    border-radius: 4px;
+    box-shadow: none;
+  }
+
+  :deep(.t-textarea__inner:focus) {
+    border-color: var(--rvn-accent);
+    box-shadow: 0 0 0 2px var(--rvn-accent-soft);
+  }
+
+  :deep(.t-select__wrap) {
+    width: 100%;
+  }
+
+  :deep(.t-input) {
+    height: 40px;
+    background: var(--rvn-paper);
+    border-color: var(--rvn-line-strong);
+    border-radius: 4px;
+    box-shadow: none;
+  }
+}
+
+.card-form__select {
+  width: 100%;
+}
+
+.tag-editor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-height: 40px;
+  padding: 6px 10px;
+  background: var(--rvn-paper);
+  border: 1px solid var(--rvn-line-strong);
+  border-radius: 4px;
+}
+
+.tag-editor .rv-tag button {
+  padding: 0 0 0 2px;
+  margin-left: 4px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  opacity: 0.7;
+
+  &:hover {
+    opacity: 1;
+  }
+}
+
+.tag-editor__input {
+  flex: 1;
+  min-width: 140px;
+  padding: 3px 2px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--rvn-ink);
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+
+.source-card {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  padding: 12px 14px;
+  font-size: 14px;
+  background: var(--rvn-surface);
+  border: 1px solid var(--rvn-line);
+  border-radius: 4px;
+
+  b {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 500;
+    color: var(--rvn-ink);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+}
+
+.source-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.memory-params {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 20px;
+  align-items: center;
+  font-size: 14px;
+  color: var(--rvn-ink-soft);
+
+  em {
+    flex: 1 1 100%;
+    font-size: 14px;
+    font-style: normal;
+    color: var(--rvn-muted);
+  }
+}
+
+.toggle-demo {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--rvn-muted);
+
+  i {
+    position: relative;
+    width: 32px;
+    height: 18px;
+    background: var(--rvn-line);
+    border-radius: 999px;
+    opacity: 0.8;
+
+    &::after {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 14px;
+      height: 14px;
+      content: '';
+      background: var(--rvn-paper);
+      border-radius: 50%;
+    }
+  }
+}
+
+.radio-demo {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  color: var(--rvn-muted);
+
+  i {
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid var(--rvn-line-strong);
+    border-radius: 50%;
+  }
+
+  &.is-on {
+    color: var(--rvn-ink);
+
+    i {
+      border-color: var(--rvn-ink-soft);
+      box-shadow: inset 0 0 0 3px var(--rvn-paper);
+      background: var(--rvn-ink-soft);
+    }
+  }
+}
+
+.cards-subpage__shortcut {
+  margin-left: auto;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  > span {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--rvn-ink);
+  }
+}
+
+.perf-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.perf-kpi {
+  padding: 18px 20px;
+  background: var(--rvn-paper);
+  border: 1px solid var(--rvn-line);
+  border-radius: 8px;
+}
+
+.perf-kpi__label {
+  font-size: 14px;
+  color: var(--rvn-muted);
+}
+
+.perf-kpi__value {
+  margin-top: 8px;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--rvn-ink);
+}
+
+.perf-kpi__hint {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--rvn-green-deep);
+
+  &.is-down {
+    color: var(--rvn-ink-soft);
+  }
+}
+
+.perf-trend {
+  width: 100%;
+  height: 220px;
+  margin-top: 8px;
+}
+
+.perf-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 24px;
+}
+
+.perf-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 8px 0;
+  font-size: 14px;
+}
+
+.perf-bar__label {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  width: 62px;
+  color: var(--rvn-ink-soft);
+
+  i {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+
+    &.is-red { background: var(--rvn-red); }
+    &.is-orange { background: var(--rvn-orange); }
+    &.is-green { background: var(--rvn-green); }
+    &.is-blue { background: var(--rvn-accent); }
+  }
+}
+
+.perf-bar__track {
+  flex: 1;
+  height: 14px;
+  overflow: hidden;
+  background: var(--rvn-gray-soft);
+
+  i {
+    display: block;
+    height: 100%;
+
+    &.is-red { background: var(--rvn-red); }
+    &.is-orange { background: var(--rvn-orange); }
+    &.is-green { background: var(--rvn-green); }
+    &.is-blue { background: var(--rvn-accent); }
+  }
+}
+
+.perf-bar__value {
+  width: 30px;
+  color: var(--rvn-muted);
+  text-align: right;
+}
+
+.perf-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.perf-history-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+
+  &__interval {
+    margin-left: auto;
+  }
+}
+
+.perf-split {
+  margin-top: 28px;
+}
+
+.perf-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 26px;
+}
+
+@media (max-width: 960px) {
+  .perf-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .perf-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .cards-subpage__head h1 {
+    font-size: 28px;
+  }
+
+  .cards-toolbar__search {
+    flex: 1 1 100%;
+  }
 }
 </style>

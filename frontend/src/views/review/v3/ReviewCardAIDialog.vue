@@ -210,7 +210,7 @@ async function apply() {
 <style lang="less" scoped>
 .ai-dialog__hint {
   margin: 0 0 12px;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 20px;
   color: var(--td-text-color-secondary);
 }
@@ -243,7 +243,7 @@ async function apply() {
 }
 
 .ai-dialog__question {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 20px;
   font-weight: 500;
   color: var(--td-text-color-primary);
@@ -251,7 +251,7 @@ async function apply() {
 
 .ai-dialog__answer {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 19px;
   color: var(--td-text-color-secondary);
   white-space: pre-wrap;
@@ -259,14 +259,14 @@ async function apply() {
 
 .ai-dialog__duplicate {
   margin-top: 4px;
-  font-size: 11px;
+  font-size: 14px;
   color: var(--td-warning-color);
 }
 
 .ai-dialog__empty {
   padding: 28px 0;
   text-align: center;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--td-text-color-placeholder);
 }
 

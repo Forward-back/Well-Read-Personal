@@ -3,10 +3,7 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ReviewGroup } from '@/api/review'
 import type { ReviewFlatGroup } from './types'
-import bookIcon from '@/assets/icons/static/book.png'
-import folderIcon from '@/assets/icons/static/folder.png'
-import arrowIcon from '@/assets/icons/static/arrow-right.png'
-import moreIcon from '@/assets/icons/static/more.png'
+import ReviewIcon from './ReviewIcon.vue'
 
 const props = defineProps<{
   groups: ReviewFlatGroup[]
@@ -88,7 +85,7 @@ function select(groupId: string) {
 
 <template>
   <aside class="group-rail" data-testid="review-v3-group-rail">
-    <div class="group-rail__label"><img :src="bookIcon" alt="" />{{ t('review.groups') }}</div>
+    <div class="group-rail__label">{{ t('review.v3.groupTree') }}</div>
     <div
       class="group-row group-row--root"
       :class="{ 'group-row--active': selectedGroupId === '' }"
@@ -99,7 +96,7 @@ function select(groupId: string) {
       @keydown.enter="select('')"
       @keydown.space.prevent="select('')"
     >
-      <img class="group-row__icon group-row__hand" :src="folderIcon" alt="" />
+      <ReviewIcon name="folder" :size="16" :tilt="-1" class="group-row__icon" />
       <span class="group-row__name">{{ t('review.v3.allGroups') }}</span>
       <span class="group-row__counts">
         <span class="group-row__cards">{{ allCardCount }}</span>
@@ -121,7 +118,7 @@ function select(groupId: string) {
           data-testid="review-v3-group-menu-root"
           @click.stop
         >
-          <img class="group-row__hand" :src="moreIcon" alt="" />
+          <ReviewIcon name="more" :size="15" />
         </button>
       </t-dropdown>
     </div>
@@ -148,11 +145,15 @@ function select(groupId: string) {
           :aria-label="item.group.name"
           @click.stop="toggle(item.group.id)"
         >
-          <img class="group-row__arrow" :src="arrowIcon" alt="" />
+          <ReviewIcon :name="collapsed.has(item.group.id) ? 'chevron-right' : 'chevron-down'" :size="12" />
         </button>
         <span v-else class="group-row__chevron-spacer" />
-        <img v-if="collapsed.has(item.group.id)" class="group-row__icon group-row__hand" :src="folderIcon" alt="" />
-        <img v-else class="group-row__icon group-row__hand" :src="folderIcon" alt="" />
+        <ReviewIcon
+          :name="hasChildren(item.group.id) ? 'folder' : 'file'"
+          :size="16"
+          :tilt="item.depth % 2 === 0 ? 1 : -1"
+          class="group-row__icon"
+        />
         <span class="group-row__name" :title="item.group.name">{{ item.group.name }}</span>
         <span class="group-row__counts">
           <span class="group-row__cards">{{ item.card_count }}</span>
@@ -174,7 +175,7 @@ function select(groupId: string) {
             data-testid="review-v3-group-menu"
             @click.stop
           >
-            <img class="group-row__hand" :src="moreIcon" alt="" />
+            <ReviewIcon name="more" :size="15" />
           </button>
         </t-dropdown>
       </div>
@@ -191,34 +192,26 @@ function select(groupId: string) {
 }
 
 .group-rail {
-  width: 200px;
-  flex: 0 0 200px;
+  width: 100%;
+  flex: none;
   min-width: 0;
-  padding: 10px 8px;
-  background: var(--rvn-panel);
-  border: 1px solid var(--rvn-border);
-  border-radius: var(--rvn-radius);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   align-self: stretch;
   position: static;
   max-height: none;
-  min-height: 100%;
-  overflow-y: auto;
+  min-height: 0;
+  overflow-y: visible;
 }
 
 .group-rail__label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 10px 8px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--td-text-color-placeholder);
-
-  img {
-    width: 18px;
-    height: 18px;
-    object-fit: contain;
-  }
+  padding: 0 8px 10px;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--rvn-ink);
 }
 
 .group-rail__tree {
@@ -230,21 +223,22 @@ function select(groupId: string) {
 .group-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   width: 100%;
-  min-height: 30px;
-  padding: 4px 8px;
+  min-height: 32px;
+  padding: 5px 8px;
   border: 0;
-  border-radius: var(--td-radius-default);
+  border-radius: 6px;
   background: transparent;
-  color: var(--td-text-color-primary);
-  font-size: 13px;
+  color: var(--rvn-ink);
+  font-size: 14px;
   text-align: left;
   cursor: pointer;
   outline: none;
+  transition: background 0.18s ease, color 0.18s ease;
 
   &:hover {
-    background: var(--td-bg-color-container-hover);
+    background: var(--rvn-surface);
   }
 
   &:hover .group-row__more,
@@ -253,18 +247,18 @@ function select(groupId: string) {
   }
 
   &:focus-visible {
-    outline: 2px solid var(--td-brand-color-focus);
+    outline: 2px solid var(--rvn-brand);
     outline-offset: -2px;
   }
 }
 
 .group-row--active {
-  background: var(--rvn-brand-bg);
+  background: var(--rvn-surface-deep);
 
   .group-row__name,
   .group-row__icon,
   .group-row__cards {
-    color: var(--rvn-brand);
+    color: var(--rvn-ink);
   }
 }
 
@@ -285,73 +279,59 @@ function select(groupId: string) {
 
 .group-row__chevron {
   padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--td-text-color-placeholder);
+  color: var(--rvn-muted);
   cursor: pointer;
-  transition: transform 0.15s ease;
+  background: transparent;
+  border: 0;
 
   &:hover {
-    color: var(--td-text-color-primary);
+    color: var(--rvn-ink);
   }
 }
 
 .group-row__chevron--collapsed {
-  transform: rotate(-90deg);
+  transform: none;
 }
 
 .group-row__icon {
   flex: 0 0 auto;
-  color: var(--td-text-color-secondary);
-}
-
-.group-row__hand {
-  width: 15px;
-  height: 15px;
-  object-fit: contain;
-  flex: 0 0 auto;
-}
-
-.group-row__arrow {
-  width: 12px;
-  height: 12px;
-  object-fit: contain;
-  transition: transform 0.15s ease;
+  color: var(--rvn-ink-soft);
 }
 
 .group-row__name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .group-row__counts {
   display: inline-flex;
-  align-items: center;
-  gap: 4px;
   flex: 0 0 auto;
+  gap: 5px;
+  align-items: center;
 }
 
 .group-row__cards {
   min-width: 14px;
-  text-align: right;
-  font-size: 11px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
-  color: var(--td-text-color-placeholder);
+  color: var(--rvn-muted);
+  text-align: right;
 }
 
 .group-row__due {
   min-width: 16px;
-  padding: 0 4px;
-  border-radius: var(--td-radius-round);
-  background: var(--rvn-brand);
-  color: #fff;
-  font-size: 10px;
+  padding: 1px 7px;
+  font-size: 14px;
   line-height: 16px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+  color: var(--rvn-red-deep);
   text-align: center;
+  background: var(--rvn-red-soft);
+  border-radius: 999px;
 }
 
 .group-row__more {
@@ -362,21 +342,21 @@ function select(groupId: string) {
   width: 18px;
   height: 18px;
   padding: 0;
-  border: 0;
-  border-radius: var(--td-radius-default);
-  background: transparent;
-  color: var(--td-text-color-placeholder);
+  color: var(--rvn-muted);
   cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
   opacity: 0;
   transition: opacity 0.12s ease, background 0.12s ease;
 
   &:hover {
-    background: var(--td-bg-color-container-active);
-    color: var(--td-text-color-primary);
+    background: var(--rvn-surface-deep);
+    color: var(--rvn-ink);
   }
 
   &:focus-visible {
-    outline: 2px solid var(--td-brand-color-focus);
+    outline: 2px solid var(--rvn-brand);
     outline-offset: 1px;
     opacity: 1;
   }

@@ -3,16 +3,16 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ReviewHeatmap, ReviewHeatmapCell } from '@/api/review'
 import { formatIntensity, normalizeVulnerability, vulnerabilityLabelKey } from './vulnerability'
-import chartIcon from '@/assets/icons/static/chart.png'
-import bookIcon from '@/assets/icons/static/book.png'
-import helpIcon from '@/assets/icons/static/help.png'
-import arrowIcon from '@/assets/icons/static/arrow-right.png'
+import ReviewIcon from './ReviewIcon.vue'
+import type { ReviewFlatGroup } from './types'
 
 const props = defineProps<{
   heatmap: ReviewHeatmap | null
   loading: boolean
   error: string
   canStart: boolean
+  groups: ReviewFlatGroup[]
+  rowGroupIds: string[]
 }>()
 
 const emit = defineEmits<{
@@ -21,6 +21,7 @@ const emit = defineEmits<{
   expand: []
   start: []
   retry: []
+  'update:rowGroupIds': [ids: string[]]
 }>()
 
 const { t } = useI18n()
@@ -55,7 +56,7 @@ const emptyMode = computed<'cards' | 'reviews' | ''>(() => {
 })
 
 const gridStyle = computed(() => ({
-  gridTemplateColumns: `var(--heatmap-row-width, 200px) repeat(${Math.max(columns.value.length, 1)}, var(--heatmap-cell-width, 88px))`,
+  gridTemplateColumns: `var(--heatmap-row-width, 168px) repeat(${Math.max(columns.value.length, 1)}, minmax(26px, 1fr))`,
 }))
 
 function cellKey(rowId: string, columnKey: string) {
@@ -78,48 +79,93 @@ function onCellClick(cell: ReviewHeatmapCell | null) {
 function levelClass(level: string | undefined) {
   return `heatmap__cell--${normalizeVulnerability(level)}`
 }
+
+function cellLabel(cell: ReviewHeatmapCell | null) {
+  if (!cell) return ''
+  return `${t(vulnerabilityLabelKey(cell.level))} · ${formatIntensity(cell.intensity)}`
+}
+
+function toggleRow(groupId: string, checked: boolean) {
+  const next = new Set(props.rowGroupIds)
+  if (checked) next.add(groupId)
+  else next.delete(groupId)
+  emit('update:rowGroupIds', [...next])
+}
+
+function resetRows() {
+  emit('update:rowGroupIds', [])
+}
 </script>
 
 <template>
-  <t-card class="heatmap" :bordered="false" data-testid="review-v3-heatmap-panel">
-    <template #title>
-      <div class="heatmap__title"><img :src="chartIcon" alt="" />{{ t('review.v3.heatmapTitle') }}</div>
-    </template>
-    <template #actions>
-      <t-button
-        v-if="heatmap?.row_truncated || heatmap?.column_truncated"
-        size="small"
-        variant="text"
-        theme="primary"
-        data-testid="review-v3-heatmap-expand"
-        @click="emit('expand')"
-      >
-        {{ t('review.v3.expandAll') }}
-      </t-button>
-      <t-tooltip :content="t('review.v3.heatmapLegendHint')" placement="top-right">
-        <span class="heatmap__help" tabindex="0">
-          <img class="inline-hand-icon" :src="helpIcon" alt="" />
-        </span>
-      </t-tooltip>
-    </template>
+  <section class="heatmap" data-testid="review-v3-heatmap-panel">
+    <div class="heatmap__head">
+      <div class="rv-h2">
+        {{ t('review.v3.heatmapTitle') }}
+        <span class="rv-note">{{ t('review.v3.heatmapSubtitle') }}</span>
+      </div>
+      <div class="heatmap__actions">
+        <details class="heatmap__rowpick">
+          <summary class="rv-btn rv-btn--ghost rv-btn--sm">
+            {{ rowGroupIds.length
+              ? t('review.v3.heatmapRowsSelected', { count: rowGroupIds.length })
+              : t('review.v3.heatmapRowsAuto') }}
+            <ReviewIcon name="chevron-down" :size="11" />
+          </summary>
+          <div class="heatmap__rowmenu">
+            <div class="heatmap__rowmenu-head">
+              <b>{{ t('review.v3.heatmapRowsTitle') }}</b>
+              <button type="button" class="rv-btn rv-btn--text rv-btn--sm" @click="resetRows">
+                {{ t('review.v3.heatmapRowsReset') }}
+              </button>
+            </div>
+            <label v-for="item in groups" :key="item.group.id" class="heatmap__rowmenu-item">
+              <input
+                type="checkbox"
+                :checked="rowGroupIds.includes(item.group.id)"
+                @change="(event: Event) => toggleRow(item.group.id, (event.target as HTMLInputElement).checked)"
+              />
+              <span :style="{ paddingLeft: `${item.depth * 12}px` }">{{ item.group.name }}</span>
+            </label>
+            <p v-if="!groups.length" class="heatmap__rowmenu-empty">{{ t('review.v3.heatmapRowsEmpty') }}</p>
+          </div>
+        </details>
+        <button
+          v-if="heatmap?.row_truncated || heatmap?.column_truncated"
+          type="button"
+          class="rv-btn rv-btn--text rv-btn--sm"
+          data-testid="review-v3-heatmap-expand"
+          @click="emit('expand')"
+        >
+          {{ t('review.v3.expandAll') }}
+        </button>
+        <t-tooltip :content="t('review.v3.heatmapLegendHint')" placement="top-right">
+          <span class="heatmap__help" tabindex="0">
+            <ReviewIcon name="help" :size="16" />
+          </span>
+        </t-tooltip>
+      </div>
+    </div>
 
     <t-loading :loading="loading" size="small" class="heatmap__loading">
       <div v-if="error" class="heatmap__error">
         <t-alert theme="error" :message="error" />
-        <t-button size="small" variant="outline" @click="emit('retry')">{{ t('common.retry') }}</t-button>
+        <button type="button" class="rv-btn rv-btn--ghost rv-btn--sm" @click="emit('retry')">
+          {{ t('common.retry') }}
+        </button>
       </div>
 
       <div v-else-if="emptyMode" class="heatmap__empty" data-testid="review-v3-heatmap-empty">
-        <img class="rv-icon rv-icon--lg" :src="bookIcon" alt="" />
+        <ReviewIcon name="book" :size="28" />
         <p class="heatmap__empty-title">
           {{ emptyMode === 'cards' ? t('review.v3.heatmapNoCardsTitle') : t('review.v3.heatmapNoReviewsTitle') }}
         </p>
         <p class="heatmap__empty-hint">
           {{ emptyMode === 'cards' ? t('review.v3.heatmapNoCardsHint') : t('review.v3.heatmapNoReviewsHint') }}
         </p>
-        <t-button v-if="canStart" size="small" variant="outline" @click="emit('start')">
+        <button v-if="canStart" type="button" class="rv-btn rv-btn--ghost rv-btn--sm" @click="emit('start')">
           {{ t('review.v3.startToday') }}
-        </t-button>
+        </button>
       </div>
 
       <template v-else>
@@ -146,7 +192,7 @@ function levelClass(level: string | undefined) {
                 @click="emit('drill', row.group_id)"
               >
                 <span class="heatmap__rowtitle">{{ row.path }}</span>
-                <img class="inline-hand-icon inline-hand-icon--12" :src="arrowIcon" alt="" />
+                <ReviewIcon name="arrow-right" :size="12" />
               </button>
               <div v-else class="heatmap__rowhead" :title="row.path">
                 {{ row.path }}
@@ -165,22 +211,9 @@ function levelClass(level: string | undefined) {
                     ]"
                     :tabindex="getCell(row.id, column.key)?.clickable ? 0 : -1"
                     :aria-disabled="!getCell(row.id, column.key)?.clickable"
+                    :aria-label="cellLabel(getCell(row.id, column.key))"
                     @click="onCellClick(getCell(row.id, column.key))"
-                  >
-                    <span class="heatmap__cell-value">
-                      {{
-                        getCell(row.id, column.key)?.level === 'none'
-                          ? '—'
-                          : formatIntensity(getCell(row.id, column.key)?.intensity)
-                      }}
-                    </span>
-                    <span
-                      v-if="(getCell(row.id, column.key)?.severe ?? 0) > 0"
-                      class="heatmap__cell-severe"
-                    >
-                      {{ t('review.v3.heatmapSevereShort', { count: getCell(row.id, column.key)?.severe }) }}
-                    </span>
-                  </button>
+                  />
                   <template #content>
                     <div class="heatmap__tip">
                       <div class="heatmap__tip-title">{{ row.path }} · {{ column.title }}</div>
@@ -211,7 +244,7 @@ function levelClass(level: string | undefined) {
                     </div>
                   </template>
                 </t-tooltip>
-                <div v-else class="heatmap__cell heatmap__cell--none heatmap__cell--missing">—</div>
+                <div v-else class="heatmap__cell heatmap__cell--none heatmap__cell--missing" />
               </div>
             </template>
           </div>
@@ -226,49 +259,95 @@ function levelClass(level: string | undefined) {
         </div>
       </template>
     </t-loading>
-  </t-card>
+  </section>
 </template>
 
 <style lang="less" scoped>
-.inline-hand-icon {
-  width: 16px;
-  height: 16px;
-  object-fit: contain;
-}
-
-.inline-hand-icon--12 {
-  width: 12px;
-  height: 12px;
-}
-
 .heatmap {
   min-width: 0;
+  margin-top: 8px;
+}
 
-  :deep(.t-card__header) {
-    min-height: 44px;
-    padding: 0 16px;
-  }
+.heatmap__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: baseline;
+  justify-content: space-between;
+}
 
-  :deep(.t-card__body) {
-    padding: 0 16px 16px;
+.heatmap__actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.heatmap__rowpick {
+  position: relative;
+}
+
+.heatmap__rowpick summary {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.heatmap__rowpick summary::-webkit-details-marker {
+  display: none;
+}
+
+.heatmap__rowmenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  width: 270px;
+  max-height: 320px;
+  padding: 10px;
+  overflow-y: auto;
+  background: var(--rvn-paper);
+  border: 1px solid var(--rvn-line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(63, 58, 52, 0.12);
+}
+
+.heatmap__rowmenu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 8px;
+  font-size: 14px;
+  color: var(--rvn-ink);
+}
+
+.heatmap__rowmenu-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 6px;
+  font-size: 14px;
+  color: var(--rvn-ink-soft);
+  cursor: pointer;
+  border-radius: 5px;
+
+  &:hover {
+    background: var(--rvn-surface);
   }
 }
 
-.heatmap__title {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-
-  img {
-    width: 20px;
-    height: 20px;
-    object-fit: contain;
-  }
+.heatmap__rowmenu-empty {
+  padding: 10px;
+  margin: 0;
+  font-size: 14px;
+  color: var(--rvn-muted);
 }
 
 .heatmap__help {
   display: inline-flex;
-  color: var(--td-text-color-placeholder);
+  color: var(--rvn-muted);
   cursor: help;
 }
 
@@ -295,27 +374,23 @@ function levelClass(level: string | undefined) {
   gap: 6px;
   min-height: 160px;
   padding: 16px;
-  border: 1px dashed var(--td-component-stroke);
-  border-radius: var(--td-radius-default);
-  background: var(--td-bg-color-container-hover);
-  color: var(--td-text-color-placeholder);
+  color: var(--rvn-muted);
   text-align: center;
-
-  :deep(.t-button) {
-    margin-top: 6px;
-  }
+  background: var(--rvn-surface);
+  border: 1px dashed var(--rvn-line-strong);
+  border-radius: 7px 6px 8px 7px / 6px 8px 7px 6px;
 }
 
 .heatmap__empty-title {
   margin: 2px 0 0;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
-  color: var(--td-text-color-secondary);
+  color: var(--rvn-ink-soft);
 }
 
 .heatmap__empty-hint {
   margin: 0;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .heatmap__scroll {
@@ -325,9 +400,9 @@ function levelClass(level: string | undefined) {
 
 .heatmap__scope {
   margin-bottom: 6px;
-  font-size: 11px;
-  color: var(--td-text-color-placeholder);
   overflow: hidden;
+  font-size: 14px;
+  color: var(--rvn-muted);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -340,15 +415,13 @@ function levelClass(level: string | undefined) {
 
 @media (max-width: 760px) {
   .heatmap__grid {
-    --heatmap-row-width: 140px;
-    --heatmap-cell-width: 80px;
+    --heatmap-row-width: 132px;
   }
 }
 
-.heatmap__corner,
 .heatmap__rowhead,
 .heatmap__colhead {
-  background: var(--rvn-panel);
+  background: transparent;
 }
 
 .heatmap__rowhead {
@@ -357,34 +430,29 @@ function levelClass(level: string | undefined) {
   z-index: 2;
   display: flex;
   align-items: center;
-  height: 44px;
-  padding: 0 8px;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--td-text-color-secondary);
+  height: 22px;
+  padding-right: 8px;
   overflow: hidden;
+  font-size: 14px;
+  color: var(--rvn-ink-soft);
   white-space: nowrap;
+  background: var(--rvn-paper);
   text-overflow: ellipsis;
-  border-right: 1px solid var(--td-component-stroke);
-  background: var(--td-bg-color-container);
 }
 
 button.heatmap__rowhead {
   gap: 4px;
-  border-top: 0;
-  border-bottom: 0;
-  border-left: 0;
   font-family: inherit;
   text-align: left;
   cursor: pointer;
+  border: 0;
 
   &:hover {
-    color: var(--td-text-color-primary);
-    background: var(--td-bg-color-container-hover);
+    color: var(--rvn-brand-deep);
   }
 
   &:focus-visible {
-    outline: 2px solid var(--td-brand-color);
+    outline: 2px solid var(--rvn-brand);
     outline-offset: -2px;
   }
 }
@@ -398,18 +466,17 @@ button.heatmap__rowhead {
   position: sticky;
   left: 0;
   z-index: 3;
-  height: 36px;
-  border-right: 1px solid var(--td-component-stroke);
+  height: 20px;
+  background: var(--rvn-paper);
 }
 
 .heatmap__colhead {
-  height: 36px;
-  padding: 0 4px;
-  font-size: 11px;
-  line-height: 36px;
-  color: var(--td-text-color-placeholder);
-  text-align: center;
+  height: 20px;
   overflow: hidden;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--rvn-muted);
+  text-align: center;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -419,21 +486,17 @@ button.heatmap__rowhead {
 }
 
 .heatmap__cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
   width: 100%;
-  height: 44px;
-  padding: 2px 4px;
-  border: 1px solid transparent;
-  border-radius: var(--td-radius-default);
-  background: transparent;
+  height: 22px;
+  padding: 0;
   font-family: inherit;
   cursor: default;
+  background: var(--rvn-gray-soft);
+  border: 1px solid transparent;
+  border-radius: 3px;
 
   &:focus-visible {
-    outline: 2px solid var(--td-brand-color);
+    outline: 2px solid var(--rvn-brand);
     outline-offset: 1px;
   }
 
@@ -442,123 +505,81 @@ button.heatmap__rowhead {
   }
 
   &.is-clickable:hover {
-    border-color: currentColor;
+    border-color: var(--rvn-ink-soft);
   }
 
   &.is-emphasis {
-    outline: 2px solid var(--td-brand-color);
+    outline: 2px solid var(--rvn-brand);
     outline-offset: -2px;
   }
 }
 
-.heatmap__cell-value {
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.heatmap__cell-severe {
-  font-size: 10px;
-  line-height: 14px;
-}
-
 .heatmap__cell--severe {
-  background: color-mix(in srgb, var(--rv-vuln-severe) 14%, var(--td-bg-color-container));
-  border-color: color-mix(in srgb, var(--rv-vuln-severe) 30%, transparent);
-  color: var(--rv-vuln-severe);
+  background: #a96b64;
 }
 
 .heatmap__cell--warning {
-  background: color-mix(in srgb, var(--rv-vuln-warning) 14%, var(--td-bg-color-container));
-  border-color: color-mix(in srgb, var(--rv-vuln-warning) 30%, transparent);
-  color: var(--rv-vuln-warning);
+  background: #d2aaa4;
 }
 
 .heatmap__cell--observe {
-  background: color-mix(in srgb, var(--rv-vuln-observe) 10%, var(--td-bg-color-container));
-  border-color: color-mix(in srgb, var(--rv-vuln-observe) 26%, transparent);
-  color: var(--rv-vuln-observe);
+  background: #e9dcd8;
 }
 
 .heatmap__cell--healthy {
-  background: color-mix(in srgb, var(--rv-vuln-healthy) 10%, var(--td-bg-color-container));
-  border-color: color-mix(in srgb, var(--rv-vuln-healthy) 26%, transparent);
-  color: var(--rv-vuln-healthy);
+  background: #dde5d8;
 }
 
 .heatmap__cell--none {
-  background: var(--td-bg-color-container-hover);
-  color: var(--td-text-color-placeholder);
+  background: var(--rvn-gray-soft);
 }
 
 .heatmap__cell--missing {
-  cursor: default;
+  background: transparent;
 }
 
 .heatmap__legend {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 6px 14px;
+  align-items: center;
   margin-top: 10px;
-  font-size: 11px;
-  color: var(--td-text-color-secondary);
+  font-size: 14px;
+  color: var(--rvn-ink-soft);
 }
 
 .heatmap__legend-item {
   display: inline-flex;
-  align-items: center;
   gap: 5px;
+  align-items: center;
 }
 
 .heatmap__legend-swatch {
   display: inline-block;
-  width: 12px;
-  height: 12px;
-  border: 1px solid transparent;
+  width: 11px;
+  height: 11px;
   border-radius: 3px;
 }
 
-.heatmap__legend-swatch.heatmap__cell--severe {
-  background: var(--rv-vuln-severe);
-}
-
-.heatmap__legend-swatch.heatmap__cell--warning {
-  background: var(--rv-vuln-warning);
-}
-
-.heatmap__legend-swatch.heatmap__cell--observe {
-  background: var(--rv-vuln-observe);
-}
-
-.heatmap__legend-swatch.heatmap__cell--healthy {
-  background: var(--rv-vuln-healthy);
-}
-
-.heatmap__legend-swatch.heatmap__cell--none {
-  background: var(--td-bg-color-container-active);
-}
-
 .heatmap__legend-note {
-  color: var(--td-text-color-placeholder);
+  color: var(--rvn-muted);
 }
 
 .heatmap__tip {
-  max-width: 260px;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  font-size: 12px;
+  max-width: 260px;
+  font-size: 14px;
   line-height: 18px;
 }
 
 .heatmap__tip-title {
-  font-weight: 600;
   margin-bottom: 2px;
+  font-weight: 600;
 }
 
 .heatmap__tip-note {
-  color: var(--td-text-color-placeholder);
+  color: var(--rvn-muted);
 }
 </style>

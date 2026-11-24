@@ -220,6 +220,13 @@ func (h *ReviewHandler) Heatmap(c *gin.Context) {
 	}
 	opts.RowLimit, _ = strconv.Atoi(c.Query("row_limit"))
 	opts.ColumnLimit, _ = strconv.Atoi(c.Query("column_limit"))
+	if raw := strings.TrimSpace(c.Query("row_group_ids")); raw != "" {
+		for _, id := range strings.Split(raw, ",") {
+			if id = strings.TrimSpace(id); id != "" {
+				opts.RowGroupIDs = append(opts.RowGroupIDs, id)
+			}
+		}
+	}
 	data, err := h.service.Heatmap(c.Request.Context(), opts)
 	if err != nil {
 		_ = c.Error(err)

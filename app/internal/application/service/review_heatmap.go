@@ -12,8 +12,8 @@ import (
 
 const (
 	reviewHeatmapUncategorizedKey = "uncategorized"
-	reviewHeatmapDefaultRowLimit  = 8
-	reviewHeatmapDefaultColLimit  = 10
+	reviewHeatmapDefaultRowLimit  = 7
+	reviewHeatmapDefaultColLimit  = 7
 	reviewHeatmapExpandedRowLimit = 50
 	reviewHeatmapExpandedColLimit = 30
 )
@@ -331,11 +331,21 @@ func (s *reviewService) buildReviewHeatmap(
 
 	rows := make(map[string]*types.ReviewHeatmapRow)
 	columns := make(map[string]*types.ReviewHeatmapColumn)
+	selectedRows := make(map[string]bool, len(opts.RowGroupIDs))
+	for _, id := range opts.RowGroupIDs {
+		if allowed[id] && groupsByID[id] != nil {
+			selectedRows[id] = true
+		}
+	}
 	for _, card := range cards {
 		if cardByID[card.ID] == nil {
 			continue
 		}
 		rowID, direct := reviewRowForCard(card.GroupID, scopeID, groupsByID, hasChildren)
+		if len(selectedRows) > 0 {
+			rowID = reviewSelectedRowForCard(card.GroupID, selectedRows, groupsByID)
+			direct = false
+		}
 		if rowID == "" {
 			continue
 		}
@@ -355,12 +365,10 @@ func (s *reviewService) buildReviewHeatmap(
 				row.Virtual = true
 				row.Drillable = false
 			} else if group := groupsByID[rowID]; group != nil {
+				row.GroupID = rowID
 				row.Name = group.Name
 				row.Path = reviewGroupPath(groupsByID, rowID)
 				row.Drillable = hasChildren[rowID]
-			}
-			if direct {
-				row.GroupID = scopeID
 			}
 			rows[rowID] = row
 		}
@@ -584,12 +592,22 @@ func reviewRowForCard(
 		return "", false
 	}
 	if scopeID == "" {
+		chain := make([]string, 0, 8)
 		cursor := groupID
-		for groupsByID[cursor] != nil && groupsByID[cursor].ParentID != "" &&
-			groupsByID[groupsByID[cursor].ParentID] != nil {
-			cursor = groupsByID[cursor].ParentID
+		for groupsByID[cursor] != nil {
+			chain = append(chain, cursor)
+			parent := groupsByID[cursor].ParentID
+			if parent == "" || groupsByID[parent] == nil {
+				break
+			}
+			cursor = parent
 		}
-		return cursor, false
+		if len(chain) >= 2 {
+			// Default rows are second-level directories (the child of a root
+			// group). Deeper cards roll up to that directory.
+			return chain[len(chain)-2], false
+		}
+		return chain[len(chain)-1], false
 	}
 	if groupID == scopeID {
 		if hasChildren[scopeID] {
@@ -609,6 +627,42 @@ func reviewRowForCard(
 		cursor = group.ParentID
 	}
 	return "", false
+}
+
+// reviewSelectedRowForCard maps a card to the deepest user-selected row group
+// that owns it. Overlapping selections (parent plus child) resolve to the
+// child so a card is never counted twice.
+func reviewSelectedRowForCard(
+	groupID string,
+	selected map[string]bool,
+	groupsByID map[string]*types.ReviewGroup,
+) string {
+	best := ""
+	bestDepth := -1
+	cursor := groupID
+	for groupsByID[cursor] != nil {
+		if selected[cursor] {
+			depth := 0
+			for probe := cursor; groupsByID[probe] != nil; {
+				depth++
+				parent := groupsByID[probe].ParentID
+				if parent == "" || groupsByID[parent] == nil {
+					break
+				}
+				probe = parent
+			}
+			if depth > bestDepth {
+				best = cursor
+				bestDepth = depth
+			}
+		}
+		parent := groupsByID[cursor].ParentID
+		if parent == "" || groupsByID[parent] == nil {
+			break
+		}
+		cursor = parent
+	}
+	return best
 }
 
 func reviewSubtreeGroupIDs(rootID string, children map[string][]string) []string {
@@ -869,14 +923,14 @@ func sortReviewRows(rows []*types.ReviewHeatmapRow, cells map[string]*types.Revi
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
 		left, right := agg[rows[i].ID], agg[rows[j].ID]
+		if left.severe != right.severe {
+			return left.severe > right.severe
+		}
 		if left.rank != right.rank {
 			return left.rank > right.rank
 		}
 		if left.intensity != right.intensity {
 			return left.intensity > right.intensity
-		}
-		if left.severe != right.severe {
-			return left.severe > right.severe
 		}
 		if rows[i].Path != rows[j].Path {
 			return rows[i].Path < rows[j].Path

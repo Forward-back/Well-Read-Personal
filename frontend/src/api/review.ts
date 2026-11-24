@@ -425,12 +425,14 @@ export function batchReviewCards(payload: BatchReviewCardsRequest) {
 
 export function getReviewHeatmap(params?: {
   group_id?: string
+  row_group_ids?: string[]
   row_limit?: number
   column_limit?: number
   expand?: boolean
 }) {
   const query = new URLSearchParams()
   if (params?.group_id) query.set('group_id', params.group_id)
+  if (params?.row_group_ids?.length) query.set('row_group_ids', params.row_group_ids.join(','))
   if (params?.row_limit) query.set('row_limit', String(params.row_limit))
   if (params?.column_limit) query.set('column_limit', String(params.column_limit))
   if (params?.expand) query.set('expand', '1')
@@ -579,6 +581,7 @@ export interface ReviewGenerationPreview {
 
 export function previewReviewGeneration(payload: {
   knowledge_base_id: string
+  knowledge_ids?: string[]
   group_id?: string
   count: number
 }) {
