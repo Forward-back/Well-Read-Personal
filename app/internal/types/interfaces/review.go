@@ -71,6 +71,12 @@ type ReviewRepository interface {
 	ApplyReviewSession(ctx context.Context, card *types.ReviewCard, log *types.ReviewLog, session *types.ReviewSession) (bool, error)
 }
 
+// ReviewCardImporter is the narrow import slice the reading self-test flow
+// depends on, so the reading service never reaches into review handlers.
+type ReviewCardImporter interface {
+	ImportGeneratedCards(ctx context.Context, req *types.ImportReviewCardsRequest) (int, error)
+}
+
 // ReviewService is the card-group and spaced-repetition domain service.
 type ReviewService interface {
 	EnsureDefaultGroup(ctx context.Context) (*types.ReviewGroup, error)

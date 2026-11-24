@@ -323,3 +323,26 @@ func (h *ReadingHandler) Export(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": report})
 }
+
+func (h *ReadingHandler) ListSelfTests(c *gin.Context) {
+	tests, err := h.service.ListSelfTests(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": tests})
+}
+
+func (h *ReadingHandler) ImportSelfTests(c *gin.Context) {
+	var req types.ImportReadingSelfTestsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	result, err := h.service.ImportSelfTests(c.Request.Context(), c.Param("id"), &req)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
+}

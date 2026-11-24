@@ -77,6 +77,8 @@ var baselineSQLiteTables = []string{
 	"reading_report_drafts",
 	"reading_drafts",
 	"reading_understandings",
+	"reading_run_memories",
+	"reading_self_tests",
 	"review_groups",
 	"review_cards",
 	"review_card_sources",
@@ -88,7 +90,7 @@ var baselineSQLiteTables = []string{
 // baselineSQLiteColumns maps tables to columns the baseline must define
 // because the application reads or writes them.
 var baselineSQLiteColumns = map[string][]string{
-	"tenants":               {"api_principal_config", "memory_config", "reading_model_id"},
+	"tenants":               {"api_principal_config", "memory_config", "reading_model_id", "reading_extraction_model_id", "reading_synthesis_model_id"},
 	"users":                 {"is_system_admin", "avatar_data", "background_choice"},
 	"knowledges":            {"pending_subtasks_count", "folder_path", "folder_id", "created_by", "engine_sync_status"},
 	"messages":              {"attachments", "usage", "query_rewritten", "query_rewrite_meta", "skill", "reading_run_id"},
@@ -99,6 +101,7 @@ var baselineSQLiteColumns = map[string][]string{
 	"reading_report_drafts": {"version"},
 	"reading_questions":     {"kind", "gap_type", "options", "judgment", "judgment_reason", "judged_at"},
 	"reading_terms":         {"round"},
+	"reading_runs":          {"extraction_model_id", "synthesis_model_id", "phase"},
 	"knowledge_bases":       {"auto_tag_config"},
 	"review_cards":          {"review_level", "stability", "forget_streak", "due_at", "question_hash", "deleted_at"},
 	"review_card_sources":   {"knowledge_id", "chunk_id", "content_hash", "status"},
@@ -115,7 +118,7 @@ func TestSQLiteMigrationsCreateBaselineSchema(t *testing.T) {
 
 	db := openSQLiteDB(t, dbPath)
 	version, dirty := sqliteMigrationState(t, db)
-	require.Equal(t, 6, version, "the personal-edition schema includes review V3 easy rating, avatar, shell background and the reading workbench contract")
+	require.Equal(t, 7, version, "the personal-edition schema includes review V3 easy rating, avatar, shell background, the reading workbench contract and the reading agent P0 contract")
 	require.False(t, dirty)
 
 	for _, table := range baselineSQLiteTables {

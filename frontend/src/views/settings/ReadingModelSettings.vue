@@ -3,23 +3,50 @@
     <header class="block__header">
       <div>
         <h3>精读模型</h3>
-        <p>精读固定使用支持思考模式的问答模型；未配置时无法创建阅读计划。可在「模型与引擎」中为模型开启思考控制。</p>
+        <p>精读按角色使用模型：抽取模型负责结构预读与逐章抽取，可不支持思考；综合模型负责综合、判定与自测，必须支持思考。留空时回退到默认精读模型。</p>
       </div>
     </header>
 
     <div class="form-row">
+      <label class="form-label">默认精读模型</label>
       <t-select
-        v-model="selectedModelId"
-        :options="options"
+        v-model="selectedFallbackId"
+        :options="allOptions"
         :loading="loading"
-        :placeholder="options.length ? '选择精读模型' : '暂无支持思考模式的问答模型'"
+        :placeholder="allOptions.length ? '选择默认精读模型' : '暂无可用的问答模型'"
         clearable
         class="model-select"
       />
+    </div>
+    <div class="form-row">
+      <label class="form-label">抽取模型</label>
+      <t-select
+        v-model="selectedExtractionId"
+        :options="allOptions"
+        :loading="loading"
+        placeholder="留空回退到默认精读模型"
+        clearable
+        class="model-select"
+      />
+    </div>
+    <div class="form-row">
+      <label class="form-label">综合模型</label>
+      <t-select
+        v-model="selectedSynthesisId"
+        :options="thinkingOptions"
+        :loading="loading"
+        placeholder="留空回退到默认精读模型（必须支持思考）"
+        clearable
+        class="model-select"
+      />
+    </div>
+    <div class="form-row">
       <t-button theme="primary" :loading="saving" :disabled="!dirty || saving" @click="save">保存</t-button>
     </div>
-    <p v-if="currentModelId" class="current">当前精读模型：{{ currentModelName || currentModelId }}</p>
-    <p v-else class="current current--empty">当前未配置精读模型</p>
+    <p v-if="currentFallbackId" class="current">当前默认精读模型：{{ modelName(currentFallbackId) }}</p>
+    <p v-else class="current current--empty">当前未配置默认精读模型</p>
+    <p v-if="currentExtractionId" class="current">当前抽取模型：{{ modelName(currentExtractionId) }}</p>
+    <p v-if="currentSynthesisId" class="current">当前综合模型：{{ modelName(currentSynthesisId) }}</p>
   </div>
 </template>
 
@@ -33,26 +60,46 @@ import { modelSupportsThinking } from '@/utils/thinkingControl'
 const loading = ref(false)
 const saving = ref(false)
 const models = ref<ModelConfig[]>([])
-const currentModelId = ref('')
-const selectedModelId = ref('')
+const currentFallbackId = ref('')
+const currentExtractionId = ref('')
+const currentSynthesisId = ref('')
+const selectedFallbackId = ref('')
+const selectedExtractionId = ref('')
+const selectedSynthesisId = ref('')
 
-const thinkingModels = computed(() => models.value.filter((m) => m.id && modelSupportsThinking(m)))
-const options = computed(() =>
+const questionModels = computed(() =>
+  models.value.filter((m) => m.id && (m.type || '').toLowerCase() === 'knowledgeqa'),
+)
+const thinkingModels = computed(() => questionModels.value.filter((m) => modelSupportsThinking(m)))
+const allOptions = computed(() =>
+  questionModels.value.map((m) => ({ label: m.display_name || m.name, value: m.id as string })),
+)
+const thinkingOptions = computed(() =>
   thinkingModels.value.map((m) => ({ label: m.display_name || m.name, value: m.id as string })),
 )
-const currentModelName = computed(() => {
-  const hit = models.value.find((m) => m.id === currentModelId.value)
-  return hit ? hit.display_name || hit.name : ''
-})
-const dirty = computed(() => (selectedModelId.value || '') !== currentModelId.value)
+const modelName = (id: string) => {
+  const hit = models.value.find((m) => m.id === id)
+  return hit ? hit.display_name || hit.name : id
+}
+const dirty = computed(
+  () =>
+    (selectedFallbackId.value || '') !== currentFallbackId.value ||
+    (selectedExtractionId.value || '') !== currentExtractionId.value ||
+    (selectedSynthesisId.value || '') !== currentSynthesisId.value,
+)
 
 const load = async () => {
   loading.value = true
   try {
     const [modelList, config] = await Promise.all([listModels(), getReadingConfig()])
     models.value = modelList || []
-    currentModelId.value = config?.data?.reading_model_id || ''
-    selectedModelId.value = currentModelId.value
+    const data = config?.data
+    currentFallbackId.value = data?.reading_model_id || ''
+    currentExtractionId.value = data?.reading_extraction_model_id || ''
+    currentSynthesisId.value = data?.reading_synthesis_model_id || ''
+    selectedFallbackId.value = currentFallbackId.value
+    selectedExtractionId.value = currentExtractionId.value
+    selectedSynthesisId.value = currentSynthesisId.value
   } catch {
     MessagePlugin.error('读取精读配置失败')
   } finally {
@@ -63,9 +110,16 @@ const load = async () => {
 const save = async () => {
   saving.value = true
   try {
-    await updateReadingConfig(selectedModelId.value || '')
-    currentModelId.value = selectedModelId.value || ''
-    MessagePlugin.success(selectedModelId.value ? '精读模型已保存' : '已清除精读模型')
+    const result = await updateReadingConfig({
+      reading_model_id: selectedFallbackId.value || '',
+      reading_extraction_model_id: selectedExtractionId.value || '',
+      reading_synthesis_model_id: selectedSynthesisId.value || '',
+    })
+    const data = result?.data
+    currentFallbackId.value = data?.reading_model_id || ''
+    currentExtractionId.value = data?.reading_extraction_model_id || ''
+    currentSynthesisId.value = data?.reading_synthesis_model_id || ''
+    MessagePlugin.success('精读模型配置已保存')
   } catch (e: any) {
     MessagePlugin.error(e?.message || '保存精读模型失败')
   } finally {
@@ -102,6 +156,13 @@ onMounted(load)
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.form-label {
+  flex: none;
+  width: 112px;
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
 }
 
 .model-select {

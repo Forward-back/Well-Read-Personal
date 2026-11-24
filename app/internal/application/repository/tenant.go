@@ -126,6 +126,14 @@ func (r *tenantRepository) UpdateTenant(ctx context.Context, tenant *types.Tenan
 			return err
 		}
 		if err := tx.Model(&types.Tenant{}).Where("id = ?", tenant.ID).
+			Update("reading_extraction_model_id", tenant.ReadingExtractionModelID).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&types.Tenant{}).Where("id = ?", tenant.ID).
+			Update("reading_synthesis_model_id", tenant.ReadingSynthesisModelID).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&types.Tenant{}).Where("id = ?", tenant.ID).
 			Update("direct_model_id", tenant.DirectModelID).Error; err != nil {
 			return err
 		}

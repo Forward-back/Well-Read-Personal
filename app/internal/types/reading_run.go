@@ -28,6 +28,36 @@ const (
 	ReadingPolicyGrillWithDocs = "grill-with-docs"
 )
 
+// Reading run phases for state_version=3 runs. They coexist with Status:
+// phase advances through the agent pipeline, status keeps the user-facing
+// lifecycle including waiting_user.
+const (
+	ReadingPhaseStructure = "structure"
+	ReadingPhaseReading   = "reading"
+	ReadingPhaseSynthesis = "synthesis"
+	ReadingPhaseSelfTest  = "self_test"
+	ReadingPhaseDone      = "done"
+)
+
+const (
+	ReadingKnowledgeTypeConcept    = "concept"
+	ReadingKnowledgeTypeArgument   = "argument"
+	ReadingKnowledgeTypeProcess    = "process"
+	ReadingKnowledgeTypeComparison = "comparison"
+	ReadingKnowledgeTypeExample    = "example"
+	ReadingKnowledgeTypeReference  = "reference"
+	ReadingKnowledgeTypeUnknown    = "unknown"
+)
+
+// ReadingSectionStructure is one section's one-sentence thesis and knowledge
+// type produced by the structure pre-read. Missing sections fall back to the
+// heading and unknown at render time.
+type ReadingSectionStructure struct {
+	SectionID     string `json:"section_id"`
+	Thesis        string `json:"thesis"`
+	KnowledgeType string `json:"knowledge_type"`
+}
+
 // ReadingChunkSegment is one chunk fragment rendered into a reading window.
 type ReadingChunkSegment struct {
 	ID      string `json:"id"`
@@ -52,13 +82,16 @@ type ReadingSection struct {
 // ReadingPlan is the ordered section list. section_id values are stable for
 // one run so read progress survives step polling/reloads.
 type ReadingPlan struct {
-	Goal             string           `json:"goal,omitempty"`
-	Depth            string           `json:"depth,omitempty"`
-	Policy           string           `json:"policy,omitempty"`
-	KnowledgeBaseID  string           `json:"knowledge_base_id,omitempty"`
-	KnowledgeBaseIDs []string         `json:"knowledge_base_ids,omitempty"`
-	StateVersion     int              `json:"state_version,omitempty"`
-	Sections         []ReadingSection `json:"sections"`
+	Goal              string                    `json:"goal,omitempty"`
+	Depth             string                    `json:"depth,omitempty"`
+	Policy            string                    `json:"policy,omitempty"`
+	KnowledgeBaseID   string                    `json:"knowledge_base_id,omitempty"`
+	KnowledgeBaseIDs  []string                  `json:"knowledge_base_ids,omitempty"`
+	StateVersion      int                       `json:"state_version,omitempty"`
+	Structure         []ReadingSectionStructure `json:"structure,omitempty"`
+	StructureDegraded bool                      `json:"structure_degraded,omitempty"`
+	StructureError    string                    `json:"structure_error,omitempty"`
+	Sections          []ReadingSection          `json:"sections"`
 }
 
 // ReadingQuestion is the single checkpoint question for a step.
@@ -147,29 +180,35 @@ func readingNoteString(value any) string {
 
 // ReadingRun is one interactive reading session.
 type ReadingRun struct {
-	ID               string                  `json:"id" gorm:"type:varchar(36);primaryKey"`
-	TenantID         uint64                  `json:"tenant_id" gorm:"not null;index"`
-	SessionID        string                  `json:"session_id" gorm:"type:varchar(36);not null;default:''"`
-	UserID           string                  `json:"user_id" gorm:"type:varchar(36);not null;default:''"`
-	MessageID        string                  `json:"message_id" gorm:"type:varchar(36);not null;default:''"`
-	DocumentIDs      JSON                    `json:"document_ids" gorm:"type:jsonb;not null"`
-	SkillID          string                  `json:"skill_id" gorm:"type:varchar(36);not null;default:''"`
-	ReadingModelID   string                  `json:"reading_model_id" gorm:"type:varchar(36);not null;default:''"`
-	Status           ReadingRunStatus        `json:"status" gorm:"type:varchar(16);not null;default:'planning'"`
-	Plan             JSON                    `json:"plan" gorm:"type:jsonb;not null"`
-	Notes            JSON                    `json:"notes" gorm:"type:jsonb;not null"`
-	Final            JSON                    `json:"final" gorm:"type:jsonb;not null"`
-	CurrentSectionID string                  `json:"current_section_id" gorm:"type:varchar(64);not null;default:''"`
-	StepCount        int                     `json:"step_count" gorm:"not null;default:0"`
-	TokenUsage       int                     `json:"token_usage" gorm:"not null;default:0"`
-	Steps            []*ReadingRunStep       `json:"steps,omitempty" gorm:"-"`
-	Questions        []*ReadingQuestionNode  `json:"questions,omitempty" gorm:"-"`
-	Conclusions      []*ReadingConclusion    `json:"conclusions,omitempty" gorm:"-"`
-	Terms            []*ReadingTerm          `json:"terms,omitempty" gorm:"-"`
-	Contradictions   []*ReadingContradiction `json:"contradictions,omitempty" gorm:"-"`
-	Understandings   []*ReadingUnderstanding `json:"understandings,omitempty" gorm:"-"`
-	CreatedAt        time.Time               `json:"created_at"`
-	UpdatedAt        time.Time               `json:"updated_at"`
+	ID                string                  `json:"id" gorm:"type:varchar(36);primaryKey"`
+	TenantID          uint64                  `json:"tenant_id" gorm:"not null;index"`
+	SessionID         string                  `json:"session_id" gorm:"type:varchar(36);not null;default:''"`
+	UserID            string                  `json:"user_id" gorm:"type:varchar(36);not null;default:''"`
+	MessageID         string                  `json:"message_id" gorm:"type:varchar(36);not null;default:''"`
+	DocumentIDs       JSON                    `json:"document_ids" gorm:"type:jsonb;not null"`
+	SkillID           string                  `json:"skill_id" gorm:"type:varchar(36);not null;default:''"`
+	ReadingModelID    string                  `json:"reading_model_id" gorm:"type:varchar(36);not null;default:''"`
+	ExtractionModelID string                  `json:"extraction_model_id" gorm:"type:varchar(36);not null;default:''"`
+	SynthesisModelID  string                  `json:"synthesis_model_id" gorm:"type:varchar(36);not null;default:''"`
+	Phase             string                  `json:"phase" gorm:"type:varchar(16);not null;default:''"`
+	Status            ReadingRunStatus        `json:"status" gorm:"type:varchar(16);not null;default:'planning'"`
+	Plan              JSON                    `json:"plan" gorm:"type:jsonb;not null"`
+	Notes             JSON                    `json:"notes" gorm:"type:jsonb;not null"`
+	Final             JSON                    `json:"final" gorm:"type:jsonb;not null"`
+	CurrentSectionID  string                  `json:"current_section_id" gorm:"type:varchar(64);not null;default:''"`
+	StepCount         int                     `json:"step_count" gorm:"not null;default:0"`
+	TokenUsage        int                     `json:"token_usage" gorm:"not null;default:0"`
+	Steps             []*ReadingRunStep       `json:"steps,omitempty" gorm:"-"`
+	Questions         []*ReadingQuestionNode  `json:"questions,omitempty" gorm:"-"`
+	Conclusions       []*ReadingConclusion    `json:"conclusions,omitempty" gorm:"-"`
+	Terms             []*ReadingTerm          `json:"terms,omitempty" gorm:"-"`
+	Contradictions    []*ReadingContradiction `json:"contradictions,omitempty" gorm:"-"`
+	Understandings    []*ReadingUnderstanding `json:"understandings,omitempty" gorm:"-"`
+	// Quiet mirrors the distilled task memory for state_version=3 runs so the
+	// workbench can show the quiet badge without a second request.
+	Quiet     bool      `json:"quiet,omitempty" gorm:"-"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (ReadingRun) TableName() string { return "reading_runs" }
@@ -464,6 +503,57 @@ type UpdateReadingNoteRequest struct {
 // actually resumes there.
 type JumpReadingSectionRequest struct {
 	SectionID string `json:"section_id" binding:"required"`
+}
+
+// ReadingRunMemory is the per-run distilled state used by state_version=3.
+// Exactly one row per run; each field is replaced as a whole, never appended.
+type ReadingRunMemory struct {
+	RunID     string    `json:"run_id" gorm:"type:varchar(36);primaryKey"`
+	TenantID  uint64    `json:"tenant_id" gorm:"not null;index"`
+	Knowledge JSON      `json:"knowledge" gorm:"type:jsonb;not null"`
+	UserModel JSON      `json:"user_model" gorm:"type:jsonb;not null"`
+	Task      JSON      `json:"task" gorm:"type:jsonb;not null"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (ReadingRunMemory) TableName() string { return "reading_run_memories" }
+
+const (
+	ReadingSelfTestCandidate = "candidate"
+	ReadingSelfTestImported  = "imported"
+	ReadingSelfTestRejected  = "rejected"
+)
+
+// ReadingSelfTest is one generated self-test question with its evidence.
+type ReadingSelfTest struct {
+	ID          string    `json:"id" gorm:"type:varchar(36);primaryKey"`
+	RunID       string    `json:"run_id" gorm:"type:varchar(36);not null;index"`
+	TenantID    uint64    `json:"tenant_id" gorm:"not null"`
+	SectionID   string    `json:"section_id" gorm:"type:varchar(64);not null;default:''"`
+	Question    string    `json:"question" gorm:"type:text;not null;default:''"`
+	Answer      string    `json:"answer" gorm:"type:text;not null;default:''"`
+	Explanation string    `json:"explanation" gorm:"type:text;not null;default:''"`
+	Evidence    JSON      `json:"evidence" gorm:"type:jsonb;not null"`
+	Status      string    `json:"status" gorm:"type:varchar(16);not null;default:'candidate'"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (ReadingSelfTest) TableName() string { return "reading_self_tests" }
+
+// ImportReadingSelfTestsRequest imports selected self-tests into a review
+// group. The server re-checks run ownership and candidate status.
+type ImportReadingSelfTestsRequest struct {
+	GroupID     string   `json:"group_id" binding:"required"`
+	SelfTestIDs []string `json:"self_test_ids" binding:"required"`
+}
+
+// ReadingSelfTestImportResult reports how many candidates became review cards
+// and how many were skipped because they were already imported, rejected, or
+// no longer candidates.
+type ReadingSelfTestImportResult struct {
+	Imported int `json:"imported"`
+	Skipped  int `json:"skipped"`
 }
 
 // ReadingCoverage summarizes how much of the selected reading plan was covered.

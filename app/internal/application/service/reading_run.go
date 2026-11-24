@@ -123,6 +123,7 @@ type readingRunService struct {
 	skillRepo     repository.TenantSkillRepository
 	messageRepo   interfaces.MessageRepository
 	ragEngine     engine.RAGEngine
+	cardImporter  interfaces.ReviewCardImporter
 }
 
 func NewReadingRunService(
@@ -136,13 +137,14 @@ func NewReadingRunService(
 	skillRepo repository.TenantSkillRepository,
 	messageRepo interfaces.MessageRepository,
 	ragEngine engine.RAGEngine,
+	cardImporter interfaces.ReviewCardImporter,
 ) interfaces.ReadingRunService {
 	return &readingRunService{
 		repo: repo, sessionRepo: sessionRepo, knowledgeRepo: knowledgeRepo,
 		chunkRepo: chunkRepo, kbService: kbService,
 		tenantService: tenantService, modelService: modelService,
 		skillRepo: skillRepo, messageRepo: messageRepo,
-		ragEngine: ragEngine,
+		ragEngine: ragEngine, cardImporter: cardImporter,
 	}
 }
 
@@ -175,11 +177,9 @@ func (s *readingRunService) Create(
 	if err != nil || tenant == nil {
 		return nil, werrors.NewInternalServerError("读取空间配置失败")
 	}
-	if strings.TrimSpace(tenant.ReadingModelID) == "" {
-		return nil, werrors.NewValidationError("空间未配置精读模型")
-	}
-	if err := s.ensureReadingModelSupportsThinking(ctx, tenant.ReadingModelID); err != nil {
-		return nil, err
+	extractionModelID, synthesisModelID, err := s.resolveReadingModelIDs(ctx, tenant)
+	if err != nil {
+		return nil, werrors.NewValidationError(err.Error())
 	}
 	depth := normalizeReadingDepth(req.Depth)
 	sections, docIDs, kbIDs, err := s.buildSections(ctx, caller, req.DocumentIDs, depth)
@@ -196,7 +196,7 @@ func (s *readingRunService) Create(
 		Policy:           types.ReadingPolicyGrillWithDocs,
 		KnowledgeBaseID:  readingSingleKnowledgeBaseID(kbIDs),
 		KnowledgeBaseIDs: kbIDs,
-		StateVersion:     readingStructuredStateVersion,
+		StateVersion:     readingAgentStateVersion,
 		Sections:         sections,
 	}
 	planJSON, _ := json.Marshal(plan)
@@ -208,8 +208,10 @@ func (s *readingRunService) Create(
 		ID: uuid.NewString(), TenantID: caller.TenantID, SessionID: session.ID,
 		UserID: caller.UserID, MessageID: strings.TrimSpace(req.MessageID),
 		DocumentIDs: types.JSON(docJSON), SkillID: strings.TrimSpace(req.SkillID),
-		ReadingModelID: strings.TrimSpace(tenant.ReadingModelID),
-		Status:         types.ReadingRunPlanning, Plan: types.JSON(planJSON),
+		ReadingModelID:    strings.TrimSpace(tenant.ReadingModelID),
+		ExtractionModelID: extractionModelID, SynthesisModelID: synthesisModelID,
+		Phase:  types.ReadingPhaseStructure,
+		Status: types.ReadingRunPlanning, Plan: types.JSON(planJSON),
 		Notes: types.JSON(notesJSON), Final: types.JSON(finalJSON),
 		CreatedAt: now, UpdatedAt: now,
 	}
@@ -231,6 +233,32 @@ func (s *readingRunService) Create(
 				logger.Warnf(ctx, "reading: link message %s failed: %v", run.MessageID, msgErr)
 			}
 		}
+	}
+	structureUsage, degraded, structureErr := s.preReadReadingStructure(ctx, run, &plan)
+	plan.StructureDegraded = degraded
+	if structureErr != "" {
+		plan.StructureError = readingTruncateRunes(structureErr, 300)
+	}
+	planJSON, _ = json.Marshal(plan)
+	run.Plan = types.JSON(planJSON)
+	run.Phase = types.ReadingPhaseReading
+	run.TokenUsage += structureUsage
+	run.StepCount = 1
+	run.UpdatedAt = time.Now()
+	if err := s.repo.UpdateRun(ctx, run); err != nil {
+		return nil, err
+	}
+	structureLog, _ := json.Marshal(map[string]any{
+		"phase": "structure", "degraded": degraded, "error": plan.StructureError,
+		"sections": len(plan.Structure), "model_id": extractionModelID,
+	})
+	if err := s.repo.CreateStep(ctx, &types.ReadingRunStep{
+		ID: uuid.NewString(), RunID: run.ID, Seq: run.StepCount,
+		Action: "structure", Question: types.JSON("{}"),
+		NotesPatch: types.JSON(structureLog), Citations: types.JSON("[]"),
+		Status: "done", CreatedAt: time.Now(),
+	}); err != nil {
+		logger.Warnf(ctx, "reading: persist structure step %s failed: %v", run.ID, err)
 	}
 	stripReadingPlanContent(run)
 	return run, nil
@@ -310,6 +338,9 @@ func (s *readingRunService) Step(ctx context.Context, runID string) (*types.Read
 	}
 	var plan types.ReadingPlan
 	_ = json.Unmarshal(run.Plan, &plan)
+	if plan.StateVersion >= readingAgentStateVersion {
+		return s.agentStep(ctx, caller, run)
+	}
 	if plan.StateVersion >= readingStructuredStateVersion {
 		return s.structuredStep(ctx, caller, run)
 	}
@@ -710,6 +741,12 @@ func (s *readingRunService) UpdateUnderstanding(
 	if decision == types.ReadingUnderstandingConfirmed {
 		if err := s.confirmReadingRoundNotes(ctx, run, target.Round); err != nil {
 			return nil, err
+		}
+	}
+	var plan types.ReadingPlan
+	if json.Unmarshal(run.Plan, &plan) == nil && plan.StateVersion >= readingAgentStateVersion {
+		if err := s.refreshReadingAgentMemory(ctx, run); err != nil {
+			logger.Warnf(ctx, "reading: refresh agent memory %s failed: %v", run.ID, err)
 		}
 	}
 	return s.Get(ctx, run.ID)

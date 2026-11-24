@@ -1,0 +1,299 @@
+{
+  "summary": {
+    "engine": "old",
+    "generated_at": "2026-11-24T06:46:12Z",
+    "base_url": "http://localhost:6152",
+    "kb": "精读agent评测集",
+    "cases": 3,
+    "passed": 3,
+    "quote_hit_rate": 1.0,
+    "evidence_total": 87,
+    "evidence_valid": 87,
+    "key_points_total": 14,
+    "key_points_matched": 13,
+    "key_point_recall": 0.9286,
+    "self_tests_generated": null,
+    "self_tests_valid": null,
+    "self_test_valid_rate": null,
+    "total_tokens": 65185,
+    "total_elapsed_s": 200.1,
+    "degraded_rounds": 0
+  },
+  "results": [
+    {
+      "id": "cache-consistency",
+      "title": "缓存一致性协议",
+      "run_id": "85966f13-a9f6-4c86-99c6-6bfd971851dc",
+      "ok": true,
+      "metrics": {
+        "status": "finished",
+        "state_version": 2,
+        "step_count": 2,
+        "token_usage": 19514,
+        "elapsed_s": 61.1,
+        "step_calls": 2,
+        "step_errors": [],
+        "degraded_rounds": 0,
+        "counts": {
+          "conclusions": 7,
+          "terms": 3,
+          "contradictions": 2,
+          "questions": 4
+        },
+        "evidence": {
+          "total": 24,
+          "valid": 24,
+          "hit_rate": 1.0,
+          "by_source": {
+            "conclusions": {
+              "total": 9,
+              "valid": 9
+            },
+            "terms": {
+              "total": 3,
+              "valid": 3
+            },
+            "contradictions": {
+              "total": 4,
+              "valid": 4
+            },
+            "questions": {
+              "total": 8,
+              "valid": 8
+            }
+          },
+          "problems": []
+        },
+        "key_points": {
+          "total": 5,
+          "matched": 4,
+          "recall": 0.8,
+          "points": [
+            {
+              "id": "cache-key",
+              "statement": "缓存键由 tenant_id、document_id、chunk_index 组成，且禁止使用标题",
+              "matched": true,
+              "matched_source": "conclusion",
+              "matched_finding": "缓存键由 tenant_id、document_id、chunk_index 三段固定构成，禁止把文档标题纳入键。\n缓存键固定为 tenant_id + document_id + chunk_index（租户、文档、分块序号）。"
+            },
+            {
+              "id": "ttl-conflict",
+              "statement": "本地 TTL 300 秒与跨区域 TTL 600 秒互相矛盾",
+              "matched": true,
+              "matched_source": "conclusion",
+              "matched_finding": "第 2 节“文档更新后，缓存必须在一次请求内失效”的生效范围是什么——只包含接收更新请求的区域，还是必须包含全部跨区域副本？：根据文档文本，“在一次请求内失效”指的只是本地缓存（也就是接收更新请求的本地缓存），不延伸到全部跨区域副本；跨区域副本由第 4 节单独规定。依据有两点：第 2 节的标题是“缓存键与过期时间”，正"
+            },
+            {
+              "id": "invalidate-retry-gap",
+              "statement": "失效删除最多重试 3 次，但重试间隔未规定",
+              "matched": false,
+              "matched_source": "",
+              "matched_finding": ""
+            },
+            {
+              "id": "fallback-limits",
+              "statement": "缓存不可用时回退数据库，最多 20 并发、单次 200 毫秒超时",
+              "matched": true,
+              "matched_source": "conclusion",
+              "matched_finding": "回退路径为数据库查询，约束是最多 20 个并发查询、单次回退超时 200 毫秒，超时后不无限等待。\n缓存不可用时回退到数据库查询。回退最多允许 20 个并发查询，单次回退超时为 200 毫秒。"
+            },
+            {
+              "id": "sync-window",
+              "statement": "跨区域副本同步窗口为 ±5 分钟",
+              "matched": true,
+              "matched_source": "conclusion",
+              "matched_finding": "第 2 节“文档更新后，缓存必须在一次请求内失效”的生效范围是什么——只包含接收更新请求的区域，还是必须包含全部跨区域副本？：根据文档文本，“在一次请求内失效”指的只是本地缓存（也就是接收更新请求的本地缓存），不延伸到全部跨区域副本；跨区域副本由第 4 节单独规定。依据有两点：第 2 节的标题是“缓存键与过期时间”，正"
+            }
+          ]
+        },
+        "self_tests": {
+          "generated": null,
+          "valid": null,
+          "valid_rate": null,
+          "note": "engine has no self-tests"
+        }
+      }
+    },
+    {
+      "id": "ingest-pipeline",
+      "title": "入库流水线规范",
+      "run_id": "f5226479-05b2-404c-b170-86047d6538b5",
+      "ok": true,
+      "metrics": {
+        "status": "finished",
+        "state_version": 2,
+        "step_count": 2,
+        "token_usage": 9997,
+        "elapsed_s": 36.6,
+        "step_calls": 2,
+        "step_errors": [],
+        "degraded_rounds": 0,
+        "counts": {
+          "conclusions": 6,
+          "terms": 3,
+          "contradictions": 0,
+          "questions": 4
+        },
+        "evidence": {
+          "total": 13,
+          "valid": 13,
+          "hit_rate": 1.0,
+          "by_source": {
+            "conclusions": {
+              "total": 6,
+              "valid": 6
+            },
+            "terms": {
+              "total": 3,
+              "valid": 3
+            },
+            "contradictions": {
+              "total": 0,
+              "valid": 0
+            },
+            "questions": {
+              "total": 4,
+              "valid": 4
+            }
+          },
+          "problems": []
+        },
+        "key_points": {
+          "total": 6,
+          "matched": 6,
+          "recall": 1.0,
+          "points": [
+            {
+              "id": "batch-size",
+              "statement": "分块每批最多 200 个",
+              "matched": true,
+              "matched_source": "conclusion",
+              "matched_finding": "分块按批推送，每批最多 200 个分块。\n分块按批推送，每批最多 200 个分块。"
+            },
+            {
+              "id": "retry-failed",
+              "statement": "嵌入失败最多重试 3 次，仍失败标记 failed",
+              "matched": true,
+              "matched_source": "conclusion",
+              "matched_finding": "嵌入调用失败最多重试 3 次，3 次仍失败则将该分块标记为 failed，列入每日对账报告，且不阻塞其他批次。\n嵌入调用失败时最多重试 3 次；3 次仍失败则把该分块标记为 failed，并在每日对账报告中列出，不阻塞其他批次。"
+            },
+            {
+              "id": "delete-cascade",
+              "statement": "知识库删除后引擎文档 60 秒内级联删除",
+              "matched": true,
+              "matched_source": "conclusion",
+              "matched_finding": "知识库删除时引擎侧文档必须在 60 秒内级联删除；向量索引不做物理删除，仅标记为不可检索。\n知识库删除时，引擎侧文档必须在 60 秒内级联删除。向量索引不执行物理删除，只标记为不可检索。"
+            },
+            {
+              "id": "rebuild-threshold",
+              "statement": "向量不做物理删除，累计删除超过 10000 条后必须重建索引",
+              "matched": true,
+              "matched_source": "conclusion",
+              "matched_finding": "累计删除超过 10000 条后运维必须运行一次索引重建 rebuild，否则检索召回率会持续下降。\n累计删除超过 10000 条后，运维必须运行一次索引重建 rebuild，否则检索召回率会持续下降。"
+            },
+            {
+              "id": "idempotency",
+              "statement": "同一 document_id 与 version 的重复推送幂等，不同 version 事务替换",
+              "matched": true,
+              "matched_source": "term",
+              "matched_finding": "幂等（重复推送）：同一 document_id 与 version 的重复推送视为幂等，后到重复请求被忽略、不重复写入。\n同一 document_id 与 version 的重复推送视为幂等：后到的重复请求被忽略，不重复写入。"
+            },
+            {
+              "id": "reconcile-alert",
+              "statement": "每日 03:30 对账，不一致比例超过 0.5% 触发告警",
+              "matched": true,
+              "matched_source": "conclusion",
+              "matched_finding": "每日 03:30 执行一次全量对账；不一致比例超过 0.5% 时触发告警，并要求当天人工复核。\n每日 03:30 执行一次全量对账。对账不一致比例超过 0.5% 时触发告警，并要求当天人工复核。"
+            }
+          ]
+        },
+        "self_tests": {
+          "generated": null,
+          "valid": null,
+          "valid_rate": null,
+          "note": "engine has no self-tests"
+        }
+      }
+    },
+    {
+      "id": "gateway-cross-doc",
+      "title": "网关配置跨文档矛盾",
+      "run_id": "57b3a08a-ccf6-443b-9f29-bdc203198794",
+      "ok": true,
+      "metrics": {
+        "status": "finished",
+        "state_version": 2,
+        "step_count": 3,
+        "token_usage": 35674,
+        "elapsed_s": 102.4,
+        "step_calls": 3,
+        "step_errors": [],
+        "degraded_rounds": 0,
+        "counts": {
+          "conclusions": 15,
+          "terms": 4,
+          "contradictions": 7,
+          "questions": 8
+        },
+        "evidence": {
+          "total": 50,
+          "valid": 50,
+          "hit_rate": 1.0,
+          "by_source": {
+            "conclusions": {
+              "total": 19,
+              "valid": 19
+            },
+            "terms": {
+              "total": 5,
+              "valid": 5
+            },
+            "contradictions": {
+              "total": 14,
+              "valid": 14
+            },
+            "questions": {
+              "total": 12,
+              "valid": 12
+            }
+          },
+          "problems": []
+        },
+        "key_points": {
+          "total": 3,
+          "matched": 3,
+          "recall": 1.0,
+          "points": [
+            {
+              "id": "body-limit-conflict",
+              "statement": "A 网关请求体上限 8 MB，B 网关 10 MB，口径不一致",
+              "matched": true,
+              "matched_source": "conclusion",
+              "matched_finding": "网关 A 请求体上限 8 MB，网关 B 为 10 MB，两份文档均只自述“记录各自网关的配置值”，都没有声明优先级或生效日期。该冲突应如何定性并处理？：两文档分别给出 8 MB 与 10 MB，均未附优先级或生效日期规则，故构成实值跨文档矛盾；文档内无任何条款可裁定取舍，只能标记为待用户裁定。\nA 网关的请求体上限为"
+            },
+            {
+              "id": "rotation-conflict",
+              "statement": "A 网关密钥每 24 小时轮换，B 网关每 72 小时轮换，口径不一致",
+              "matched": true,
+              "matched_source": "contradiction",
+              "matched_finding": "共享密钥轮换周期跨文档不一致：A 为 24 小时，B 为 72 小时；且 A 附带“轮换窗口内新老密钥同时有效”，B 无该表述。\n共享密钥每 24 小时轮换一次，轮换窗口内新老密钥同时有效。\n共享密钥每 72 小时轮换一次。"
+            },
+            {
+              "id": "protocol-version",
+              "statement": "两个网关的对外协议版本均为 v2.1",
+              "matched": true,
+              "matched_source": "conclusion",
+              "matched_finding": "网关 A 对外协议版本为 v2.1。\n对外协议版本为 v2.1。"
+            }
+          ]
+        },
+        "self_tests": {
+          "generated": null,
+          "valid": null,
+          "valid_rate": null,
+          "note": "engine has no self-tests"
+        }
+      }
+    }
+  ]
+}

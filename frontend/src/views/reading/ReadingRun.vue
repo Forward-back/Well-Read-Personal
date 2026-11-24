@@ -271,7 +271,10 @@
           <div class="rv-chapter-head">
             <div>
               <h2>{{ viewingSectionTitle }}</h2>
-              <p class="rv-chapter-meta">{{ viewingSectionMeta }}</p>
+              <p class="rv-chapter-meta">
+                {{ viewingSectionMeta }}
+                <span v-if="run.quiet" class="rv-quiet-tag">{{ $t('reading.quietMode') }}</span>
+              </p>
             </div>
             <div class="rv-chapter-actions">
               <button type="button" class="rv-action-btn" @click="openOriginal">{{ $t('reading.originalText') }}</button>
@@ -294,6 +297,17 @@
               <span>{{ $t('reading.reportDepth') }}：{{ depthLabel }}</span>
               <span>{{ $t('reading.reportPolicy') }}：{{ run.plan.policy || 'grill-with-docs' }}</span>
             </div>
+            <div v-if="planStructure.length" class="rv-plan-structure">
+              <div class="rv-block-label">{{ $t('reading.structureTitle') }}</div>
+              <div v-for="entry in planStructure" :key="entry.section_id" class="rv-plan-structure__row">
+                <div class="rv-plan-structure__head">
+                  <span class="rv-plan-structure__section">{{ sectionTitleByID(entry.section_id) }}</span>
+                  <span class="rv-plan-structure__type">{{ entry.knowledge_type || 'unknown' }}</span>
+                </div>
+                <p>{{ entry.thesis || '—' }}</p>
+              </div>
+            </div>
+            <p v-if="run.plan.structure_degraded" class="rv-hint">{{ $t('reading.structureDegraded') }}</p>
             <button type="button" class="rv-primary" :disabled="acting" @click="confirmPlan">
               {{ $t('reading.startReading') }}
             </button>
@@ -320,6 +334,58 @@
               <h4>{{ group.label }}</h4>
               <p v-if="!group.items.length" class="rv-empty">—</p>
               <p v-for="(item, index) in group.items" :key="index" class="rv-final__item">{{ item }}</p>
+            </div>
+            <div v-if="agentPhaseRows.length" class="rv-phase-trace">
+              <span v-for="row in agentPhaseRows" :key="row.key" class="rv-phase-trace__item" :class="{ 'is-degraded': row.degraded }">
+                {{ row.label }}<template v-if="row.degraded">（{{ $t('reading.phaseDegraded') }}）</template>
+              </span>
+            </div>
+            <div v-if="(run.plan.state_version || 0) >= 3" class="rv-selftests">
+              <div class="rv-block-label">{{ $t('reading.selfTests') }}</div>
+              <p v-if="selfTestsLoading" class="rv-hint">{{ $t('reading.selfTestsLoading') }}</p>
+              <p v-else-if="!selfTests.length" class="rv-hint">{{ $t('reading.selfTestsEmpty') }}</p>
+              <template v-else>
+                <div class="rv-selftests__toolbar">
+                  <select v-model="selectedReviewGroupId" class="rv-selftests__group">
+                    <option value="">{{ $t('reading.selfTestSelectGroup') }}</option>
+                    <option v-for="group in reviewGroupOptions" :key="group.value" :value="group.value">
+                      {{ group.label }}
+                    </option>
+                  </select>
+                  <button
+                    type="button"
+                    class="rv-primary"
+                    :disabled="!selectedReviewGroupId || !selectedSelfTestIds.length || importingSelfTests"
+                    @click="importSelectedSelfTests"
+                  >
+                    {{ $t('reading.selfTestImport', { count: selectedSelfTestIds.length }) }}
+                  </button>
+                </div>
+                <label
+                  v-for="test in selfTests"
+                  :key="test.id"
+                  class="rv-selftest"
+                  :class="{ 'is-imported': test.status === 'imported' }"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="selectedSelfTestIds.includes(test.id)"
+                    :disabled="test.status !== 'candidate'"
+                    @change="toggleSelfTest(test)"
+                  />
+                  <span class="rv-selftest__body">
+                    <span class="rv-selftest__question">{{ test.question }}</span>
+                    <span class="rv-selftest__answer">{{ test.answer }}</span>
+                    <span v-if="test.explanation" class="rv-selftest__explanation">{{ test.explanation }}</span>
+                    <span v-if="test.evidence?.length" class="rv-selftest__evidence">
+                      {{ $t('reading.selfTestSource') }}：{{ test.evidence[0].quote }}
+                    </span>
+                    <span v-if="test.status !== 'candidate'" class="rv-selftest__status">
+                      {{ $t(`reading.selfTestStatus.${test.status}`) }}
+                    </span>
+                  </span>
+                </label>
+              </template>
             </div>
             <button type="button" class="rv-primary" @click="switchView('config')">
               {{ $t('reading.newReading') }}
@@ -781,9 +847,11 @@ import {
   getReadingReport,
   getReadingRun,
   getReadingRunDocuments,
+  importReadingSelfTests,
   judgeReadingQuestion,
   jumpReadingSection,
   listReadingDrafts,
+  listReadingSelfTests,
   resolveReadingContradiction,
   resumeReadingRun,
   saveReadingReport,
@@ -802,7 +870,10 @@ import {
   type ReadingQuestionNode,
   type ReadingRun,
   type ReadingRunStep,
+  type ReadingSelfTest,
+  type ReadingSectionStructure,
 } from '@/api/reading'
+import { listReviewGroups, type ReviewGroupNode } from '@/api/review'
 import ReadingThoughtChain from '@/components/ReadingThoughtChain.vue'
 import DocumentPreview from '@/components/document-preview.vue'
 import { useShellUiStore } from '@/stores/shellUi'
@@ -937,6 +1008,13 @@ const answeredQuestionSnapshot = ref<ReadingQuestionNode | null>(null)
 const selectedAnswerId = ref('')
 const customAnswerMode = ref(false)
 const answerDraft = ref('')
+const selfTests = ref<ReadingSelfTest[]>([])
+const selfTestsLoading = ref(false)
+const selectedSelfTestIds = ref<string[]>([])
+const reviewGroupOptions = ref<Array<{ label: string; value: string }>>([])
+const selectedReviewGroupId = ref('')
+const importingSelfTests = ref(false)
+const selfTestLoadedRunId = ref('')
 const answering = ref(false)
 const answerTextareaRef = ref<HTMLTextAreaElement | null>(null)
 
@@ -2248,6 +2326,37 @@ const statusTheme = computed(() => {
 
 const depthLabel = computed(() => t(`reading.depth.${run.value?.plan.depth || 'standard'}`))
 
+const planStructure = computed<ReadingSectionStructure[]>(() => run.value?.plan.structure || [])
+
+const sectionTitleByID = (sectionId: string) => {
+  const section = (run.value?.plan.sections || []).find((item) => item.id === sectionId)
+  if (!section) return sectionId
+  return section.heading ? `${section.title} · ${section.heading}` : section.title
+}
+
+const agentPhaseRows = computed(() => {
+  const labels: Record<string, string> = {
+    structure: t('reading.phaseStructure'),
+    synthesis: t('reading.phaseSynthesis'),
+    self_test: t('reading.phaseSelfTest'),
+  }
+  const rows: Array<{ key: string; label: string; degraded: boolean }> = []
+  const seen = new Set<string>()
+  for (const step of run.value?.steps || []) {
+    const action = String(step.action || '')
+    const degraded = step.status === 'degraded'
+      || Boolean((step.notes_patch as Record<string, unknown> | undefined)?.degraded)
+    if (action === 'degraded') {
+      rows.push({ key: `degraded-${step.seq}`, label: labels[step.section_id || ''] || t('reading.phaseReading'), degraded: true })
+      continue
+    }
+    if (!labels[action] || seen.has(action)) continue
+    seen.add(action)
+    rows.push({ key: action, label: labels[action], degraded })
+  }
+  return rows
+})
+
 const canAddDocs = computed(() => {
   const current = run.value
   if (!current) return false
@@ -2417,6 +2526,87 @@ const persistRun = async (next: ReadingRun) => {
   }
 }
 
+const flattenReviewGroups = (
+  nodes: ReviewGroupNode[],
+  depth = 0,
+): Array<{ label: string; value: string }> =>
+  nodes.flatMap((node) => [
+    { label: `${'　'.repeat(depth)}${node.group.name}`, value: node.group.id },
+    ...flattenReviewGroups(node.children || [], depth + 1),
+  ])
+
+const loadSelfTests = async (runId: string) => {
+  if (!runId) return
+  selfTestsLoading.value = true
+  try {
+    const tasks: [Promise<unknown>, Promise<unknown> | null] = [
+      listReadingSelfTests(runId),
+      reviewGroupOptions.value.length ? null : listReviewGroups(),
+    ]
+    const [testsResponse, groupsResponse] = await Promise.all(tasks)
+    selfTests.value = (testsResponse as { data?: ReadingSelfTest[] })?.data || []
+    if (groupsResponse) {
+      const groups = (groupsResponse as { data?: ReviewGroupNode[] })?.data || []
+      reviewGroupOptions.value = flattenReviewGroups(groups)
+      if (!selectedReviewGroupId.value && reviewGroupOptions.value.length) {
+        selectedReviewGroupId.value = reviewGroupOptions.value[0].value
+      }
+    }
+    selectedSelfTestIds.value = selfTests.value
+      .filter((test) => test.status === 'candidate')
+      .map((test) => test.id)
+    selfTestLoadedRunId.value = runId
+  } catch {
+    selfTests.value = []
+  } finally {
+    selfTestsLoading.value = false
+  }
+}
+
+const toggleSelfTest = (test: ReadingSelfTest) => {
+  if (test.status !== 'candidate') return
+  const index = selectedSelfTestIds.value.indexOf(test.id)
+  if (index >= 0) {
+    selectedSelfTestIds.value.splice(index, 1)
+  } else {
+    selectedSelfTestIds.value.push(test.id)
+  }
+}
+
+const importSelectedSelfTests = async () => {
+  if (!run.value || !selectedReviewGroupId.value || !selectedSelfTestIds.value.length) return
+  importingSelfTests.value = true
+  try {
+    const response = await importReadingSelfTests(
+      run.value.id,
+      selectedReviewGroupId.value,
+      selectedSelfTestIds.value,
+    )
+    const result = response.data
+    MessagePlugin.success(
+      t('reading.selfTestImported', {
+        imported: result?.imported ?? 0,
+        skipped: result?.skipped ?? 0,
+      }),
+    )
+    await loadSelfTests(run.value.id)
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('reading.selfTestImportFailed'))
+  } finally {
+    importingSelfTests.value = false
+  }
+}
+
+watch(
+  () => [run.value?.id, run.value?.status] as const,
+  ([runId, status]) => {
+    if (status === 'finished' && runId && selfTestLoadedRunId.value !== runId) {
+      void loadSelfTests(runId)
+    }
+  },
+  { immediate: true },
+)
+
 const createRun = async () => {
   creating.value = true
   try {
@@ -2494,7 +2684,7 @@ const advanceUntilPause = async () => {
   advancing.value = true
   try {
     let next = run.value
-    for (let i = 0; i < 12; i += 1) {
+    for (let i = 0; i < 40; i += 1) {
       if (!next || ['waiting_user', 'finished', 'stopped', 'failed'].includes(next.status)) break
       if (pendingQuestion(next)) break
       const response = await stepReadingRun(next.id)
@@ -4240,6 +4430,154 @@ onBeforeUnmount(() => {
   margin-bottom: 16px;
   font-size: 12.5px;
   color: var(--rv-text-2);
+}
+
+.rv-plan-structure {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.rv-plan-structure__row {
+  padding: 10px 12px;
+  background: var(--rv-bg, #fff);
+  border: 1px solid var(--rv-line, #e9e7e2);
+  border-radius: var(--rv-r, 6px);
+}
+
+.rv-plan-structure__row p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--rv-text-2);
+}
+
+.rv-plan-structure__head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.rv-plan-structure__section {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--rv-text);
+}
+
+.rv-plan-structure__type {
+  flex: none;
+  padding: 1px 7px;
+  font-size: 11px;
+  color: var(--rv-text-3);
+  border: 1px solid var(--rv-line, #e9e7e2);
+  border-radius: 999px;
+}
+
+.rv-quiet-tag {
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 11px;
+  color: var(--rv-green-deep);
+  background: var(--rv-mint, #e9f8ec);
+  border-radius: 999px;
+}
+
+.rv-phase-trace {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rv-phase-trace__item {
+  padding: 2px 9px;
+  font-size: 11.5px;
+  color: var(--rv-text-3);
+  border: 1px solid var(--rv-line, #e9e7e2);
+  border-radius: 999px;
+}
+
+.rv-phase-trace__item.is-degraded {
+  color: var(--rv-haze-d);
+  border-color: var(--rv-haze-d);
+}
+
+.rv-selftests {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.rv-selftests__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.rv-selftests__group {
+  min-width: 220px;
+  padding: 7px 10px;
+  font-size: 13px;
+  color: var(--rv-text);
+  background: var(--rv-bg, #fff);
+  border: 1px solid var(--rv-line, #e9e7e2);
+  border-radius: var(--rv-r, 6px);
+}
+
+.rv-selftest {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  background: var(--rv-bg, #fff);
+  border: 1px solid var(--rv-line, #e9e7e2);
+  border-radius: var(--rv-r, 6px);
+  cursor: pointer;
+}
+
+.rv-selftest.is-imported {
+  opacity: 0.65;
+}
+
+.rv-selftest input {
+  margin-top: 3px;
+}
+
+.rv-selftest__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.rv-selftest__question {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--rv-text);
+}
+
+.rv-selftest__answer {
+  font-size: 13px;
+  color: var(--rv-text-2);
+}
+
+.rv-selftest__explanation,
+.rv-selftest__evidence {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--rv-text-3);
+}
+
+.rv-selftest__status {
+  align-self: flex-start;
+  padding: 1px 7px;
+  font-size: 11px;
+  color: var(--rv-text-3);
+  border: 1px solid var(--rv-line, #e9e7e2);
+  border-radius: 999px;
 }
 
 .rv-final {

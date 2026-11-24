@@ -175,6 +175,21 @@ export interface ReadingRunStep {
 
 export type ReadingDepth = 'quick' | 'standard' | 'deep'
 
+export type ReadingKnowledgeType =
+  | 'concept'
+  | 'argument'
+  | 'process'
+  | 'comparison'
+  | 'example'
+  | 'reference'
+  | 'unknown'
+
+export interface ReadingSectionStructure {
+  section_id: string
+  thesis: string
+  knowledge_type: ReadingKnowledgeType
+}
+
 export interface ReadingPlan {
   goal?: string
   depth?: ReadingDepth
@@ -182,15 +197,40 @@ export interface ReadingPlan {
   knowledge_base_id?: string
   knowledge_base_ids?: string[]
   state_version?: number
+  structure?: ReadingSectionStructure[]
+  structure_degraded?: boolean
+  structure_error?: string
   sections?: ReadingSection[]
+}
+
+export interface ReadingSelfTest {
+  id: string
+  run_id: string
+  section_id: string
+  question: string
+  answer: string
+  explanation: string
+  evidence?: ReadingEvidence[]
+  status: 'candidate' | 'imported' | 'rejected'
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ReadingSelfTestImportResult {
+  imported: number
+  skipped: number
 }
 
 export interface ReadingRun {
   id: string
   session_id: string
   status: string
+  phase?: string
+  quiet?: boolean
   document_ids: string[]
   reading_model_id: string
+  extraction_model_id?: string
+  synthesis_model_id?: string
   plan: ReadingPlan
   notes: ReadingNotes
   final: Record<string, any>
@@ -358,14 +398,32 @@ export function addReadingDocuments(id: string, documentIds: string[]) {
   })
 }
 
-export function getReadingConfig() {
-  return get<{ data: { reading_model_id: string } }>('/api/v1/settings/kv/reading-config')
+export function listReadingSelfTests(id: string) {
+  return get<{ data: ReadingSelfTest[] }>(
+    `/api/v1/reading/runs/${encodeURIComponent(id)}/self-tests`,
+  )
 }
 
-export function updateReadingConfig(readingModelId: string) {
-  return put<{ data: { reading_model_id: string } }>('/api/v1/settings/kv/reading-config', {
-    reading_model_id: readingModelId,
-  })
+export function importReadingSelfTests(id: string, groupId: string, selfTestIds: string[]) {
+  return post<{ data: ReadingSelfTestImportResult }>(
+    `/api/v1/reading/runs/${encodeURIComponent(id)}/self-tests/import`,
+    { group_id: groupId, self_test_ids: selfTestIds },
+    { timeout: 120_000 },
+  )
+}
+
+export interface ReadingConfig {
+  reading_model_id: string
+  reading_extraction_model_id: string
+  reading_synthesis_model_id: string
+}
+
+export function getReadingConfig() {
+  return get<{ data: ReadingConfig }>('/api/v1/settings/kv/reading-config')
+}
+
+export function updateReadingConfig(payload: Partial<ReadingConfig>) {
+  return put<{ data: ReadingConfig }>('/api/v1/settings/kv/reading-config', payload)
 }
 
 export interface ReadingExport {

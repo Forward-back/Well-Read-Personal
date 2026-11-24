@@ -68,17 +68,20 @@ func updateReadingRun(db *gorm.DB, run *types.ReadingRun) error {
 		Model(&types.ReadingRun{}).
 		Where("tenant_id = ? AND user_id = ? AND id = ?", run.TenantID, run.UserID, run.ID).
 		Updates(map[string]any{
-			"document_ids":       run.DocumentIDs,
-			"skill_id":           run.SkillID,
-			"reading_model_id":   run.ReadingModelID,
-			"status":             run.Status,
-			"plan":               run.Plan,
-			"notes":              run.Notes,
-			"final":              run.Final,
-			"current_section_id": run.CurrentSectionID,
-			"step_count":         run.StepCount,
-			"token_usage":        run.TokenUsage,
-			"updated_at":         run.UpdatedAt,
+			"document_ids":        run.DocumentIDs,
+			"skill_id":            run.SkillID,
+			"reading_model_id":    run.ReadingModelID,
+			"extraction_model_id": run.ExtractionModelID,
+			"synthesis_model_id":  run.SynthesisModelID,
+			"phase":               run.Phase,
+			"status":              run.Status,
+			"plan":                run.Plan,
+			"notes":               run.Notes,
+			"final":               run.Final,
+			"current_section_id":  run.CurrentSectionID,
+			"step_count":          run.StepCount,
+			"token_usage":         run.TokenUsage,
+			"updated_at":          run.UpdatedAt,
 		}).Error
 }
 
@@ -250,6 +253,78 @@ func (r *readingRunRepository) UpdateUnderstanding(
 			"correction": understanding.Correction,
 			"updated_at": understanding.UpdatedAt,
 		}).Error
+}
+
+func (r *readingRunRepository) GetMemory(
+	ctx context.Context, runID string,
+) (*types.ReadingRunMemory, error) {
+	var memory types.ReadingRunMemory
+	err := r.db.WithContext(ctx).Where("run_id = ?", runID).First(&memory).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &memory, nil
+}
+
+func (r *readingRunRepository) SaveMemory(
+	ctx context.Context, memory *types.ReadingRunMemory,
+) error {
+	return r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "run_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"knowledge", "user_model", "task", "updated_at",
+			}),
+		}).
+		Create(memory).Error
+}
+
+func (r *readingRunRepository) ListSelfTests(
+	ctx context.Context, runID string,
+) ([]*types.ReadingSelfTest, error) {
+	var rows []*types.ReadingSelfTest
+	if err := r.db.WithContext(ctx).
+		Where("run_id = ?", runID).
+		Order("created_at ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (r *readingRunRepository) CreateSelfTests(
+	ctx context.Context, tests []*types.ReadingSelfTest,
+) (int, error) {
+	if len(tests) == 0 {
+		return 0, nil
+	}
+	result := r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{DoNothing: true}).
+		Create(tests)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return int(result.RowsAffected), nil
+}
+
+func (r *readingRunRepository) UpdateSelfTestStatus(
+	ctx context.Context, runID, selfTestID, status string,
+) (bool, error) {
+	result := r.db.WithContext(ctx).
+		Model(&types.ReadingSelfTest{}).
+		Where("id = ? AND run_id = ? AND status = ?",
+			selfTestID, runID, types.ReadingSelfTestCandidate).
+		Updates(map[string]any{
+			"status":     status,
+			"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
 }
 
 func (r *readingRunRepository) ListDrafts(

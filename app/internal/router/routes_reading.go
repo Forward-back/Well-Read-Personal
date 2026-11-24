@@ -35,6 +35,8 @@ func RegisterReadingRoutes(r *gin.RouterGroup, h *handler.ReadingHandler, g *api
 		reading.PUT("/runs/:id/terms/:termId", h.UpdateTerm)
 		reading.PUT("/runs/:id/conclusions/:conclusionId", h.UpdateConclusion)
 		reading.GET("/runs/:id/export", h.Export)
+		reading.GET("/runs/:id/self-tests", h.ListSelfTests)
+		reading.POST("/runs/:id/self-tests/import", h.ImportSelfTests)
 		reading.GET("/drafts", h.ListDrafts)
 		reading.POST("/drafts", h.CreateDraft)
 		reading.PUT("/drafts/:draftId", h.UpdateDraft)

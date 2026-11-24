@@ -26,6 +26,17 @@ type ReadingRunRepository interface {
 	ListUnderstandings(ctx context.Context, runID string) ([]*types.ReadingUnderstanding, error)
 	SaveUnderstanding(ctx context.Context, understanding *types.ReadingUnderstanding) error
 	UpdateUnderstanding(ctx context.Context, understanding *types.ReadingUnderstanding) error
+	GetMemory(ctx context.Context, runID string) (*types.ReadingRunMemory, error)
+	SaveMemory(ctx context.Context, memory *types.ReadingRunMemory) error
+	ListSelfTests(ctx context.Context, runID string) ([]*types.ReadingSelfTest, error)
+	// CreateSelfTests inserts candidate self-tests; duplicate IDs are ignored so
+	// regenerating after a partial failure cannot double-insert.
+	CreateSelfTests(ctx context.Context, tests []*types.ReadingSelfTest) (int, error)
+	// UpdateSelfTestStatus moves a candidate to imported/rejected. Returns false
+	// when the test is missing or no longer a candidate.
+	UpdateSelfTestStatus(
+		ctx context.Context, runID, selfTestID, status string,
+	) (bool, error)
 	ListDrafts(ctx context.Context, tenantID uint64, userID string) ([]*types.ReadingDraft, error)
 	GetDraft(ctx context.Context, tenantID uint64, userID, draftID string) (*types.ReadingDraft, error)
 	CreateDraft(ctx context.Context, draft *types.ReadingDraft) error
@@ -122,4 +133,8 @@ type ReadingRunService interface {
 	UpdateDraft(ctx context.Context, draftID string, req *types.ReadingDraftRequest) (*types.ReadingDraft, error)
 	DeleteDraft(ctx context.Context, draftID string) error
 	Export(ctx context.Context, runID string, format string) (*types.ReadingExport, error)
+	ListSelfTests(ctx context.Context, runID string) ([]*types.ReadingSelfTest, error)
+	ImportSelfTests(
+		ctx context.Context, runID string, req *types.ImportReadingSelfTestsRequest,
+	) (*types.ReadingSelfTestImportResult, error)
 }

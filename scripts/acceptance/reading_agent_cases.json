@@ -1,0 +1,179 @@
+[
+  {
+    "id": "cache-consistency",
+    "title": "缓存一致性协议",
+    "goal": "找出缓存键、过期时间、失效流程、跨区域同步与回退策略中的关键事实、缺口与矛盾",
+    "depth": "standard",
+    "documents": [
+      {
+        "file": "缓存一致性协议.md",
+        "title": "阅读评测-缓存一致性协议"
+      }
+    ],
+    "key_points": [
+      {
+        "id": "cache-key",
+        "statement": "缓存键由 tenant_id、document_id、chunk_index 组成，且禁止使用标题",
+        "match_groups": [
+          ["tenant_id", "document_id", "chunk_index"],
+          ["租户", "文档", "分块序号"],
+          ["租户", "文档", "分块"]
+        ]
+      },
+      {
+        "id": "ttl-conflict",
+        "statement": "本地 TTL 300 秒与跨区域 TTL 600 秒互相矛盾",
+        "match_groups": [
+          ["300", "600"],
+          ["300 秒", "600 秒"],
+          ["5 分钟", "10 分钟"],
+          ["5分钟", "10分钟"]
+        ]
+      },
+      {
+        "id": "invalidate-retry-gap",
+        "statement": "失效删除最多重试 3 次，但重试间隔未规定",
+        "match_groups": [
+          ["3 次", "未规定"],
+          ["3次", "未规定"],
+          ["3 次", "未指定"],
+          ["重试", "未规定"],
+          ["重试", "缺口"]
+        ]
+      },
+      {
+        "id": "fallback-limits",
+        "statement": "缓存不可用时回退数据库，最多 20 并发、单次 200 毫秒超时",
+        "match_groups": [
+          ["20", "200 毫秒"],
+          ["20", "200毫秒"],
+          ["20 个并发", "200"]
+        ]
+      },
+      {
+        "id": "sync-window",
+        "statement": "跨区域副本同步窗口为 ±5 分钟",
+        "match_groups": [
+          ["±5", "同步"],
+          ["5 分钟", "跨区域"],
+          ["5分钟", "同步窗口"]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "ingest-pipeline",
+    "title": "入库流水线规范",
+    "goal": "找出批次、重试、删除、幂等与对账规则中的关键参数与失败语义",
+    "depth": "standard",
+    "documents": [
+      {
+        "file": "入库流水线规范.md",
+        "title": "阅读评测-入库流水线规范"
+      }
+    ],
+    "key_points": [
+      {
+        "id": "batch-size",
+        "statement": "分块每批最多 200 个",
+        "match_groups": [
+          ["200", "批次"],
+          ["200", "分块"],
+          ["200 个分块"]
+        ]
+      },
+      {
+        "id": "retry-failed",
+        "statement": "嵌入失败最多重试 3 次，仍失败标记 failed",
+        "match_groups": [
+          ["重试 3", "failed"],
+          ["3 次", "failed"],
+          ["3次", "失败"],
+          ["重试", "标记为 failed"]
+        ]
+      },
+      {
+        "id": "delete-cascade",
+        "statement": "知识库删除后引擎文档 60 秒内级联删除",
+        "match_groups": [
+          ["60 秒", "删除"],
+          ["60秒", "级联"],
+          ["60", "级联删除"]
+        ]
+      },
+      {
+        "id": "rebuild-threshold",
+        "statement": "向量不做物理删除，累计删除超过 10000 条后必须重建索引",
+        "match_groups": [
+          ["10000", "重建"],
+          ["10,000", "重建"],
+          ["一万", "重建"],
+          ["物理删除", "重建"]
+        ]
+      },
+      {
+        "id": "idempotency",
+        "statement": "同一 document_id 与 version 的重复推送幂等，不同 version 事务替换",
+        "match_groups": [
+          ["document_id", "version"],
+          ["文档 ID", "版本"],
+          ["幂等", "版本"]
+        ]
+      },
+      {
+        "id": "reconcile-alert",
+        "statement": "每日 03:30 对账，不一致比例超过 0.5% 触发告警",
+        "match_groups": [
+          ["03:30", "对账"],
+          ["3:30", "对账"],
+          ["0.5%", "告警"],
+          ["0.5%", "对账"]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "gateway-cross-doc",
+    "title": "网关配置跨文档矛盾",
+    "goal": "对比两份网关配置，找出请求体上限与密钥轮换周期上的跨文档矛盾",
+    "depth": "standard",
+    "documents": [
+      {
+        "file": "网关A配置.md",
+        "title": "阅读评测-网关A配置"
+      },
+      {
+        "file": "网关B配置.md",
+        "title": "阅读评测-网关B配置"
+      }
+    ],
+    "key_points": [
+      {
+        "id": "body-limit-conflict",
+        "statement": "A 网关请求体上限 8 MB，B 网关 10 MB，口径不一致",
+        "match_groups": [
+          ["8 MB", "10 MB"],
+          ["8MB", "10MB"],
+          ["8", "10", "请求体"]
+        ]
+      },
+      {
+        "id": "rotation-conflict",
+        "statement": "A 网关密钥每 24 小时轮换，B 网关每 72 小时轮换，口径不一致",
+        "match_groups": [
+          ["24 小时", "72 小时"],
+          ["24小时", "72小时"],
+          ["24", "72", "密钥"]
+        ]
+      },
+      {
+        "id": "protocol-version",
+        "statement": "两个网关的对外协议版本均为 v2.1",
+        "match_groups": [
+          ["v2.1", "一致"],
+          ["2.1", "协议版本"]
+        ]
+      }
+    ]
+  }
+]

@@ -180,8 +180,9 @@ async function main() {
     })
 
     const modelId = sql(`select reading_model_id from reading_runs where id='${currentRunId}'`)
-    if (!modelId) fail('question', 'run reading model missing')
-    sql(`update reading_runs set reading_model_id='' where id='${currentRunId}'`)
+    const synthesisModelId = sql(`select synthesis_model_id from reading_runs where id='${currentRunId}'`)
+    if (!modelId && !synthesisModelId) fail('question', 'run reading model missing')
+    sql(`update reading_runs set reading_model_id='', synthesis_model_id='' where id='${currentRunId}'`)
     await waitVisible('.rv-qcard .rv-option')
     await clickSelector('.rv-option .rv-option__badge')
     await clickText('.rv-qcard button', '提交回答')
@@ -201,7 +202,7 @@ async function main() {
       keptAnswer: true,
     })
 
-    sql(`update reading_runs set reading_model_id='${modelId}' where id='${currentRunId}'`)
+    sql(`update reading_runs set reading_model_id='${modelId}', synthesis_model_id='${synthesisModelId}' where id='${currentRunId}'`)
     await clickText('.rv-verdict button', '重新判定')
     await waitFor(
       async () => {
@@ -223,7 +224,7 @@ async function main() {
 
   const ensureStep = async () => {
     let latest = await getRun(currentRunId)
-    if (latest?.status === 'failed') {
+    if (latest?.status === 'failed' || latest?.status === 'stopped') {
       await api(`/api/v1/reading/runs/${currentRunId}/resume`, { method: 'POST' })
       latest = await getRun(currentRunId)
     }
@@ -408,7 +409,7 @@ async function main() {
         await skipPendingQuestions()
         continue
       }
-      if (run.status !== 'reading' && run.status !== 'failed') break
+      if (run.status !== 'reading' && run.status !== 'failed' && run.status !== 'stopped') break
       await ensureStep()
     }
     await skipPendingQuestions()

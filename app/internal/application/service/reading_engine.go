@@ -1910,6 +1910,12 @@ func (s *readingRunService) structuredFeedback(
 	if err := s.repo.SaveFeedback(ctx, run, target, conclusion); err != nil {
 		return nil, err
 	}
+	var plan types.ReadingPlan
+	if json.Unmarshal(run.Plan, &plan) == nil && plan.StateVersion >= readingAgentStateVersion {
+		if err := s.refreshReadingAgentMemory(ctx, run); err != nil {
+			logger.Warnf(ctx, "reading: refresh agent memory %s failed: %v", run.ID, err)
+		}
+	}
 	return s.Get(ctx, run.ID)
 }
 
@@ -1959,7 +1965,13 @@ func (s *readingRunService) judgeReadingAnswer(
 	if answer == "" {
 		return "", "", werrors.NewValidationError("问题还没有作答")
 	}
-	model, err := s.modelService.GetChatModel(ctx, run.ReadingModelID)
+	modelID := strings.TrimSpace(run.ReadingModelID)
+	var plan types.ReadingPlan
+	if json.Unmarshal(run.Plan, &plan) == nil && plan.StateVersion >= readingAgentStateVersion &&
+		strings.TrimSpace(run.SynthesisModelID) != "" {
+		modelID = strings.TrimSpace(run.SynthesisModelID)
+	}
+	model, err := s.modelService.GetChatModel(ctx, modelID)
 	if err != nil {
 		return "", "", fmt.Errorf("加载精读模型失败: %w", err)
 	}
@@ -2223,6 +2235,16 @@ func (s *readingRunService) populateStructuredReading(
 	run.Terms = terms
 	run.Contradictions = contradictions
 	run.Understandings = understandings
+	if plan.StateVersion >= readingAgentStateVersion {
+		if memory, memErr := s.repo.GetMemory(ctx, run.ID); memErr == nil && memory != nil {
+			var userMemory struct {
+				Quiet bool `json:"quiet"`
+			}
+			if json.Unmarshal(memory.UserModel, &userMemory) == nil {
+				run.Quiet = userMemory.Quiet
+			}
+		}
+	}
 	return nil
 }
 

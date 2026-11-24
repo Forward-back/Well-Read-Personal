@@ -92,6 +92,13 @@ type Tenant struct {
 	// ReadingModelID is the workspace default model for interactive document
 	// reading. Reading never uses the normal RAG/generation model.
 	ReadingModelID string `yaml:"reading_model_id" json:"reading_model_id" gorm:"column:reading_model_id;type:varchar(36);not null;default:''"`
+	// ReadingExtractionModelID handles structure pre-reading and per-chapter
+	// extraction. Empty falls back to ReadingModelID; thinking is optional.
+	ReadingExtractionModelID string `yaml:"reading_extraction_model_id" json:"reading_extraction_model_id" gorm:"column:reading_extraction_model_id;type:varchar(36);not null;default:''"`
+	// ReadingSynthesisModelID handles synthesis, answer judgment, contradiction
+	// adjudication, and self-test generation. Empty falls back to
+	// ReadingModelID; it must support thinking.
+	ReadingSynthesisModelID string `yaml:"reading_synthesis_model_id" json:"reading_synthesis_model_id" gorm:"column:reading_synthesis_model_id;type:varchar(36);not null;default:''"`
 	// DirectModelID is the workspace model for the direct (non-RAG) chat mode.
 	// Empty means direct mode is not configured.
 	DirectModelID string `yaml:"direct_model_id" json:"direct_model_id" gorm:"column:direct_model_id;type:varchar(36);not null;default:''"`

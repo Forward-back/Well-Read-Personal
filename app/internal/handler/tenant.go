@@ -259,7 +259,9 @@ func (h *SettingsHandler) GetTenantKV(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
-			"reading_model_id": tenant.ReadingModelID,
+			"reading_model_id":            tenant.ReadingModelID,
+			"reading_extraction_model_id": tenant.ReadingExtractionModelID,
+			"reading_synthesis_model_id":  tenant.ReadingSynthesisModelID,
 		}})
 	case "direct-config":
 		tenant, _ := types.TenantInfoFromContext(c.Request.Context())
@@ -879,31 +881,48 @@ func validateParserEngineOutboundURLs(cfg *types.ParserEngineConfig) error {
 func (h *SettingsHandler) updateTenantReadingConfigInternal(c *gin.Context) {
 	ctx := c.Request.Context()
 	var req struct {
-		ReadingModelID string `json:"reading_model_id"`
+		ReadingModelID           string `json:"reading_model_id"`
+		ReadingExtractionModelID string `json:"reading_extraction_model_id"`
+		ReadingSynthesisModelID  string `json:"reading_synthesis_model_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.Error(errors.NewBadRequestError(err.Error()))
 		return
 	}
 	modelID := strings.TrimSpace(req.ReadingModelID)
-	if modelID != "" {
-		if h.modelService == nil {
-			c.Error(errors.NewInternalServerError("模型服务未配置"))
-			return
+	extractionID := strings.TrimSpace(req.ReadingExtractionModelID)
+	synthesisID := strings.TrimSpace(req.ReadingSynthesisModelID)
+	if h.modelService == nil {
+		c.Error(errors.NewInternalServerError("模型服务未配置"))
+		return
+	}
+	validate := func(id string, requireThinking bool) error {
+		if id == "" {
+			return nil
 		}
-		model, err := h.modelService.GetModelByID(ctx, modelID)
+		model, err := h.modelService.GetModelByID(ctx, id)
 		if err != nil || model == nil {
-			c.Error(errors.NewBadRequestError("精读模型不存在"))
-			return
+			return errors.NewBadRequestError("精读模型不存在")
 		}
 		if model.Type != types.ModelTypeKnowledgeQA {
-			c.Error(errors.NewBadRequestError("精读模型必须是 KnowledgeQA 类型"))
-			return
+			return errors.NewBadRequestError("精读模型必须是 KnowledgeQA 类型")
 		}
-		if chat.EffectiveThinkingControl(chat.ConfigFromModel(model)) == "none" {
-			c.Error(errors.NewBadRequestError("精读模型必须开启思考模式"))
-			return
+		if requireThinking && chat.EffectiveThinkingControl(chat.ConfigFromModel(model)) == "none" {
+			return errors.NewBadRequestError("综合模型必须开启思考模式")
 		}
+		return nil
+	}
+	if err := validate(modelID, true); err != nil {
+		c.Error(err)
+		return
+	}
+	if err := validate(extractionID, false); err != nil {
+		c.Error(err)
+		return
+	}
+	if err := validate(synthesisID, true); err != nil {
+		c.Error(err)
+		return
 	}
 	tenant, _ := types.TenantInfoFromContext(ctx)
 	if tenant == nil {
@@ -911,13 +930,17 @@ func (h *SettingsHandler) updateTenantReadingConfigInternal(c *gin.Context) {
 		return
 	}
 	tenant.ReadingModelID = modelID
+	tenant.ReadingExtractionModelID = extractionID
+	tenant.ReadingSynthesisModelID = synthesisID
 	updated, err := h.service.UpdateTenant(ctx, tenant)
 	if err != nil {
 		c.Error(err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
-		"reading_model_id": updated.ReadingModelID,
+		"reading_model_id":            updated.ReadingModelID,
+		"reading_extraction_model_id": updated.ReadingExtractionModelID,
+		"reading_synthesis_model_id":  updated.ReadingSynthesisModelID,
 	}})
 }
 

@@ -262,6 +262,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewTenantSkillService))
 	must(container.Provide(service.NewReadingRunService))
 	must(container.Provide(service.NewReviewServiceWithGeneration))
+	// Reading self-test import depends on this narrow slice of the review
+	// service, not on review handlers or its full interface.
+	must(container.Provide(func(svc interfaces.ReviewService) interfaces.ReviewCardImporter {
+		return svc
+	}))
 	// The member-facing half of env vars is its own service because its
 	// authority is different in kind: it derives the identity from the context
 	// and touches only that identity's rows.
