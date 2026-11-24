@@ -44,3 +44,7 @@ rag/src_backup_*/
 
 # Local Claude Code settings
 .claude/settings.local.json
+
+# Generated acceptance output and local visual screenshots
+scripts/acceptance/out/
+docs/**/_shot_*.png
