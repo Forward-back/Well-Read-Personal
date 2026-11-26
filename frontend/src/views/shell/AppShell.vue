@@ -8,6 +8,7 @@
       'app-shell--fullscreen': fullscreenEligible && fullscreen,
       'app-shell--window-hidden': windowHidden,
     }"
+    :data-feature="featureKey || undefined"
   >
     <div
       class="app-shell__bg"
@@ -88,7 +89,11 @@
     <main class="app-stage" :aria-hidden="windowHidden" :inert="windowHidden || undefined">
       <section class="app-window"  :aria-label="$t('shell.workspaceAria')">
         <div ref="contentEl" class="app-window__content">
-          <RouterView v-if="isRouterAlive" />
+          <RouterView v-if="isRouterAlive" v-slot="{ Component }">
+            <Transition name="page-fade" mode="out-in">
+              <component :is="Component" />
+            </Transition>
+          </RouterView>
         </div>
       </section>
     </main>
@@ -176,6 +181,15 @@ const route = useRoute()
 const router = useRouter()
 const isDetailRoute = computed(() => route.path.startsWith('/platform'))
 const isReadingRoute = computed(() => route.path.startsWith('/platform/reading'))
+const featureKey = computed(() => {
+  const path = route.path
+  if (path.startsWith('/platform/chat/') || path === '/platform/creatChat' || path.endsWith('/creatChat')) return 'chat'
+  if (path.startsWith('/platform/knowledge-bases')) return 'knowledge'
+  if (path.startsWith('/platform/reading')) return 'reading'
+  if (path.startsWith('/platform/review')) return 'review'
+  if (path.startsWith('/platform/skills')) return 'skills'
+  return ''
+})
 const fullscreenEligible = computed(() => isDetailRoute.value || route.path === '/')
 
 watch(
@@ -576,6 +590,16 @@ onUnmounted(() => {
   --w-body: #374151;
   --w-muted: #5f6b5f;
   --w-line: #bfc1b7;
+  --w-hairline: #e6e1d7;
+  --w-card-radius: 12px;
+  --w-control-radius: 8px;
+  --w-panel-radius: 16px;
+  --w-page-accent: #07c05f;
+  --w-page-accent-hover: color-mix(in srgb, var(--w-page-accent) 82%, white);
+  --w-page-accent-active: color-mix(in srgb, var(--w-page-accent) 78%, black);
+  --w-page-accent-soft: color-mix(in srgb, var(--w-page-accent) 13%, white);
+  --w-page-accent-line: color-mix(in srgb, var(--w-page-accent) 36%, white);
+  --w-page-accent-focus: color-mix(in srgb, var(--w-page-accent) 24%, transparent);
   --w-green: #07c05f;
   --w-green-dark: #07c05f;
   --w-green-deep: #06b04d;
@@ -631,6 +655,7 @@ html[theme-mode="dark"] .app-shell {
   --w-body: #c6d0bd;
   --w-muted: #9aa891;
   --w-line: #4a5542;
+  --w-hairline: #3a4235;
   --w-green: #53d98d;
   --w-green-dark: #7be0a7;
   --w-green-deep: #a5efc2;
@@ -641,6 +666,59 @@ html[theme-mode="dark"] .app-shell {
   --td-brand-color-active: #a5efc2;
   --td-brand-color-focus: rgba(83, 217, 141, 0.24);
   --td-brand-color-light: #1d3a2a;
+}
+
+/* Per-feature primary action colour. The owner can override any page from
+   UI settings; unset pages keep the shared bright green. */
+.app-shell[data-feature] {
+  --w-page-accent: #07c05f;
+  --w-page-accent-hover: color-mix(in srgb, var(--w-page-accent) 82%, white);
+  --w-page-accent-active: color-mix(in srgb, var(--w-page-accent) 78%, black);
+  --w-page-accent-soft: color-mix(in srgb, var(--w-page-accent) 13%, white);
+  --w-page-accent-line: color-mix(in srgb, var(--w-page-accent) 36%, white);
+  --w-page-accent-focus: color-mix(in srgb, var(--w-page-accent) 24%, transparent);
+  --td-brand-color: var(--w-page-accent);
+  --td-brand-color-hover: var(--w-page-accent-hover);
+  --td-brand-color-active: var(--w-page-accent-active);
+  --td-brand-color-focus: var(--w-page-accent-focus);
+  --td-brand-color-light: var(--w-page-accent-soft);
+  --td-brand-color-disabled: color-mix(in srgb, var(--w-page-accent) 45%, white);
+}
+
+.app-shell[data-feature="chat"] { --w-page-accent: var(--w-accent-chat, #07c05f); }
+.app-shell[data-feature="knowledge"] { --w-page-accent: var(--w-accent-knowledge, #07c05f); }
+.app-shell[data-feature="reading"] { --w-page-accent: var(--w-accent-reading, #07c05f); }
+.app-shell[data-feature="review"] { --w-page-accent: var(--w-accent-review, #07c05f); }
+.app-shell[data-feature="skills"] { --w-page-accent: var(--w-accent-skills, #07c05f); }
+
+.app-shell[data-feature="chat"],
+.app-shell[data-feature="knowledge"] {
+  --td-component-stroke: var(--w-hairline);
+  --td-component-border: var(--w-hairline);
+}
+
+html[theme-mode="dark"] .app-shell[data-feature] {
+  --w-page-accent-soft: color-mix(in srgb, var(--w-page-accent) 22%, #1e261b);
+  --w-page-accent-line: color-mix(in srgb, var(--w-page-accent) 45%, #1e261b);
+  --td-brand-color-light: var(--w-page-accent-soft);
+  --td-brand-color-focus: color-mix(in srgb, var(--w-page-accent) 30%, transparent);
+}
+
+.page-fade-enter-active,
+.page-fade-leave-active {
+  transition: opacity 0.14s ease;
+}
+
+.page-fade-enter-from,
+.page-fade-leave-to {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-fade-enter-active,
+  .page-fade-leave-active {
+    transition: none;
+  }
 }
 
 .app-shell__bg {

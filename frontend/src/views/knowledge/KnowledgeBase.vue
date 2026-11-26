@@ -3363,13 +3363,13 @@ async function createNewSession(value: string): Promise<void> {
 .knowledge-layout {
   display: flex;
   flex-direction: column;
-  margin: 0 16px 0 4px;
-  gap: 20px;
+  margin: 0;
+  gap: 24px;
   height: 100%;
   flex: 1;
   width: 100%;
   min-width: 0;
-  padding: 24px 32px 0px;
+  padding: 0;
   box-sizing: border-box;
   position: relative;
 }
@@ -4199,7 +4199,6 @@ async function createNewSession(value: string): Promise<void> {
 .document-header {
   display: block;
   flex-shrink: 0;
-  margin-top: -24px;
 
   .kb-title-actions {
     display: inline-flex;
@@ -4222,7 +4221,7 @@ async function createNewSession(value: string): Promise<void> {
     min-width: 0;
     overflow: hidden;
     margin: 0;
-    font-size: 13.5px;
+    font-size: 14px;
     line-height: 20px;
     font-weight: 600;
     color: var(--td-text-color-primary);
@@ -4249,7 +4248,11 @@ async function createNewSession(value: string): Promise<void> {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    padding: 8px 16px 12px;
+    padding: 12px 0 0;
+  }
+
+  :deep(.page-topbar) {
+    margin-bottom: 0;
   }
 
   .breadcrumb-link {

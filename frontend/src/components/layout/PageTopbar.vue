@@ -26,9 +26,10 @@ defineProps<{ title?: string; meta?: string }>()
   gap: 14px;
   min-width: 0;
   height: 48px;
+  margin: 0 0 24px;
   padding: 0 16px;
-  background: var(--page-topbar-bg, #fff);
-  border-bottom: 1px solid var(--page-topbar-line, var(--td-component-stroke, #e7e7e7));
+  background: var(--page-topbar-bg, transparent);
+  border-bottom: 1px solid var(--page-topbar-line, var(--w-hairline, var(--td-component-stroke, #e7e7e7)));
   color: var(--page-topbar-title, var(--td-text-color-primary, #1f2329));
 }
 
@@ -44,9 +45,9 @@ defineProps<{ title?: string; meta?: string }>()
 .page-topbar__title {
   overflow: hidden;
   min-width: 0;
-  font-size: 13.5px;
+  font-size: 16px;
   font-weight: 600;
-  line-height: 20px;
+  line-height: 24px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -54,8 +55,8 @@ defineProps<{ title?: string; meta?: string }>()
 .page-topbar__meta {
   overflow: hidden;
   min-width: 0;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 13px;
+  line-height: 20px;
   color: var(--page-topbar-meta, var(--td-text-color-placeholder, #999));
   text-overflow: ellipsis;
   white-space: nowrap;

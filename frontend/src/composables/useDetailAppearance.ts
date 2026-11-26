@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { reactive, ref } from 'vue'
 import {
   loadPreference,
   savePreference,
@@ -33,12 +33,26 @@ export const DEFAULT_TEXT_COLORS = {
 
 export type DetailTextLevel = keyof typeof DEFAULT_TEXT_COLORS
 
+// Primary action colour per feature page. Unset means the shared bright green
+// default; the UI settings page writes an override for the pages the owner
+// wants to tint differently.
+export const FEATURE_ACCENT_KEYS = ['chat', 'knowledge', 'reading', 'review', 'skills'] as const
+export type FeatureAccentKey = (typeof FEATURE_ACCENT_KEYS)[number]
+export const DEFAULT_FEATURE_ACCENT = '#07c05f'
+
 const COLOR_KEY = 'detail_color'
 const TRANSPARENCY_KEY = 'detail_transparency'
 const TEXT_KEYS: Record<DetailTextLevel, string> = {
   primary: 'detail_text_primary',
   secondary: 'detail_text_secondary',
   placeholder: 'detail_text_placeholder',
+}
+const FEATURE_ACCENT_SUFFIXES: Record<FeatureAccentKey, string> = {
+  chat: 'accent_chat',
+  knowledge: 'accent_knowledge',
+  reading: 'accent_reading',
+  review: 'accent_review',
+  skills: 'accent_skills',
 }
 const HEX_PATTERN = /^#[0-9a-f]{6}$/i
 
@@ -63,6 +77,13 @@ const currentTransparency = ref(loadTransparency())
 const textPrimary = ref<string | null>(loadHexPreference(TEXT_KEYS.primary))
 const textSecondary = ref<string | null>(loadHexPreference(TEXT_KEYS.secondary))
 const textPlaceholder = ref<string | null>(loadHexPreference(TEXT_KEYS.placeholder))
+const featureAccents = reactive<Record<FeatureAccentKey, string | null>>({
+  chat: loadHexPreference(FEATURE_ACCENT_SUFFIXES.chat),
+  knowledge: loadHexPreference(FEATURE_ACCENT_SUFFIXES.knowledge),
+  reading: loadHexPreference(FEATURE_ACCENT_SUFFIXES.reading),
+  review: loadHexPreference(FEATURE_ACCENT_SUFFIXES.review),
+  skills: loadHexPreference(FEATURE_ACCENT_SUFFIXES.skills),
+})
 
 function hexToRgb(hex: string): [number, number, number] {
   return [
@@ -91,6 +112,15 @@ function applyDetailAppearance() {
       root.setProperty(name, value)
     } else {
       root.removeProperty(name)
+    }
+  }
+
+  for (const key of FEATURE_ACCENT_KEYS) {
+    const value = featureAccents[key]
+    if (value) {
+      root.setProperty(`--w-accent-${key}`, value)
+    } else {
+      root.removeProperty(`--w-accent-${key}`)
     }
   }
 }
@@ -124,6 +154,20 @@ export function useDetailAppearance() {
     return true
   }
 
+  function setFeatureAccent(key: FeatureAccentKey, value: string): boolean {
+    if (!HEX_PATTERN.test(value)) return false
+    featureAccents[key] = value.toLowerCase()
+    savePreference(FEATURE_ACCENT_SUFFIXES[key], featureAccents[key] as string)
+    applyDetailAppearance()
+    return true
+  }
+
+  function resetFeatureAccent(key: FeatureAccentKey) {
+    featureAccents[key] = null
+    safeRemoveItem(userKey(FEATURE_ACCENT_SUFFIXES[key]))
+    applyDetailAppearance()
+  }
+
   function resetDetailAppearance() {
     currentColor.value = DEFAULT_DETAIL_COLOR
     currentTransparency.value = DEFAULT_DETAIL_TRANSPARENCY
@@ -133,6 +177,10 @@ export function useDetailAppearance() {
     savePreference(COLOR_KEY, currentColor.value)
     savePreference(TRANSPARENCY_KEY, String(currentTransparency.value))
     for (const key of Object.values(TEXT_KEYS)) safeRemoveItem(userKey(key))
+    for (const key of FEATURE_ACCENT_KEYS) {
+      featureAccents[key] = null
+      safeRemoveItem(userKey(FEATURE_ACCENT_SUFFIXES[key]))
+    }
     applyDetailAppearance()
   }
 
@@ -142,9 +190,12 @@ export function useDetailAppearance() {
     textPrimary,
     textSecondary,
     textPlaceholder,
+    featureAccents,
     setDetailColor,
     setDetailTransparency,
     setDetailTextColor,
+    setFeatureAccent,
+    resetFeatureAccent,
     resetDetailAppearance,
   }
 }
@@ -153,6 +204,7 @@ export function useDetailAppearance() {
 export function initDetailAppearance() {
   currentColor.value = loadColor()
   currentTransparency.value = loadTransparency()
+  loadFeatureAccents()
   applyDetailAppearance()
 }
 
@@ -161,5 +213,12 @@ export function reloadDetailAppearanceFromStorage() {
   migratePreferencesIntoUser()
   currentColor.value = loadColor()
   currentTransparency.value = loadTransparency()
+  loadFeatureAccents()
   applyDetailAppearance()
+}
+
+function loadFeatureAccents() {
+  for (const key of FEATURE_ACCENT_KEYS) {
+    featureAccents[key] = loadHexPreference(FEATURE_ACCENT_SUFFIXES[key])
+  }
 }

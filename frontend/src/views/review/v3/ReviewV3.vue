@@ -641,7 +641,7 @@ onMounted(() => {
 }
 
 .review-v3 {
-  --page-topbar-bg: var(--rvn-paper);
+  --page-topbar-bg: transparent;
   --page-topbar-line: var(--rvn-line);
   --page-topbar-title: var(--rvn-ink);
   --page-topbar-meta: var(--rvn-muted);
@@ -660,12 +660,12 @@ onMounted(() => {
   --rvn-ink: #3f3a34;
   --rvn-ink-soft: #6e675e;
   --rvn-muted: #857c70;
-  --rvn-line: #e0dbd1;
+  --rvn-line: var(--w-hairline, #e0dbd1);
   --rvn-line-strong: rgba(63, 58, 52, 0.15);
   --rvn-gray-soft: #ede7dd;
-  --rvn-accent: #6e93a8;
-  --rvn-accent-deep: #47677a;
-  --rvn-accent-soft: #dfe7ea;
+  --rvn-accent: var(--w-page-accent, #6e93a8);
+  --rvn-accent-deep: var(--w-page-accent-active, #47677a);
+  --rvn-accent-soft: var(--w-page-accent-soft, #dfe7ea);
   --rvn-red: #b0716b;
   --rvn-red-deep: #8a4e47;
   --rvn-red-soft: #ebdcd7;
@@ -681,10 +681,10 @@ onMounted(() => {
   --rvn-purple: #978ba8;
   --rvn-purple-deep: #6b5f7a;
   --rvn-purple-soft: #e6e1ea;
-  --rvn-brand: #5a7688;
-  --rvn-brand-deep: #4c6678;
-  --rvn-brand-bg: #e7ecef;
-  --rvn-brand-line: #c9d4db;
+  --rvn-brand: var(--w-page-accent, #5a7688);
+  --rvn-brand-deep: var(--w-page-accent-active, #4c6678);
+  --rvn-brand-bg: var(--w-page-accent-soft, #e7ecef);
+  --rvn-brand-line: var(--w-page-accent-line, #c9d4db);
   --rvn-radius: 11px;
   --rvn-radius-sm: 7px;
   --rvn-border: var(--rvn-line);
@@ -694,17 +694,17 @@ onMounted(() => {
   --rv-vuln-warning: #7e5e42;
   --rv-vuln-observe: #47677a;
   --rv-vuln-healthy: #5e7261;
-  --td-brand-color: #5a7688;
-  --td-brand-color-hover: #6e93a8;
-  --td-brand-color-active: #4c6678;
-  --td-brand-color-focus: #4c6678;
-  --td-brand-color-light: #e7ecef;
+  --td-brand-color: var(--w-page-accent);
+  --td-brand-color-hover: var(--w-page-accent-hover);
+  --td-brand-color-active: var(--w-page-accent-active);
+  --td-brand-color-focus: var(--w-page-accent-focus);
+  --td-brand-color-light: var(--w-page-accent-soft);
   --td-text-color-primary: #3f3a34;
   --td-text-color-secondary: #6e675e;
   --td-text-color-placeholder: #857c70;
-  --td-text-color-brand: #4c6678;
-  --td-component-stroke: #e0dbd1;
-  --td-component-border: #e0dbd1;
+  --td-text-color-brand: var(--w-page-accent);
+  --td-component-stroke: var(--w-hairline, #e0dbd1);
+  --td-component-border: var(--w-hairline, #e0dbd1);
   --td-bg-color-container: #fbf9f5;
   --td-bg-color-container-hover: #f0ece5;
   --td-bg-color-container-active: #e9e4db;
@@ -718,6 +718,15 @@ onMounted(() => {
   --td-info-color-light: #dfe7ea;
 }
 
+:global(html[theme-mode='light']) .review-v3 {
+  --rvn-ink: var(--w-detail-text-primary, #3f3a34);
+  --rvn-ink-soft: var(--w-detail-text-secondary, #6e675e);
+  --rvn-muted: var(--w-detail-text-placeholder, #857c70);
+  --td-text-color-primary: var(--rvn-ink);
+  --td-text-color-secondary: var(--rvn-ink-soft);
+  --td-text-color-placeholder: var(--rvn-muted);
+}
+
 :global([theme-mode='dark']) .review-v3 {
   color: #f2f1ee;
   --rvn-canvas: #262420;
@@ -727,29 +736,26 @@ onMounted(() => {
   --rvn-ink: #f2f1ee;
   --rvn-ink-soft: #c7c2b9;
   --rvn-muted: #9c948a;
-  --rvn-line: #403c35;
+  --rvn-line: var(--w-hairline, #403c35);
   --rvn-line-strong: rgba(242, 241, 238, 0.18);
   --rvn-gray-soft: #35312b;
-  --rvn-brand-bg: #28323a;
-  --rvn-brand-line: #3b4a55;
-  --rvn-accent-soft: #263039;
+  --rvn-brand-bg: var(--w-page-accent-soft);
+  --rvn-brand-line: var(--w-page-accent-line);
+  --rvn-accent-soft: var(--w-page-accent-soft);
   --rvn-red-soft: #332827;
   --rvn-orange-soft: #332d25;
   --rvn-yellow-soft: #333026;
   --rvn-green-soft: #28302a;
   --rvn-purple-soft: #2e2936;
-  --td-brand-color-light: #28323a;
+  --td-brand-color-light: var(--w-page-accent-soft);
   --td-text-color-primary: #f2f1ee;
   --td-text-color-secondary: #c7c2b9;
   --td-text-color-placeholder: #9c948a;
-  --td-component-stroke: #403c35;
+  --td-component-stroke: var(--w-hairline, #403c35);
   --td-bg-color-container: #2b2925;
   --td-bg-color-container-hover: #33302a;
   --td-bg-color-container-active: #3b3731;
 }
-
-.review-v3__inner > .page-topbar { margin: -24px 0 24px; }
-.review-v3__inner > .page-topbar :deep(.page-topbar__title) { font-size: 16px; line-height: 24px; }
 
 .review-v3__inner > .page-topbar .review-v3__nav { gap: 16px; margin-right: 0; }
 
@@ -757,7 +763,7 @@ onMounted(() => {
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: 24px 10% 48px;
+  padding: 0 0 48px;
   background: transparent;
   border: 0;
   border-radius: 0;

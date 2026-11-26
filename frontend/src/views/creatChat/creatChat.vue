@@ -1,5 +1,6 @@
 <template>
     <div class="dialogue-wrap">
+        <PageTopbar :title="$t('menu.chat')" class="chat-page__topbar" />
         <div class="dialogue-answers">
             <div class="dialogue-title" style="--wails-draggable: drag">
                 <span style="--wails-draggable: drag">{{ $t('createChat.title') }}</span>
@@ -58,6 +59,7 @@
 import { ref, watch, onMounted, nextTick, computed } from 'vue';
 import ContextualGuide from '@/components/ContextualGuide.vue';
 import InputField from '@/components/Input-field.vue';
+import PageTopbar from '@/components/layout/PageTopbar.vue';
 import { createSessions } from "@/api/chat/index";
 import { getSuggestedQuestions } from "@/api/agent/index";
 import type { SuggestedQuestion } from "@/api/agent/index";
@@ -247,10 +249,16 @@ const handleKBEditorSuccess = (kbId: string) => {
     height: 100%;
     min-height: 0;
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    justify-content: flex-start;
     align-items: stretch;
-    padding: 96px 24px 48px;
+    padding: 0 0 48px;
     box-sizing: border-box;
+}
+
+.chat-page__topbar {
+    flex: none;
+    width: 100%;
 }
 
 .dialogue-answers {
@@ -259,7 +267,9 @@ const handleKBEditorSuccess = (kbId: string) => {
     align-items: center;
     width: 100%;
     max-width: 960px;
-    height: 100%;
+    margin: 0 auto;
+    padding-top: 24px;
+    flex: 1;
     min-height: 0;
     gap: 48px;
 

@@ -1,20 +1,16 @@
 <template>
   <div class="kb-list-container">
     <div class="kb-list-content">
-      <div class="header" style="--wails-draggable: drag">
-        <div class="header-title" style="--wails-draggable: drag">
-          <div class="title-row" style="--wails-draggable: drag">
-            <h2 style="--wails-draggable: drag">{{ $t('knowledgeBase.title') }}</h2>
-            <t-tooltip v-if="canCreateKb" :content="$t('knowledgeList.create')" placement="bottom">
-              <t-button variant="text" theme="default" size="small" class="header-action-btn"
-                data-guide="kb-list-create" style="--wails-draggable: no-drag" @click="handleCreateKnowledgeBase">
-                <template #icon><t-icon name="folder-add" size="16px" /></template>
-              </t-button>
-            </t-tooltip>
-          </div>
-          <p class="header-subtitle" style="--wails-draggable: drag">{{ $t('knowledgeList.subtitle') }}</p>
-        </div>
-      </div>
+      <PageTopbar :title="$t('knowledgeBase.title')" :meta="$t('knowledgeList.subtitle')">
+        <template #actions>
+          <t-tooltip v-if="canCreateKb" :content="$t('knowledgeList.create')" placement="bottom">
+            <t-button variant="text" theme="default" size="small" class="header-action-btn"
+              data-guide="kb-list-create" @click="handleCreateKnowledgeBase">
+              <template #icon><t-icon name="folder-add" size="16px" /></template>
+            </t-button>
+          </t-tooltip>
+        </template>
+      </PageTopbar>
       <div class="kb-list-main">
         <!-- creator filter intentionally removed from chrome; the backend
              `?creator=` param is kept for future deep links. -->
@@ -264,6 +260,7 @@ import { useChatResourcesStore } from '@/stores/chatResources'
 import { formatStringDate } from '@/utils/index'
 import { useUIStore } from '@/stores/ui'
 import KnowledgeBaseEditorModal from './KnowledgeBaseEditorModal.vue'
+import PageTopbar from '@/components/layout/PageTopbar.vue'
 import KbGazeBadge from './components/KbGazeBadge.vue'
 import ContextualGuide from '@/components/ContextualGuide.vue'
 import { isContextualGuideDone, markContextualGuideDone } from '@/config/contextualGuides'
@@ -819,7 +816,7 @@ const handleUploadFinishedEvent = (event: Event) => {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: 20px 0 0 28px;
+  padding: 0;
 }
 
 .header {
@@ -869,7 +866,7 @@ const handleUploadFinishedEvent = (event: Event) => {
   overflow-x: hidden;
   // 顶部不留 padding，sticky 的分组标题 (top: 0) 才能贴到容器最顶；
   // 底部 padding 保留，避免最后一行卡片紧贴边。
-  padding: 0 28px 8px 0;
+  padding: 0 0 8px;
   scrollbar-width: auto;
   scrollbar-color: auto;
 }
@@ -1094,15 +1091,14 @@ const handleUploadFinishedEvent = (event: Event) => {
 }
 
 .kb-card {
-  border: 1px solid var(--td-component-stroke);
-  border-radius: 8px;
+  border: 1px solid var(--w-hairline, var(--td-component-stroke));
+  border-radius: var(--w-card-radius, 12px);
   overflow: hidden;
   box-sizing: border-box;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   background: var(--td-bg-color-container);
   position: relative;
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
   padding: 12px 14px;
   display: flex;
   flex-direction: column;

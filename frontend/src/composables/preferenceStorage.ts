@@ -24,6 +24,11 @@ const PREFERENCE_SUFFIXES = [
   'detail_text_primary',
   'detail_text_secondary',
   'detail_text_placeholder',
+  'accent_chat',
+  'accent_knowledge',
+  'accent_reading',
+  'accent_review',
+  'accent_skills',
 ] as const
 
 export function readUserId(): string {

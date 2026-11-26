@@ -1,5 +1,5 @@
 <template>
-  <header class="chat-header" :class="{ 'is-editing': titleEditing, 'is-docked': hasReferencesPanel }">
+  <div class="chat-header" :class="{ 'is-editing': titleEditing }">
     <form
       v-if="titleEditing"
       class="chat-header__edit"
@@ -110,7 +110,7 @@
         </div>
       </template>
     </t-popup>
-  </header>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -350,53 +350,21 @@ function handleMenuClick(data: { value: string }): void {
 
 <style scoped lang="less">
 .chat-header {
-  position: absolute;
-  top: 10px;
-  left: 12px;
-  z-index: 6;
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  max-width: min(280px, calc(100% - 24px));
   min-width: 0;
-  padding: 2px 2px 2px 8px;
-  border-radius: 8px;
+  max-width: 100%;
+  padding: 0;
   box-sizing: border-box;
-  background: color-mix(in srgb, var(--td-bg-color-container) 88%, transparent);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: transparent;
   pointer-events: auto;
 
   &.is-editing {
-    max-width: min(360px, calc(100% - 24px));
-    padding: 2px;
-  }
-
-  @media (min-width: 960px) {
-    &.is-docked {
-      position: relative;
-      top: auto;
-      left: auto;
-      align-self: stretch;
-      z-index: 5;
-      flex-shrink: 0;
-      width: 100%;
-      max-width: none;
-      margin: 0;
-      padding: 10px 12px;
-      border-radius: 0;
-      border-bottom: 1px solid var(--td-component-stroke);
-      background: var(--td-bg-color-container);
-      backdrop-filter: none;
-      -webkit-backdrop-filter: none;
-      box-sizing: border-box;
-      transition: border-color 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
-
-      &.is-editing {
-        max-width: none;
-        padding: 8px 12px;
-      }
-    }
+    max-width: 100%;
+    padding: 0;
   }
 }
 
@@ -433,10 +401,10 @@ function handleMenuClick(data: { value: string }): void {
   min-width: 0;
   margin: 0;
   padding: 0;
-  color: var(--td-text-color-secondary);
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 20px;
+  color: var(--td-text-color-primary);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
   cursor: default;
 }
 

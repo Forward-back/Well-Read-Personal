@@ -3562,11 +3562,11 @@ onBeforeUnmount(() => {
   --rv-text-3: #9b9a97;
   --rv-bg: #ffffff;
   --rv-side: #faf9f7;
-  --rv-hair: #ebebea;
+  --rv-hair: var(--w-hairline, #ebebea);
   --rv-hover: #f1efea;
-  --rv-green: #07c05f;
-  --rv-green-deep: #0b9e50;
-  --rv-green-bg: #e9f8ec;
+  --rv-green: var(--w-page-accent, #07c05f);
+  --rv-green-deep: var(--w-page-accent-active, #0b9e50);
+  --rv-green-bg: var(--w-page-accent-soft, #e9f8ec);
   --rv-sage: #e9efe7;
   --rv-sage-d: #4e7a6c;
   --rv-haze: #e7edf1;
@@ -3579,8 +3579,8 @@ onBeforeUnmount(() => {
   --rv-mauve: #f1edf4;
   --rv-mauve-d: #8e7396;
   --rv-yellow: #c29343;
-  --rv-r: 3px;
-  --rv-r-pop: 4px;
+  --rv-r: 8px;
+  --rv-r-pop: 12px;
   --rv-shadow-pop: 0 4px 16px rgba(15, 15, 15, 0.13);
 
   position: relative;
@@ -3622,8 +3622,9 @@ onBeforeUnmount(() => {
   gap: 14px;
   align-items: center;
   height: 48px;
+  margin: 0 24px;
   padding: 0 16px;
-  background: var(--rv-bg);
+  background: transparent;
   border-bottom: 1px solid var(--rv-hair);
 }
 
@@ -3636,7 +3637,7 @@ onBeforeUnmount(() => {
 
 .rv-topbar__title {
   overflow: hidden;
-  font-size: 13.5px;
+  font-size: 16px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5511,11 +5512,11 @@ onBeforeUnmount(() => {
   --rv-text-3: #8b8c87;
   --rv-bg: #171816;
   --rv-side: #1b1c19;
-  --rv-hair: #2e2f2a;
+  --rv-hair: var(--w-hairline, #2e2f2a);
   --rv-hover: #23241f;
-  --rv-green: #53d98d;
-  --rv-green-deep: #3fc47c;
-  --rv-green-bg: #1d3328;
+  --rv-green: var(--w-page-accent, #53d98d);
+  --rv-green-deep: var(--w-page-accent-active, #3fc47c);
+  --rv-green-bg: var(--w-page-accent-soft, #1d3328);
   --rv-sage: #25312b;
   --rv-sage-d: #9fc4b4;
   --rv-haze: #1e2a31;

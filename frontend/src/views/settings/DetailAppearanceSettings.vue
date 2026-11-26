@@ -98,6 +98,49 @@
       </div>
     </div>
 
+    <div class="text-color-block">
+      <h3>{{ $t('detailAppearance.featureColors') }}</h3>
+      <p class="text-color-hint">
+        {{ $t('detailAppearance.featureColorsHint') }}
+      </p>
+      <div v-for="row in featureAccentRows" :key="row.key" class="setting-row">
+        <div class="setting-info">
+          <label>
+            {{ row.label }}
+            <span v-if="row.isDefault" class="default-tag">{{ $t('detailAppearance.defaultTag') }}</span>
+          </label>
+          <p class="desc">{{ row.desc }}</p>
+        </div>
+        <div class="setting-control">
+          <div class="feature-accent-control">
+            <label class="custom-color">
+              <span
+                class="custom-color__chip"
+                :style="{ backgroundColor: row.value }"
+                aria-hidden="true"
+              />
+              <input
+                type="color"
+                class="custom-color__input"
+                :value="row.value"
+                :aria-label="row.label"
+                @input="handleFeatureAccentInput(row.key, $event)"
+              />
+              <span class="custom-color__hex">{{ row.value }}</span>
+            </label>
+            <t-button
+              v-if="!row.isDefault"
+              variant="text"
+              size="small"
+              @click="handleFeatureAccentReset(row.key)"
+            >
+              {{ $t('detailAppearance.resetFeature') }}
+            </t-button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="appearance-footer">
       <t-button variant="text" size="small" @click="handleReset">{{ $t('detailAppearance.resetAll') }}</t-button>
     </div>
@@ -110,9 +153,12 @@ import { useI18n } from 'vue-i18n'
 import { MessagePlugin } from 'tdesign-vue-next'
 import {
   DETAIL_COLOR_PRESETS,
+  DEFAULT_FEATURE_ACCENT,
   DEFAULT_TEXT_COLORS,
+  FEATURE_ACCENT_KEYS,
   useDetailAppearance,
   type DetailTextLevel,
+  type FeatureAccentKey,
 } from '@/composables/useDetailAppearance'
 
 const { t } = useI18n()
@@ -122,9 +168,12 @@ const {
   textPrimary,
   textSecondary,
   textPlaceholder,
+  featureAccents,
   setDetailColor,
   setDetailTransparency,
   setDetailTextColor,
+  setFeatureAccent,
+  resetFeatureAccent,
   resetDetailAppearance,
 } = useDetailAppearance()
 
@@ -160,6 +209,24 @@ const textColorRows = computed(() => [
   },
 ])
 
+const FEATURE_ACCENT_LABEL_KEYS: Record<FeatureAccentKey, string> = {
+  chat: 'detailAppearance.featureChat',
+  knowledge: 'detailAppearance.featureKnowledge',
+  reading: 'detailAppearance.featureReading',
+  review: 'detailAppearance.featureReview',
+  skills: 'detailAppearance.featureSkills',
+}
+
+const featureAccentRows = computed(() =>
+  FEATURE_ACCENT_KEYS.map((key) => ({
+    key,
+    label: t(FEATURE_ACCENT_LABEL_KEYS[key]),
+    desc: t(`detailAppearance.feature${key[0].toUpperCase()}${key.slice(1)}Desc`),
+    value: featureAccents[key] || DEFAULT_FEATURE_ACCENT,
+    isDefault: !featureAccents[key],
+  })),
+)
+
 const transparencyModel = computed<number>({
   get: () => currentTransparency.value,
   set: (value) => setDetailTransparency(value),
@@ -181,6 +248,17 @@ const handleTextColorInput = (level: DetailTextLevel, event: Event) => {
   if (!setDetailTextColor(level, value)) {
     MessagePlugin.error(t('detailAppearance.invalidColor'))
   }
+}
+
+const handleFeatureAccentInput = (key: FeatureAccentKey, event: Event) => {
+  const value = (event.target as HTMLInputElement).value
+  if (!setFeatureAccent(key, value)) {
+    MessagePlugin.error(t('detailAppearance.invalidColor'))
+  }
+}
+
+const handleFeatureAccentReset = (key: FeatureAccentKey) => {
+  resetFeatureAccent(key)
 }
 
 const handleReset = () => {
@@ -240,6 +318,12 @@ const handleReset = () => {
     color: var(--td-text-color-secondary);
     line-height: 1.5;
   }
+}
+
+.feature-accent-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .default-tag {

@@ -4,7 +4,11 @@
         'is-sidebar-collapsed': uiStore.sidebarCollapsed,
         'has-references-panel': referencesDrawerVisible,
     }">
-        <ChatHeader v-if="!embeddedMode" :session="currentSession" :has-references-panel="referencesDrawerVisible" />
+        <PageTopbar v-if="!embeddedMode" class="chat-page__topbar">
+            <template #lead>
+                <ChatHeader :session="currentSession" :has-references-panel="referencesDrawerVisible" />
+            </template>
+        </PageTopbar>
         <div class="chat_thread">
             <div ref="scrollContainer" class="chat_scroll_box" @scroll="handleScroll">
                 <div class="msg_list" :class="{ 'is-embedded': embeddedMode }">
@@ -187,6 +191,7 @@ import MessageTimestamp from '@/components/chat/MessageTimestamp.vue';
 import ChatQuestionMinimap from '@/components/chat/ChatQuestionMinimap.vue';
 import { shouldShowConversationTimestamp } from '@/utils/messageTimestamp';
 import ChatHeader from '@/components/ChatHeader.vue';
+import PageTopbar from '@/components/layout/PageTopbar.vue';
 import {
     notifySessionMutation,
     SESSION_MUTATION_EVENT,
@@ -1547,7 +1552,7 @@ onBeforeRouteUpdate((to, from, next) => {
 .chat {
     font-size: 20px;
     // 右侧不留 padding，滚动条贴到内容区最右缘
-    padding: 0 0 20px 20px;
+    padding: 0 0 20px;
     // 右侧抽屉让出的宽度。回到底部按钮按「剩余聊天列」居中，而不是整页 50%。
     --chat-right-inset: 0px;
     box-sizing: border-box;
@@ -1646,6 +1651,18 @@ onBeforeRouteUpdate((to, from, next) => {
         min-height: 48px !important;
         padding: 10px 14px;
     }
+}
+
+.chat-page__topbar {
+    flex: none;
+    width: 100%;
+    max-width: none;
+    align-self: stretch;
+}
+
+.chat-page__topbar :deep(.page-topbar__lead) {
+    flex: 1 1 auto;
+    max-width: none;
 }
 
 .chat_thread {

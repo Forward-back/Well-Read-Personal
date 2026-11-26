@@ -716,17 +716,15 @@ const handleAction = (action: 'download' | 'edit' | 'view-trace' | 'reparse' | '
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--td-component-border);
-  border-radius: 8px;
+  border: 1px solid var(--w-hairline, var(--td-component-border));
+  border-radius: var(--w-card-radius, 12px);
   overflow: hidden;
   background: var(--td-bg-color-container);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
   cursor: pointer;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
 
   &:hover {
     border-color: color-mix(in srgb, var(--td-component-stroke) 55%, var(--td-brand-color));
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.07);
   }
 
   &:focus-visible {
@@ -782,20 +780,18 @@ const handleAction = (action: 'download' | 'edit' | 'view-trace' | 'reparse' | '
   min-width: 240px;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--td-component-border);
+  border: 1px solid var(--w-hairline, var(--td-component-border));
   height: 136px;
-  border-radius: 8px;
+  border-radius: var(--w-card-radius, 12px);
   overflow: hidden;
   box-sizing: border-box;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
   background: var(--td-bg-color-container);
   position: relative;
   cursor: pointer;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
 
   &:hover {
     border-color: color-mix(in srgb, var(--td-component-stroke) 55%, var(--td-brand-color));
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.07);
   }
 
   .card-nav-check {
