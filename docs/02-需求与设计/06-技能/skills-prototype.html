@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>技能（Skills）功能 · 视觉草图原型 v2</title>
+<style>
+/* ============================================================
+   视觉基线 v2.1 · 莫兰迪低饱和 Token
+   画布燕麦米白 / 深灰褐文字 / 饱和度 15%~35%
+   高亮仅限关键状态（启用·自动匹配·当前版本）
+   ============================================================ */
+:root{
+  --bg:        #F4EFE5;   /* 燕麦米白画布 */
+  --bg-layer:  #ECE5D6;   /* 分层：浅 */
+  --bg-layer2: #E2D9C6;   /* 分层：深 */
+  --card:      #FBF8F1;   /* 卡片面 */
+  --ink:       #4B443B;   /* 深灰褐主文字 */
+  --ink-2:     #7C7264;   /* 次级文字 */
+  --ink-3:     #A79C8B;   /* 弱文字/占位 */
+  --line:      #D9CFBC;   /* 手绘抖动边框色 */
+  --line-soft: #E6DECEDB;
+  --accent:      #5C6B51;  /* 莫兰迪深绿：启用/主操作 */
+  --accent-deep: #46523C;
+  --accent-bg:   rgba(92,107,81,.12);
+  --amber:       #96794B;  /* 版本/提示 */
+  --amber-bg:    rgba(150,121,75,.12);
+  --clay:        #A2685C;  /* 危险操作 */
+  --clay-bg:     rgba(162,104,92,.10);
+  --gray-off:    #6E6558;  /* 禁用态文字 */
+  --gray-off-bg: rgba(140,131,119,.13);
+  --pv-text:   #57503F;   /* 预览态正文（收编） */
+  --bar:       #B9AE99;   /* 柱图默认色（收编） */
+  --tint:      #FDFBF6;   /* 预览底/focus 底（收编） */
+  --pri-hover: #3E4A36;   /* 主按钮 hover（收编） */
+  --mono: "JetBrains Mono","SFMono-Regular",Consolas,"Liberation Mono","PingFang SC",monospace;
+  --serif: "Noto Serif SC","Source Han Serif SC",Georgia,"Songti SC",serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:14px; line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+/* 手绘抖动边框 */
+.wob{border:1.5px solid var(--line);border-radius:14px 9px 16px 10px / 10px 15px 9px 13px;}
+.wob-b{border-radius:9px 14px 10px 16px / 13px 10px 15px 9px;}
+.shadow{box-shadow:0 2px 8px rgba(75,68,59,.07);}
+button{font-family:inherit;cursor:pointer}
+
+/* ---------- 原型导航条 ---------- */
+.proto-bar{
+  position:sticky;top:0;z-index:50;
+  background:var(--bg-layer);
+  border-bottom:1.5px solid var(--line);
+  padding:12px 24px;
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+}
+.proto-bar .brand{font-weight:700;letter-spacing:.5px;color:var(--ink);}
+.proto-bar .brand small{font-weight:400;color:var(--ink-2);margin-left:8px;font-size:12px}
+.proto-nav{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+.proto-nav button{
+  border:1.5px solid var(--line);background:var(--card);color:var(--ink-2);
+  padding:7px 14px;border-radius:12px 8px 13px 9px / 9px 13px 8px 12px;
+  font-size:13px;
+}
+.proto-nav button.active{background:var(--accent-deep);color:#F4EFE5;border-color:var(--accent-deep)}
+.proto-nav button:hover:not(.active){background:var(--bg-layer2);color:var(--ink)}
+
+/* ---------- 页面框架 ---------- */
+main{max-width:1120px;margin:0 auto;padding:28px 24px 72px}
+.screen{display:none}
+.screen.active{display:block;animation:fadein .25s ease}
+@keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+.page-head{display:flex;align-items:flex-start;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+.page-head h1{font-size:22px;font-weight:700;letter-spacing:.5px}
+.page-head .sub{color:var(--ink-2);font-size:13px;margin-top:4px}
+.page-head .spacer{flex:1}
+
+/* ---------- 通用组件 ---------- */
+.card{background:var(--card);border:1.5px solid var(--line);border-radius:14px 9px 16px 10px / 10px 15px 9px 13px;padding:18px 20px}
+.tag{display:inline-block;font-size:12px;padding:2px 10px;border-radius:10px 8px 9px 11px / 9px 11px 8px 10px;border:1px solid transparent;line-height:1.6;white-space:nowrap}
+.tag.on{background:var(--accent-bg);color:var(--accent-deep);border-color:rgba(92,107,81,.35)}
+.tag.off{background:var(--gray-off-bg);color:var(--gray-off);border-color:rgba(140,131,119,.30)}
+.tag.ver{background:var(--amber-bg);color:var(--amber);border-color:rgba(150,121,75,.30)}
+.chip{display:inline-flex;align-items:center;font-size:12px;color:var(--ink-2);border:1.2px solid var(--line);padding:2px 10px;border-radius:10px 7px 9px 11px / 9px 11px 7px 10px;background:var(--card)}
+.chip.on{color:var(--accent-deep);border-color:rgba(92,107,81,.4);background:var(--accent-bg)}
+.dot{width:7px;height:7px;border-radius:50% 45% 55% 48%;display:inline-block;margin-right:6px;vertical-align:1px}
+.dot.g{background:var(--accent)} .dot.gray{background:var(--ink-3)}
+.btn{border:1.5px solid var(--line);background:var(--card);color:var(--ink-2);padding:6px 14px;font-size:13px;border-radius:11px 8px 12px 9px / 9px 12px 8px 11px}
+.btn:hover{background:var(--bg-layer);color:var(--ink)}
+.btn.pri{background:var(--accent-deep);border-color:var(--accent-deep);color:#F4EFE5}
+.btn.pri:hover{background:var(--pri-hover);color:#F4EFE5}
+.btn.danger{color:var(--clay)}
+.btn.danger:hover{background:var(--clay-bg);border-color:var(--clay);color:var(--clay)}
+.btn.sm{padding:4px 10px;font-size:12px}
+.muted{color:var(--ink-2)} .faint{color:var(--ink-3);font-size:12px}
+.icon{width:16px;height:16px;stroke:var(--ink-2);stroke-width:1.6;fill:none;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px}
+.sec-title{font-size:13px;font-weight:700;color:var(--ink-2);letter-spacing:1px;margin-bottom:10px}
+
+/* ============================================================
+   屏 1 · 技能目录
+   ============================================================ */
+.toolbar{display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.searchbox{display:flex;align-items:center;gap:8px;background:var(--card);border:1.5px solid var(--line);border-radius:11px 8px 12px 9px / 9px 12px 8px 11px;padding:7px 14px;flex:1;max-width:340px}
+.searchbox input{border:none;background:none;outline:none;color:var(--ink);font-size:13px;width:100%}
+.searchbox input::placeholder{color:var(--ink-3)}
+.filters{display:flex;border:1.5px solid var(--line);border-radius:11px 8px 12px 9px / 9px 12px 8px 11px;overflow:hidden;background:var(--card)}
+.filters button{border:none;background:none;color:var(--ink-2);padding:7px 14px;font-size:13px;border-right:1.2px solid var(--line-soft)}
+.filters button:last-child{border-right:none}
+.filters button.active{background:var(--bg-layer2);color:var(--ink);font-weight:600}
+.viewtoggle{display:flex;gap:6px}
+.viewtoggle button{width:34px;height:32px;border:1.5px solid var(--line);background:var(--card);border-radius:9px 7px 10px 8px / 8px 10px 7px 9px;color:var(--ink-3)}
+.viewtoggle button.active{color:var(--accent-deep);border-color:rgba(92,107,81,.45);background:var(--accent-bg)}
+
+/* 列表态 */
+.skill-row{display:flex;align-items:flex-start;gap:14px;padding:16px 20px;background:var(--card);border:1.5px solid var(--line);border-radius:13px 9px 15px 10px / 10px 14px 9px 12px;margin-bottom:12px;transition:box-shadow .15s}
+.skill-row:hover{box-shadow:0 3px 10px rgba(75,68,59,.10)}
+.skill-mono{width:40px;height:40px;flex-shrink:0;border:1.5px solid var(--line);border-radius:12px 8px 11px 9px / 9px 11px 8px 12px;background:var(--bg-layer);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:13px;color:var(--ink-2);letter-spacing:-.5px}
+.skill-main{flex:1;min-width:0}
+.skill-name{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.skill-name .nm{font-weight:700;font-size:15px;font-family:var(--mono)}
+.skill-desc{color:var(--ink-2);font-size:13px;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.skill-meta{margin-top:8px;display:flex;gap:14px;flex-wrap:wrap;color:var(--ink-3);font-size:12px}
+.skill-acts{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
+
+/* 网格态 */
+.skill-grid{display:none;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.listmode .skill-grid{display:grid}
+.listmode .skill-row{display:none}
+.skill-cell{background:var(--card);border:1.5px solid var(--line);border-radius:13px 9px 15px 10px / 10px 14px 9px 12px;padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+.skill-cell .top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.skill-cell .desc{color:var(--ink-2);font-size:13px;-webkit-line-clamp:3;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;flex:1}
+
+/* ============================================================
+   屏 2 · 添加/编辑技能（编辑器强化态）
+   ============================================================ */
+.modal-card{background:var(--card);border:1.5px solid var(--line);border-radius:16px 11px 18px 12px / 12px 17px 11px 14px;box-shadow:0 4px 18px rgba(75,68,59,.10);padding:22px 24px}
+.modal-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.modal-head h2{font-size:17px}
+.tabbar{display:flex;gap:0;border:1.5px solid var(--line);border-radius:11px 8px 12px 9px / 9px 12px 8px 11px;overflow:hidden;width:fit-content;background:var(--card)}
+.tabbar button{border:none;background:none;padding:7px 18px;font-size:13px;color:var(--ink-2);border-right:1.2px solid var(--line-soft)}
+.tabbar button:last-child{border-right:none}
+.tabbar button.active{background:var(--bg-layer2);color:var(--ink);font-weight:600}
+
+.ed-layout{display:grid;grid-template-columns:400px 1fr;gap:18px;margin-top:16px}
+@media (max-width:900px){.ed-layout{grid-template-columns:1fr}}
+
+/* 左：Frontmatter 可视化字段 */
+.frm{display:flex;flex-direction:column;gap:14px}
+.frm label{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:5px;letter-spacing:.5px}
+.frm .hint{font-weight:400;color:var(--ink-3);letter-spacing:0}
+.frm input[type=text],.frm textarea{width:100%;border:1.5px solid var(--line);border-radius:10px 7px 11px 8px / 8px 11px 7px 10px;background:var(--card);padding:8px 12px;font-size:13px;color:var(--ink);outline:none;font-family:var(--mono)}
+.frm textarea{resize:vertical;line-height:1.7}
+.frm input:focus,.frm textarea:focus{border-color:var(--accent);background:var(--tint)}
+.counter{text-align:right;font-size:11px;color:var(--ink-3);font-family:var(--mono);margin-top:3px}
+.counter.warn{color:var(--amber)}
+
+/* 质量引导面板 */
+.qa-panel{background:var(--bg-layer);border:1.5px solid var(--line-soft);border-radius:12px 8px 13px 9px / 9px 13px 8px 12px;padding:14px 16px}
+.qa-panel .t{font-size:12px;font-weight:700;color:var(--amber);letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.qa-list{list-style:none;font-size:12.5px;color:var(--ink-2)}
+.qa-list li{display:flex;gap:8px;padding:3px 0;align-items:flex-start}
+.qa-list .ok{color:var(--accent-deep);font-family:var(--mono);font-weight:700}
+.qa-list .todo{color:var(--amber);font-family:var(--mono);font-weight:700}
+.qa-tip{margin-top:9px;font-size:12px;color:var(--ink-2);border-top:1px dashed var(--line);padding-top:8px;line-height:1.7}
+.tmpl-btn{background:none;border:none;color:var(--accent-deep);font-size:12px;text-decoration:underline;text-underline-offset:3px;padding:0}
+
+/* 右：Markdown 正文编辑器 */
+.md-ed{border:1.5px solid var(--line);border-radius:14px 9px 16px 10px / 10px 15px 9px 13px;background:var(--card);overflow:hidden}
+.md-ed-head{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-layer);border-bottom:1.2px solid var(--line-soft);flex-wrap:wrap}
+.md-ed-head .t{font-size:12px;font-weight:700;color:var(--ink-2);letter-spacing:.5px}
+.mode-toggle{margin-left:auto;display:flex;border:1.2px solid var(--line);border-radius:9px 7px 10px 8px / 8px 10px 7px 9px;overflow:hidden;background:var(--card)}
+.mode-toggle button{border:none;background:none;padding:4px 12px;font-size:12px;color:var(--ink-3);border-right:1.2px solid var(--line-soft)}
+.mode-toggle button:last-child{border-right:none}
+.mode-toggle button.active{background:var(--accent-deep);color:#F4EFE5}
+.md-ed-body{display:grid;grid-template-columns:1fr 1fr;min-height:400px}
+.md-ed-body.preview-only{grid-template-columns:1fr}
+.md-ed-body.preview-only .ed-pane{display:none}
+.md-ed-body.edit-only{grid-template-columns:1fr}
+.md-ed-body.edit-only .pv-pane{display:none}
+.ed-pane textarea{width:100%;height:100%;min-height:400px;border:none;outline:none;resize:none;background:var(--card);color:var(--ink);font-family:var(--mono);font-size:13px;line-height:1.85;padding:16px 18px}
+.pv-pane{border-left:1.2px dashed var(--line);padding:20px 24px;background:var(--tint);overflow:auto}
+.pv-pane h3{font-family:var(--serif);font-size:16px;margin:14px 0 8px;color:var(--ink)}
+.pv-pane h3:first-child{margin-top:0}
+.pv-pane p,.pv-pane li{font-family:var(--serif);font-size:14px;line-height:1.95;color:var(--pv-text)}
+.pv-pane ol,.pv-pane ul{padding-left:22px;margin:6px 0}
+.pv-pane li{margin:4px 0}
+.pv-pane .cite{color:var(--ink-3);font-size:12px;font-family:var(--mono)}
+
+/* ============================================================
+   屏 3 · 技能详情
+   ============================================================ */
+.detail-head{background:var(--card);border:1.5px solid var(--line);border-radius:15px 10px 17px 11px / 11px 16px 10px 13px;padding:20px 24px;margin-bottom:18px}
+.detail-head .row1{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.detail-head h1{font-family:var(--mono);font-size:19px}
+.switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.switch .track{width:36px;height:20px;background:var(--bg-layer2);border:1.5px solid var(--line);border-radius:10px 8px 11px 9px;position:relative;transition:.2s}
+.switch .track::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;background:var(--ink-3);border-radius:50% 45% 55% 48%;transition:.2s}
+.switch.on .track{background:var(--accent-bg);border-color:var(--accent)}
+.switch.on .track::after{left:17px;background:var(--accent-deep)}
+.detail-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:18px}
+@media (max-width:900px){.detail-grid{grid-template-columns:1fr}}
+.stat-row{display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.stat-box{flex:1;min-width:110px;background:var(--bg-layer);border:1.2px solid var(--line-soft);border-radius:11px 8px 12px 9px / 9px 12px 8px 11px;padding:12px 14px}
+.stat-box .n{font-size:20px;font-weight:700;font-family:var(--mono);color:var(--ink)}
+.stat-box .l{font-size:11.5px;color:var(--ink-3);margin-top:2px}
+.bars{display:flex;align-items:flex-end;gap:7px;height:90px;padding:4px 2px 0}
+.bar{flex:1;background:var(--bar);border-radius:3px 3px 1px 1px;position:relative}
+.bar.cur{background:var(--accent-deep)}
+.bar .v{position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:10px;font-family:var(--mono);color:var(--ink-3)}
+.bar.cur .v{color:var(--accent-deep);font-weight:700}
+.xlabels{display:flex;gap:7px;margin-top:6px}
+.xlabels span{flex:1;text-align:center;font-size:10px;color:var(--ink-3);font-family:var(--mono)}
+.vlist{list-style:none}
+.vlist li{position:relative;padding:0 0 16px 22px}
+.vlist li::before{content:"";position:absolute;left:5px;top:7px;width:8px;height:8px;background:var(--ink-3);border-radius:50% 45% 55% 48%}
+.vlist li::after{content:"";position:absolute;left:8.5px;top:18px;bottom:0;width:1.2px;background:var(--line)}
+.vlist li:last-child::after{display:none}
+.vlist li.cur::before{background:var(--accent-deep)}
+.vlist .vh{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.vlist .vh .v{font-family:var(--mono);font-weight:700;font-size:13px}
+.vlist .vh .d{font-size:11.5px;color:var(--ink-3)}
+.vlist .note{font-size:12.5px;color:var(--ink-2);margin-top:3px;line-height:1.7}
+.try{background:var(--bg-layer);border:1.5px dashed var(--line);border-radius:13px 9px 14px 10px / 10px 14px 9px 13px;padding:16px 18px}
+.try textarea{width:100%;border:1.5px solid var(--line);border-radius:10px 7px 11px 8px / 8px 11px 7px 10px;background:var(--card);padding:10px 14px;font-size:13px;color:var(--ink);outline:none;resize:vertical;font-family:inherit;min-height:64px}
+.try-result{margin-top:12px;background:var(--card);border:1.2px solid var(--line-soft);border-radius:10px 7px 11px 8px / 8px 11px 7px 10px;padding:12px 16px;font-size:12.5px;color:var(--ink-2);line-height:1.8}
+.try-result b{color:var(--accent-deep)}
+
+/* ============================================================
+   屏 4 · 问答端技能选择
+   ============================================================ */
+.chat-wrap{max-width:760px;margin:0 auto}
+.chat-msg{display:flex;gap:12px;margin-bottom:20px}
+.chat-msg .avatar{width:32px;height:32px;flex-shrink:0;border:1.5px solid var(--line);border-radius:50% 46% 54% 48%;background:var(--bg-layer2);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--ink-2)}
+.chat-msg .bubble{background:var(--card);border:1.5px solid var(--line);border-radius:13px 9px 14px 10px / 10px 14px 9px 12px;padding:12px 16px;font-size:13.5px;line-height:1.8;max-width:560px}
+.chat-msg.assistant .bubble{background:var(--bg-layer)}
+.chat-msg .bubble .from{font-size:11px;color:var(--accent-deep);font-family:var(--mono);margin-bottom:6px}
+
+/* 技能选择面板 */
+.sk-panel{background:var(--card);border:1.5px solid var(--line);border-radius:14px 9px 16px 10px / 10px 15px 9px 13px;box-shadow:0 6px 20px rgba(75,68,59,.12);overflow:hidden;margin-bottom:12px}
+.sk-panel-head{padding:12px 16px 8px}
+.sk-panel-head .t{font-size:12px;font-weight:700;color:var(--ink-2);letter-spacing:.5px;margin-bottom:10px}
+.sk-search{display:flex;align-items:center;gap:8px;background:var(--bg-layer);border:1.2px solid var(--line-soft);border-radius:10px 7px 11px 8px / 8px 11px 7px 10px;padding:7px 12px}
+.sk-search input{border:none;background:none;outline:none;font-size:13px;color:var(--ink);width:100%}
+.sk-search input::placeholder{color:var(--ink-3)}
+.sk-options{padding:6px 10px 10px}
+.sk-opt{border:1.2px solid transparent;border-radius:12px 8px 13px 9px / 9px 13px 8px 12px;padding:11px 14px;cursor:pointer;position:relative}
+.sk-opt + .sk-opt{margin-top:4px}
+.sk-opt:hover,.sk-opt.is-hover{background:var(--bg-layer);border-color:var(--line)}
+.sk-opt.selected{border-color:var(--accent);background:var(--accent-bg)}
+.sk-opt .r1{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.sk-opt .nm{font-family:var(--mono);font-weight:700;font-size:13px}
+.sk-opt .desc{font-size:12.5px;color:var(--ink-2);margin-top:3px;line-height:1.7}
+.sk-opt .scene{font-size:11.5px;color:var(--ink-3);margin-top:3px}
+.sk-opt .scene b{color:var(--amber);font-weight:600}
+.sk-opt .hover-extra{display:none;margin-top:8px;border-top:1px dashed var(--line);padding-top:8px;font-size:12px;color:var(--ink-2);line-height:1.7}
+.sk-opt.is-hover .hover-extra,.sk-opt:hover .hover-extra{display:block}
+.auto-badge{font-size:11px;color:var(--accent-deep);background:var(--accent-bg);border:1px solid rgba(92,107,81,.4);padding:1px 8px;border-radius:9px 7px 8px 10px / 10px 8px 7px 9px}
+.sk-panel-foot{padding:8px 16px 12px;border-top:1.2px dashed var(--line);font-size:11.5px;color:var(--ink-3);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.composer{display:flex;gap:10px;align-items:center;background:var(--card);border:1.5px solid var(--line);border-radius:13px 9px 14px 10px / 10px 14px 9px 12px;padding:10px 14px}
+.composer input{flex:1;border:none;background:none;outline:none;font-size:14px;color:var(--ink)}
+.composer input::placeholder{color:var(--ink-3)}
+.composer .send{background:var(--accent-deep);border:none;color:#F4EFE5;padding:7px 16px;font-size:13px;border-radius:10px 8px 11px 9px / 9px 11px 8px 10px}
+.note-strip{margin-top:26px;background:var(--bg-layer);border:1.2px dashed var(--line);border-radius:12px 8px 13px 9px / 9px 13px 8px 12px;padding:12px 18px;font-size:12.5px;color:var(--ink-2);line-height:1.8}
+.note-strip b{color:var(--ink)}
+</style>
+</head>
+<body>
+
+<header class="proto-bar">
+  <div class="brand">技能（Skills）· 视觉草图原型 <small>v2（第一轮整改版） · 视觉基线 v2.1</small></div>
+  <nav class="proto-nav">
+    <button class="active" data-go="catalog">① 技能目录</button>
+    <button data-go="editor">② 添加/编辑技能</button>
+    <button data-go="detail">③ 技能详情</button>
+    <button data-go="chat">④ 问答端技能选择</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ==================== 屏 1 · 技能目录 ==================== -->
+<section id="s-catalog" class="screen active listmode">
+  <div class="page-head">
+    <div>
+      <h1>技能</h1>
+      <div class="sub">技能只提供过程性知识，不执行脚本 · 共 3 个技能，2 个已启用</div>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn pri">
+      <svg class="icon" viewBox="0 0 16 16" style="stroke:#F4EFE5"><path d="M8 2.8 C8.1 5 8 10 7.9 13.2 M2.9 8 C5 8.05 11 7.95 13.1 8.05"/></svg>
+      新建技能
+    </button>
+  </div>
+
+  <div class="toolbar">
+    <div class="searchbox">
+      <svg class="icon" viewBox="0 0 16 16"><path d="M6.8 3.2 C9.2 3.1 11.2 4.9 11.3 7.1 C11.4 9.3 9.4 11.1 7 11.2 C4.6 11.3 2.7 9.5 2.6 7.3 C2.5 5.1 4.4 3.3 6.8 3.2 Z M10.8 10.4 L13.4 13.2"/></svg>
+      <input placeholder="搜索技能名称或描述…">
+    </div>
+    <div class="filters" id="statusFilter">
+      <button class="active" data-f="all">全部 3</button>
+      <button data-f="on">已启用 2</button>
+      <button data-f="off">已禁用 1</button>
+    </div>
+    <div class="spacer" style="flex:1"></div>
+    <div class="viewtoggle">
+      <button class="active" data-view="list" title="列表">
+        <svg class="icon" viewBox="0 0 16 16" style="width:14px;height:14px"><path d="M2.5 4.5 L13.5 4.3 M2.5 8 L13.5 7.9 M2.5 11.5 L13.5 11.6"/></svg>
+      </button>
+      <button data-view="grid" title="网格">
+        <svg class="icon" viewBox="0 0 16 16" style="width:14px;height:14px"><path d="M2.5 2.8 L7 2.7 L6.9 6.8 L2.6 7 Z M9 2.7 L13.5 2.8 L13.4 6.9 L9.1 6.8 Z M2.7 9.2 L7 9.1 L6.9 13.3 L2.8 13.2 Z M9.2 9.1 L13.4 9.3 L13.3 13.2 L9.1 13.1 Z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- 列表态 -->
+  <div class="rows">
+    <div class="skill-row" data-status="on">
+      <div class="skill-mono">wr</div>
+      <div class="skill-main">
+        <div class="skill-name">
+          <span class="nm">wellread-rag-search</span>
+          <span class="tag ver">v1.2.0</span>
+          <span class="tag on"><span class="dot g"></span>已启用</span>
+        </div>
+        <div class="skill-desc">基于知识库（WellRead）的检索式问答：从用户问题中提取检索词并改写，检索相关片段后依据片段作答，回答必须引用来源（书名/文档名 + 章节），无命中时明确说明知识库未收录。</div>
+        <div class="skill-meta">
+          <span>近 30 天被调用 <b style="color:var(--ink-2)">128</b> 次</span>
+          <span>生效范围：问答 · Agent</span>
+          <span>更新于 2026-11-08</span>
+        </div>
+      </div>
+      <div class="skill-acts">
+        <button class="btn sm" onclick="go('detail')">详情</button>
+        <button class="btn sm" onclick="go('editor')">编辑</button>
+        <button class="btn sm">禁用</button>
+        <button class="btn sm danger">删除</button>
+      </div>
+    </div>
+
+    <div class="skill-row" data-status="on">
+      <div class="skill-mono">ac</div>
+      <div class="skill-main">
+        <div class="skill-name">
+          <span class="nm">acceptance-skill</span>
+          <span class="tag ver">v2.0.1</span>
+          <span class="tag on"><span class="dot g"></span>已启用</span>
+        </div>
+        <div class="skill-desc">面向验收测试的过程性知识：在需求评审后编写验收标准，按 Given-When-Then 结构生成用例，并输出可勾选的验收检查清单。</div>
+        <div class="skill-meta">
+          <span>近 30 天被调用 <b style="color:var(--ink-2)">43</b> 次</span>
+          <span>生效范围：问答</span>
+          <span>更新于 2026-10-22</span>
+        </div>
+      </div>
+      <div class="skill-acts">
+        <button class="btn sm" onclick="go('detail')">详情</button>
+        <button class="btn sm" onclick="go('editor')">编辑</button>
+        <button class="btn sm">禁用</button>
+        <button class="btn sm danger">删除</button>
+      </div>
+    </div>
+
+    <div class="skill-row" data-status="off" style="opacity:.72">
+      <div class="skill-mono">mn</div>
+      <div class="skill-main">
+        <div class="skill-name">
+          <span class="nm">meeting-notes</span>
+          <span class="tag ver">v0.3.0</span>
+          <span class="tag off">已禁用</span>
+        </div>
+        <div class="skill-desc">将零散的会议流水记录整理为结构化纪要：结论 / 待办（含负责人）/ 风险，适用于用户粘贴大段会议记录并要求整理的场景。</div>
+        <div class="skill-meta">
+          <span>近 30 天被调用 0 次</span>
+          <span>生效范围：问答</span>
+          <span>更新于 2026-09-15</span>
+        </div>
+      </div>
+      <div class="skill-acts">
+        <button class="btn sm" onclick="go('detail')">详情</button>
+        <button class="btn sm" onclick="go('editor')">编辑</button>
+        <button class="btn sm">启用</button>
+        <button class="btn sm danger">删除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 网格态 -->
+  <div class="skill-grid">
+    <div class="skill-cell" data-status="on">
+      <div class="top">
+        <div class="skill-name"><span class="nm">wellread-rag-search</span></div>
+        <span class="tag on"><span class="dot g"></span>已启用</span>
+      </div>
+      <div><span class="tag ver">v1.2.0</span></div>
+      <div class="desc">基于知识库的检索式问答：提取检索词、检索片段、引用来源作答，无命中时明确说明。</div>
+      <div class="faint">近 30 天调用 128 次 · 问答 / Agent</div>
+      <div class="skill-acts" style="justify-content:flex-start">
+        <button class="btn sm" onclick="go('detail')">详情</button>
+        <button class="btn sm" onclick="go('editor')">编辑</button>
+        <button class="btn sm">禁用</button>
+        <button class="btn sm danger">删除</button>
+      </div>
+    </div>
+    <div class="skill-cell" data-status="on">
+      <div class="top">
+        <div class="skill-name"><span class="nm">acceptance-skill</span></div>
+        <span class="tag on"><span class="dot g"></span>已启用</span>
+      </div>
+      <div><span class="tag ver">v2.0.1</span></div>
+      <div class="desc">验收标准编写与 Given-When-Then 用例生成，输出可勾选的验收检查清单。</div>
+      <div class="faint">近 30 天调用 43 次 · 问答</div>
+      <div class="skill-acts" style="justify-content:flex-start">
+        <button class="btn sm" onclick="go('detail')">详情</button>
+        <button class="btn sm" onclick="go('editor')">编辑</button>
+        <button class="btn sm">禁用</button>
+        <button class="btn sm danger">删除</button>
+      </div>
+    </div>
+    <div class="skill-cell" data-status="off" style="opacity:.72">
+      <div class="top">
+        <div class="skill-name"><span class="nm">meeting-notes</span></div>
+        <span class="tag off">已禁用</span>
+      </div>
+      <div><span class="tag ver">v0.3.0</span></div>
+      <div class="desc">将会议流水记录整理为结构化纪要：结论 / 待办 / 风险。</div>
+      <div class="faint">近 30 天调用 0 次 · 问答</div>
+      <div class="skill-acts" style="justify-content:flex-start">
+        <button class="btn sm" onclick="go('detail')">详情</button>
+        <button class="btn sm" onclick="go('editor')">编辑</button>
+        <button class="btn sm">启用</button>
+        <button class="btn sm danger">删除</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 屏 2 · 添加/编辑技能（编辑器强化态） ==================== -->
+<section id="s-editor" class="screen">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2>编辑技能</h2>
+      <span class="tag ver">v1.2.0</span>
+      <span class="tag on"><span class="dot g"></span>已启用</span>
+      <div class="spacer" style="flex:1"></div>
+      <div class="tabbar">
+        <button>上传 .md</button>
+        <button class="active">在线撰写</button>
+      </div>
+      <button class="btn sm">取消</button>
+      <button class="btn pri sm">保存</button>
+    </div>
+    <div class="faint">上传 .md 与在线撰写共用同一套字段与编辑器；上传后自动解析 frontmatter 填充下方字段，正文进入右侧编辑器。</div>
+
+    <div class="ed-layout">
+      <!-- 左：Frontmatter 可视化字段 + 质量引导 -->
+      <div class="frm">
+        <div class="card" style="padding:16px 18px;display:flex;flex-direction:column;gap:14px">
+          <div>
+            <label>名称 <span class="hint">· 唯一标识，≤100 字符</span></label>
+            <input type="text" value="wellread-rag-search">
+            <div class="counter">19 / 100</div>
+          </div>
+          <div>
+            <label>版本 <span class="hint">· 保存时可升版，≤64 字符</span></label>
+            <input type="text" value="1.2.1">
+            <div class="counter">5 / 64</div>
+          </div>
+          <div>
+            <label>何时使用 <span class="hint">· description，模型据此决定是否调用本技能，≤500 字符</span></label>
+            <textarea rows="4">当用户提问涉及知识库已收录的书籍、文档或笔记内容时；当用户询问书中观点、查找文档细节、或要求回答附带出处引用时使用。</textarea>
+            <div class="counter">58 / 500</div>
+          </div>
+        </div>
+
+        <div class="qa-panel">
+          <div class="t">
+            <svg class="icon" viewBox="0 0 16 16" style="stroke:var(--amber)"><path d="M8.2 2.6 C4.9 2.7 3 5.6 3.4 8.2 C3.7 10.6 5.8 12.6 8.4 12.5 C11 12.4 13 10.6 12.9 8.2 C12.8 5.9 11 2.9 8.2 2.6 Z M8 5.3 L8 8.4 M8 10.6 L8.02 10.7"/></svg>
+            「何时使用」质量引导
+          </div>
+          <ul class="qa-list">
+            <li><span class="ok">✓</span>以「当……时」句式开头，触发场景明确</li>
+            <li><span class="ok">✓</span>包含具体领域关键词（书籍 / 文档 / 引用）</li>
+            <li><span class="ok">✓</span>长度适中，无冗余客套话</li>
+            <li><span class="todo">!</span>建议补充一个反例：何时「不应」调用</li>
+          </ul>
+          <div class="qa-tip">何时使用是模型判断是否调用本技能的关键信号。写清楚「什么场景用 / 什么场景不用」，可显著减少误触发。
+            <button class="tmpl-btn">插入示例模板</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右：Markdown 正文编辑器（三态：编辑 / 分屏 / 预览） -->
+      <div>
+        <div class="md-ed">
+          <div class="md-ed-head">
+            <span class="t">技能说明 · Markdown 正文</span>
+            <span class="faint">≤32000 字符 · 181 / 32000</span>
+            <div class="mode-toggle" id="modeToggle">
+              <button data-m="edit">编辑</button>
+              <button class="active" data-m="split">分屏</button>
+              <button data-m="preview">预览</button>
+            </div>
+          </div>
+          <div class="md-ed-body" id="mdBody">
+            <div class="ed-pane">
+              <textarea spellcheck="false">## 目标
+
+当问题涉及知识库已收录内容时，先检索再回答，并标注来源。
+
+## 步骤
+
+1. 从用户问题中提取检索词，必要时改写为同义表达
+2. 检索相关片段（top-k = 5）
+3. 依据片段作答；无命中时明确说明「知识库未收录」
+
+## 约束
+
+- 回答必须引用来源：书名/文档名 + 章节
+- 不编造未检索到的内容
+- 多个来源冲突时，并列呈现并提示差异</textarea>
+            </div>
+            <div class="pv-pane">
+              <h3>目标</h3>
+              <p>当问题涉及知识库已收录内容时，先检索再回答，并标注来源。</p>
+              <h3>步骤</h3>
+              <ol>
+                <li>从用户问题中提取检索词，必要时改写为同义表达</li>
+                <li>检索相关片段（top-k = 5）</li>
+                <li>依据片段作答；无命中时明确说明「知识库未收录」</li>
+              </ol>
+              <h3>约束</h3>
+              <ul>
+                <li>回答必须引用来源：书名/文档名 + 章节</li>
+                <li>不编造未检索到的内容</li>
+                <li>多个来源冲突时，并列呈现并提示差异</li>
+              </ul>
+              <p class="cite">—— 预览态使用衬线字体与 1.95 行高，保证长文阅读排版</p>
+            </div>
+          </div>
+        </div>
+        <div class="faint" style="margin-top:10px">
+          编辑态：等宽字体 · 1.85 行高，利于逐行撰写；预览态：衬线字体 · 1.95 行高，利于通读检查。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 屏 3 · 技能详情 ==================== -->
+<section id="s-detail" class="screen">
+  <div class="page-head">
+    <button class="btn sm" onclick="go('catalog')">← 返回技能目录</button>
+    <div class="spacer"></div>
+    <button class="btn sm" onclick="go('editor')">编辑</button>
+    <button class="btn sm">禁用</button>
+    <button class="btn sm danger">删除</button>
+  </div>
+
+  <div class="detail-head">
+    <div class="row1">
+      <h1>wellread-rag-search</h1>
+      <span class="tag ver">v1.2.0</span>
+      <label class="switch on" onclick="this.classList.toggle('on')">
+        <span class="track"></span><span class="muted" style="font-size:12px">已启用</span>
+      </label>
+      <div class="spacer" style="flex:1"></div>
+      <span style="font-size:12px;color:var(--ink-3)">生效范围：</span>
+      <span class="chip on">问答</span>
+      <span class="chip on">Agent</span>
+    </div>
+    <div style="margin-top:12px;font-size:13.5px;color:var(--ink-2);line-height:1.8;max-width:680px">
+      基于知识库（WellRead）的检索式问答：从用户问题中提取检索词并改写，检索相关片段后依据片段作答，回答必须引用来源（书名/文档名 + 章节），无命中时明确说明知识库未收录。
+    </div>
+  </div>
+
+  <div class="detail-grid">
+    <!-- 左列：使用反馈 + 试运行 -->
+    <div>
+      <div class="card" style="margin-bottom:18px">
+        <div class="sec-title">使用反馈 · 轻量可观测</div>
+        <div class="stat-row">
+          <div class="stat-box"><div class="n">128</div><div class="l">近 30 天被调用次数</div></div>
+          <div class="stat-box"><div class="n">11-23</div><div class="l">最近一次调用</div></div>
+        </div>
+        <div class="faint" style="margin-bottom:6px">近 12 周调用趋势 · 近 30 天（约 W45–W48）合计 128 次，与上方口径一致</div>
+        <div class="bars">
+          <div class="bar" style="height:34%"><span class="v">12</span></div>
+          <div class="bar" style="height:51%"><span class="v">18</span></div>
+          <div class="bar" style="height:43%"><span class="v">15</span></div>
+          <div class="bar" style="height:63%"><span class="v">22</span></div>
+          <div class="bar" style="height:74%"><span class="v">26</span></div>
+          <div class="bar" style="height:57%"><span class="v">20</span></div>
+          <div class="bar" style="height:80%"><span class="v">28</span></div>
+          <div class="bar" style="height:69%"><span class="v">24</span></div>
+          <div class="bar" style="height:100%"><span class="v">35</span></div>
+          <div class="bar" style="height:89%"><span class="v">31</span></div>
+          <div class="bar" style="height:94%"><span class="v">33</span></div>
+          <div class="bar cur" style="height:83%"><span class="v">29</span></div>
+        </div>
+        <div class="xlabels">
+          <span>W37</span><span>W38</span><span>W39</span><span>W40</span><span>W41</span><span>W42</span>
+          <span>W43</span><span>W44</span><span>W45</span><span>W46</span><span>W47</span><span>W48</span>
+        </div>
+        <div class="faint" style="margin-top:10px">调用次数是「技能是否真的被用起来」的最轻量反馈，仅做展示，不做考核。</div>
+      </div>
+
+      <div class="try">
+        <div class="sec-title">试运行 · 不消耗问答额度</div>
+        <textarea placeholder="输入一个示例问题，例如：《认知觉醒》里关于「元认知」的核心观点是什么？"></textarea>
+        <div style="margin-top:10px"><button class="btn pri sm">运行测试</button></div>
+        <div class="try-result">
+          <b>✓ 命中本技能</b> —— 「问题涉及知识库已收录书籍内容」与「何时使用」匹配。<br>
+          预期行为：提取检索词「认知觉醒 / 元认知」→ 检索片段 → 引用来源作答。
+        </div>
+      </div>
+    </div>
+
+    <!-- 右列：版本历史 + 生效范围 -->
+    <div>
+      <div class="card" style="margin-bottom:18px">
+        <div class="sec-title">版本历史</div>
+        <ul class="vlist">
+          <li class="cur">
+            <div class="vh"><span class="v">v1.2.0</span><span class="tag on" style="font-size:11px">当前</span><span class="d">2026-11-08</span></div>
+            <div class="note">新增「来源引用格式」约束；优化检索词改写策略。</div>
+          </li>
+          <li>
+            <div class="vh"><span class="v">v1.1.0</span><span class="d">2026-09-30</span></div>
+            <div class="note">改写「何时使用」，补充多文档对比场景；正文增加冲突来源处理规则。</div>
+          </li>
+          <li>
+            <div class="vh"><span class="v">v1.0.0</span><span class="d">2026-08-12</span></div>
+            <div class="note">初始版本，由上传 .md 创建。</div>
+          </li>
+        </ul>
+        <div class="faint">每次保存自动生成一条历史；查看历史便于回溯「为什么这个技能突然不灵了」。</div>
+      </div>
+
+      <div class="card">
+        <div class="sec-title">启用状态与生效范围</div>
+        <ul class="qa-list" style="font-size:13px">
+          <li><span class="dot g" style="margin-top:6px"></span>已启用：技能参与模型匹配与调用</li>
+          <li><span class="dot gray" style="margin-top:6px"></span>禁用后不在问答端出现，历史配置保留，可随时重新启用</li>
+        </ul>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <span class="chip on">问答</span>
+          <span class="chip on">Agent</span>
+          <span class="faint" style="align-self:center">勾选决定该技能在哪些场景可被调用</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 屏 4 · 问答端技能选择 ==================== -->
+<section id="s-chat" class="screen">
+  <div class="chat-wrap">
+    <div class="page-head" style="margin-bottom:24px">
+      <div>
+        <h1>问答端 · 技能选择</h1>
+        <div class="sub">扁平下拉 → 面板化：搜索过滤 + 描述摘要 + hover 明细 + 自动匹配默认态</div>
+      </div>
+    </div>
+
+    <div class="chat-msg">
+      <div class="avatar">我</div>
+      <div class="bubble">《认知觉醒》里关于「元认知」的核心观点是什么？帮我整理一下。</div>
+    </div>
+    <div class="chat-msg assistant">
+      <div class="avatar">答</div>
+      <div class="bubble">
+        <div class="from">已自动匹配技能 · wellread-rag-search</div>
+        根据知识库检索，书中「元认知」的核心观点可以概括为……（回答内容略）。<br>
+        <span class="cite" style="font-family:var(--mono);font-size:12px;color:var(--ink-3)">来源：《认知觉醒》第三章 · 被动元认知与主动元认知</span>
+      </div>
+    </div>
+
+    <!-- 展开态的技能选择面板（演示 hover 态：第二项） -->
+    <div class="sk-panel">
+      <div class="sk-panel-head">
+        <div class="t">技能</div>
+        <div class="sk-search">
+          <svg class="icon" viewBox="0 0 16 16" style="width:14px;height:14px"><path d="M6.8 3.2 C9.2 3.1 11.2 4.9 11.3 7.1 C11.4 9.3 9.4 11.1 7 11.2 C4.6 11.3 2.7 9.5 2.6 7.3 C2.5 5.1 4.4 3.3 6.8 3.2 Z M10.8 10.4 L13.4 13.2"/></svg>
+          <input placeholder="搜索技能…">
+        </div>
+      </div>
+      <div class="sk-options">
+        <div class="sk-opt selected">
+          <div class="r1">
+            <span class="nm">自动匹配（推荐）</span>
+            <span class="auto-badge">默认</span>
+          </div>
+          <div class="desc">由模型根据「何时使用」自动判断是否调用技能；本问题预计命中 wellread-rag-search。</div>
+        </div>
+
+        <div class="sk-opt" style="padding:9px 14px">
+          <div class="r1">
+            <span class="nm" style="color:var(--ink-2)">不使用技能</span>
+          </div>
+          <div class="desc" style="font-size:12px">本次对话不调用任何技能，直接由模型自身回答。</div>
+        </div>
+
+        <div class="sk-opt is-hover">
+          <div class="r1">
+            <span class="nm">wellread-rag-search</span>
+            <span class="tag ver" style="font-size:11px">v1.2.0</span>
+            <span class="tag on" style="font-size:11px"><span class="dot g"></span>已启用</span>
+          </div>
+          <div class="desc">基于知识库的检索式问答，回答附带出处引用。</div>
+          <div class="scene"><b>适用：</b>询问书中观点 · 查找文档细节 · 要求给出处</div>
+          <div class="hover-extra">
+            <b>何时使用：</b>当用户提问涉及知识库已收录的书籍、文档或笔记内容时；当用户询问书中观点、查找文档细节、或要求回答附带出处引用时使用。<br>
+            <span class="faint">近 30 天被调用 128 次 · 生效范围：问答 / Agent</span>
+          </div>
+        </div>
+
+        <div class="sk-opt">
+          <div class="r1">
+            <span class="nm">acceptance-skill</span>
+            <span class="tag ver" style="font-size:11px">v2.0.1</span>
+            <span class="tag on" style="font-size:11px"><span class="dot g"></span>已启用</span>
+          </div>
+          <div class="desc">验收标准编写与 Given-When-Then 用例生成。</div>
+          <div class="scene"><b>适用：</b>需求评审后写验收标准 · 生成用例清单</div>
+        </div>
+
+        <div class="sk-opt" style="opacity:.55">
+          <div class="r1">
+            <span class="nm">meeting-notes</span>
+            <span class="tag off" style="font-size:11px">已禁用</span>
+          </div>
+          <div class="desc">已禁用的技能不参与匹配，不可手动选中。</div>
+        </div>
+      </div>
+      <div class="sk-panel-foot">
+        <span>已启用技能可直接选择 · 已禁用技能灰显展示仅供说明</span>
+        <span>自动匹配可随时切回「不使用技能」</span>
+      </div>
+    </div>
+
+    <div class="composer">
+      <input placeholder="继续提问…">
+      <button class="send">发送</button>
+    </div>
+
+    <div class="note-strip">
+      <b>交互说明：</b>① 默认「自动匹配」，用户无需理解技能也能受益；② 需要确定性时手动指定，卡片直接给出名称 + 一句话描述 + 适用场景，不再「只按名称盲选」；③ hover 展开完整的「何时使用」与使用数据，帮助用户在下发问题前判断选得对不对；④ 已禁用技能灰显置底并说明原因，避免困惑。
+    </div>
+  </div>
+</section>
+
+</main>
+
+<script>
+function go(name){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('s-'+name).classList.add('active');
+  document.querySelectorAll('.proto-nav button').forEach(b=>b.classList.toggle('active',b.dataset.go===name));
+  window.scrollTo({top:0});
+}
+document.querySelectorAll('.proto-nav button').forEach(b=>b.addEventListener('click',()=>go(b.dataset.go)));
+
+/* 目录：列表/网格切换 */
+document.querySelectorAll('.viewtoggle button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.viewtoggle button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  document.getElementById('s-catalog').classList.toggle('listmode', b.dataset.view==='list');
+}));
+
+/* 目录：状态筛选（演示用，仅筛第一个屏的行） */
+document.querySelectorAll('#statusFilter button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#statusFilter button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  const f=b.dataset.f;
+  document.querySelectorAll('#s-catalog .skill-row, #s-catalog .skill-cell').forEach(r=>{
+    r.style.display = (f==='all'||r.dataset.status===f)?'':'none';
+  });
+}));
+
+/* 编辑器：三态切换 */
+document.querySelectorAll('#modeToggle button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#modeToggle button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  const body=document.getElementById('mdBody');
+  body.classList.remove('preview-only','edit-only');
+  if(b.dataset.m==='preview') body.classList.add('preview-only');
+  if(b.dataset.m==='edit') body.classList.add('edit-only');
+}));
+</script>
+</body>
+</html>

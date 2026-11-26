@@ -97,6 +97,22 @@ node scripts/acceptance/browser/review_v3_parity_acceptance.js
 
 `review_v3_parity_acceptance.js` 连接真实后端，验证：合并卡片、孤儿重绑、知识库生成预览与导入、JSON 导出，以及真实 `daily` 会话开始 → 评分 → 暂存 → 继续 → 完成。脚本在存在其他 active 会话时会跳过 daily 段，绝不触碰真实会话；其余段正常执行。测试数据按卡组白名单清理。
 
+## 精读验收
+
+```bash
+NODE_PATH=frontend/node_modules \
+WELLREAD_WEB=http://localhost:5173 \
+node scripts/acceptance/browser/reading_contract_acceptance.js
+
+NODE_PATH=frontend/node_modules \
+WELLREAD_WEB=http://localhost:5173 \
+node scripts/acceptance/browser/reading_agent_ui_acceptance.js
+```
+
+`reading_contract_acceptance.js` 连接真实后端与模型，覆盖草稿 CRUD、跨库计划、候选选项与判定失败重试、理解确认、笔记驳回/恢复、引用定位、跳章、暂停/恢复/终止；会创建并清理测试运行与草稿。
+
+`reading_agent_ui_acceptance.js` 不调用模型：从既有 v3 finished 运行复制一个临时 planning 运行，验证结构计划骨架、安静模式标签、自测题预览/选组导入/幂等重放；结束硬删除临时运行、自测题与临时复习卡组，不触碰 owner 卡片。
+
 ## 其它脚本
 
 ```bash
