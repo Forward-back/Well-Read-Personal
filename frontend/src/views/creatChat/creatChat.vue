@@ -111,7 +111,7 @@ const handleKBEditorSuccess = (kbId: string) => {
     flex-direction: column;
     justify-content: flex-start;
     align-items: stretch;
-    padding: 0 0 48px;
+    padding: 0 0 20px;
     box-sizing: border-box;
 }
 
@@ -128,7 +128,7 @@ const handleKBEditorSuccess = (kbId: string) => {
     max-width: 960px;
     margin: 0 auto;
     padding-top: 24px;
-    padding-bottom: 100px;
+    padding-bottom: 0;
     flex: 1;
     min-height: 0;
     gap: 48px;
