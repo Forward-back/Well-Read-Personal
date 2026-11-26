@@ -118,50 +118,7 @@ CREATE TABLE IF NOT EXISTS chunks (
 
 
 -- ============================================================
--- 3. tables_structured — XLSX/PDF表格的结构化行数据 (JSON)
--- ============================================================
-CREATE TABLE IF NOT EXISTS tables_structured (
-    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
-    document_id     INT NOT NULL,
-    table_name      VARCHAR(200) NOT NULL,
-    sheet_name      VARCHAR(200) COMMENT 'Excel sheet名 / PDF页码',
-    row_index       INT NOT NULL COMMENT '行号，保留原始顺序',
-    row_data        JSON NOT NULL COMMENT '{"列名":"值",...}',
-    knowledge_base_id VARCHAR(64) COMMENT 'app 侧知识库 ID(反范式,SQL 路 KB 过滤免 JOIN)',
-    created_at      DATETIME DEFAULT NOW(),
-
-    INDEX idx_doc_table (document_id, table_name),
-    INDEX idx_table (table_name),
-    INDEX idx_kb (knowledge_base_id),
-
-    CONSTRAINT fk_tables_doc FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-
--- ============================================================
--- 4. schema_registry — 结构化表的列信息注册（供 Text-to-SQL 使用）
--- ============================================================
-CREATE TABLE IF NOT EXISTS schema_registry (
-    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
-    table_name      VARCHAR(200) NOT NULL,
-    column_name     VARCHAR(200) NOT NULL,
-    column_type     ENUM('number','string','date','unknown') DEFAULT 'unknown',
-    sample_values   VARCHAR(500) COMMENT '示例值，帮助LLM理解语义',
-    alias           VARCHAR(500) COMMENT '同义词，竖线分隔',
-    document_id     INT,
-    knowledge_base_id VARCHAR(64) COMMENT 'app 侧知识库 ID(反范式,schema 剪枝免 JOIN)',
-    updated_at      DATETIME DEFAULT NOW(),
-
-    UNIQUE KEY uk_table_col (table_name, column_name),
-    INDEX idx_table (table_name),
-    INDEX idx_kb (knowledge_base_id),
-
-    CONSTRAINT fk_schema_doc FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-
--- ============================================================
--- 5. parse_log — 文件解析管线日志
+-- 3. parse_log — 文件解析管线日志
 -- ============================================================
 CREATE TABLE IF NOT EXISTS parse_log (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -179,26 +136,7 @@ CREATE TABLE IF NOT EXISTS parse_log (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
--- 6. product_mentions — 产品提及倒排索引
--- ============================================================
-CREATE TABLE IF NOT EXISTS product_mentions (
-    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
-    product_name    VARCHAR(200) NOT NULL,
-    chunk_id        BIGINT NOT NULL,
-    document_id     INT NOT NULL,
-    created_at      DATETIME DEFAULT NOW(),
-
-    UNIQUE KEY uk_product_chunk (product_name, chunk_id),
-    INDEX idx_product (product_name),
-    INDEX idx_chunk (chunk_id),
-    INDEX idx_doc (document_id),
-
-    CONSTRAINT fk_pm_chunk FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE,
-    CONSTRAINT fk_pm_doc FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ============================================================
--- 7. 增量迁移：Phase 2 新增字段（已有数据库执行）
+-- 4. 增量迁移：Phase 2 新增字段（已有数据库执行）
 -- ============================================================
 -- ALTER TABLE documents ADD COLUMN doc_type VARCHAR(20) COMMENT '文档类型' AFTER doc_title;
 -- ALTER TABLE documents ADD COLUMN product_name VARCHAR(200) COMMENT '关联产品名' AFTER doc_type;
@@ -210,7 +148,7 @@ CREATE TABLE IF NOT EXISTS product_mentions (
 -- ALTER TABLE chunks ADD INDEX idx_product (product_name);
 
 -- ============================================================
--- 8. 增量迁移：Phase 3 KB 隔离字段（已有数据库执行）
+-- 5. 增量迁移：Phase 3 KB 隔离字段（已有数据库执行）
 -- ============================================================
 -- ALTER TABLE documents ADD COLUMN knowledge_base_id VARCHAR(64) COMMENT 'app 侧知识库 ID' AFTER id;
 -- ALTER TABLE documents ADD COLUMN source_doc_id VARCHAR(64) COMMENT 'app 侧文档 UUID(/ingest 幂等键)' AFTER knowledge_base_id;
@@ -221,7 +159,7 @@ CREATE TABLE IF NOT EXISTS product_mentions (
 -- UPDATE chunks c JOIN documents d ON c.document_id = d.id SET c.knowledge_base_id = d.knowledge_base_id;
 
 -- ============================================================
--- 9. 增量迁移：Phase 4 企业级元数据字段（已有数据库执行）
+-- 6. 增量迁移：Phase 4 企业级元数据字段（已有数据库执行）
 -- ============================================================
 -- ALTER TABLE documents ADD COLUMN lifecycle_status VARCHAR(20) DEFAULT 'effective' COMMENT '生命周期' AFTER product_name;
 -- ALTER TABLE documents ADD COLUMN effective_date DATE COMMENT '生效日期' AFTER lifecycle_status;
@@ -236,7 +174,7 @@ CREATE TABLE IF NOT EXISTS product_mentions (
 --   c.expiry_date = d.expiry_date;
 
 -- ============================================================
--- 10. 分块嵌入缓存（P1 增量索引：相同文本跨版本复用向量，避免整篇重嵌）
+-- 7. 分块嵌入缓存（P1 增量索引：相同文本跨版本复用向量，避免整篇重嵌）
 -- ============================================================
 CREATE TABLE IF NOT EXISTS chunk_embedding_cache (
     text_hash   CHAR(64) PRIMARY KEY COMMENT 'sha256(chunk_text)',

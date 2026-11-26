@@ -26,7 +26,6 @@ SKELETON = Path(__file__).parent / "qa_testset_120.json"
 INVENTORY = Path(__file__).parent / "doc_chunk_inventory.json"
 CONCURRENCY = 5
 MAX_TOTAL_CHUNKS = 150
-TABLE_ROWS_CAP = 15000
 
 TYPE_PROMPTS = {
     "单文档": (
@@ -61,8 +60,7 @@ TYPE_PROMPTS = {
         "只输出 JSON：{{\"问题\": \"...\", \"答案\": \"...\", \"引用\": [{{\"文档\": \"A\", \"块\": [1,2]}}, {{\"文档\": \"B\", \"块\": [3]}}]}}"
     ),
     "数值计算": (
-        "你是金融支付领域测试题生成专家。下面给出文档《{title}》的文本块（编号 [A1] 起）"
-        "{table_note}。\n"
+        "你是金融支付领域测试题生成专家。下面给出文档《{title}》的文本块（编号 [A1] 起）。\n"
         "生成一道必须进行数值计算才能回答的测试问题，要求：\n"
         "1. 计算类型为求和、比例、百分比、差值、换算、计数等，问题中给出计算所需全部数值来源\n"
         "2. 答案必须是具体数字，附简要计算过程\n"
@@ -116,20 +114,6 @@ def fetch_chunks():
         out.setdefault(fn, []).append((cid, txt))
     conn.close()
     return out
-
-
-def fetch_table_rows(doc_ids):
-    conn = pymysql.connect(**DB)
-    cur = conn.cursor()
-    rows = {}
-    for did in doc_ids:
-        cur.execute(
-            "SELECT table_name, sheet_name, row_data FROM tables_structured WHERE document_id=%s ORDER BY id LIMIT 400",
-            (did,),
-        )
-        rows[did] = [(t, s, r) for t, s, r in cur.fetchall()]
-    conn.close()
-    return rows
 
 
 def build_context(q, chunks, inv):
@@ -224,19 +208,13 @@ def parse_output(raw, idx2cid, doc_map, primary_fn):
     return q_text, refs
 
 
-def generate_one(q, chunks, inv, table_rows):
+def generate_one(q, chunks, inv):
     fn = q["id"]
     ctx, idx2cid, doc_map = build_context(q, chunks, inv)
     title = inv["documents"][fn]["doc_title"]
     tpl = TYPE_PROMPTS[q["类型"]]
-    note = ""
-    if q["类型"] == "数值计算" and table_rows:
-        rows = table_rows.get(inv["documents"][fn]["doc_id"], [])
-        if rows:
-            rows_json = json.dumps(rows[:80], ensure_ascii=False)
-            note = f"\n该文档对应结构化数据表部分行数据（供出计算题参考）：\n{rows_json[:TABLE_ROWS_CAP]}"
     prompt = tpl.format(
-        title=title, table_note=note,
+        title=title,
         doc_map_text="、".join(f"{k}={v}" for k, v in doc_map.items()),
     ) + "\n\n文档文本块：\n" + ctx
     for _ in range(2):
@@ -255,15 +233,11 @@ def main():
     qs = load_questions()
     chunks = fetch_chunks()
     inv = json.loads(INVENTORY.read_text(encoding="utf-8"))
-    table_rows = fetch_table_rows(
-        [inv["documents"][q["id"]]["doc_id"] for q in qs
-         if q["类型"] == "数值计算" and inv["documents"][q["id"]]["doc_type"] == "table"]
-    )
     todo = [q for q in qs if q["问题"] is None and q["类型"] not in INJECT_HANDCRAFTED]
     done = 0
     print(f"待生成 {len(todo)} 题，并发 {CONCURRENCY}")
     with ThreadPoolExecutor(max_workers=CONCURRENCY) as ex:
-        futs = {ex.submit(generate_one, q, chunks, inv, table_rows): q for q in todo}
+        futs = {ex.submit(generate_one, q, chunks, inv): q for q in todo}
         for fut in as_completed(futs):
             q = futs[fut]
             try:

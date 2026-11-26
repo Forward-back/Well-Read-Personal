@@ -208,47 +208,6 @@ class DB:
             cur.execute(sql)
             self.conn.commit()
 
-    def insert_table_data(self, document_id: int, table_name: str,
-                          sheet_name: str, rows: list, knowledge_base_id: str = ""):
-        sql = """
-            INSERT INTO tables_structured (document_id, table_name, sheet_name,
-                                           row_index, row_data, knowledge_base_id)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """
-        with self.conn.cursor() as cur:
-            for idx, row in enumerate(rows):
-                cur.execute(sql, (
-                    document_id, table_name, sheet_name, idx,
-                    json.dumps(row, ensure_ascii=False),
-                    knowledge_base_id or None,
-                ))
-            self.conn.commit()
-
-    def insert_schema_registry(self, table_name: str, columns: list,
-                               sample_rows: list, document_id: int,
-                               knowledge_base_id: str = ""):
-        sql = """
-            INSERT INTO schema_registry (table_name, column_name, column_type,
-                                         sample_values, alias, document_id,
-                                         knowledge_base_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE
-                sample_values = VALUES(sample_values),
-                alias = VALUES(alias),
-                updated_at = NOW()
-        """
-        col_aliases = {}
-        with self.conn.cursor() as cur:
-            for col in columns:
-                col_type = _infer_column_type(col, sample_rows)
-                samples = _get_sample_values(col, sample_rows, n=3)
-                alias = "、".join(col_aliases.get(col, []))
-                cur.execute(sql, (
-                    table_name, col, col_type, samples, alias, document_id,
-                    knowledge_base_id or None,
-                ))
-            self.conn.commit()
-
     def insert_parse_log(self, document_id: int, stage: str,
                          status: str = "running", message: str = "",
                          commit: bool = True):
@@ -352,35 +311,6 @@ def _parse_date(date_str: str):
             return None
         return datetime(y, 1, 1).date()
     return None
-
-
-def _infer_column_type(column_name: str, sample_rows: list) -> str:
-    """推断列类型：number / string / date。
-
-    数字串优先判 number；仅当值形如日期（YYYY-MM-DD、YYYY/MM/DD、YYYY年M月D日、8 位数字）
-    才判 date——纯长数字串（账号等）不是日期。
-    """
-    date_like = re.compile(
-        r"^\d{4}[-/年]\d{1,2}[-/月]\d{1,2}日?$|^\d{8}$"
-    )
-    for row in sample_rows:
-        val = str(row.get(column_name, "")).strip()
-        if not val:
-            continue
-        try:
-            float(val.replace(",", "").replace("元", "").replace("%", ""))
-            return "number"
-        except ValueError:
-            pass
-        if date_like.fullmatch(val):
-            return "date"
-        return "string"
-    return "unknown"
-
-
-def _get_sample_values(column_name: str, sample_rows: list, n: int = 3) -> str:
-    values = [str(r.get(column_name, "")) for r in sample_rows[:n] if r.get(column_name, "")]
-    return ", ".join(values[:n])
 
 
 def call_bge_embedding(texts: list[str]) -> list[list[float]] | None:

@@ -30,13 +30,10 @@ def main():
             docs_ok = cur.fetchone()[0]
             cur.execute("SELECT COUNT(*) FROM documents WHERE parse_status='failed'")
             docs_fail = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) FROM tables_structured")
-            tables = cur.fetchone()[0]
 
         logger.info("=" * 40)
         logger.info(f"文档: {docs_ok} 成功 / {docs_fail} 失败")
         logger.info(f"Chunks (child): {embedded} embedded / {pending} pending")
-        logger.info(f"结构化表行数: {tables}")
     finally:
         db.close()
     logger.info("Done!")
