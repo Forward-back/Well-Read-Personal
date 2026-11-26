@@ -17,6 +17,7 @@ func RegisterReadingRoutes(r *gin.RouterGroup, h *handler.ReadingHandler, g *api
 	{
 		reading.POST("/runs", h.Create)
 		reading.GET("/runs/active", h.GetActive)
+		reading.GET("/runs/history", h.ListHistory)
 		reading.GET("/runs/:id", h.Get)
 		reading.POST("/runs/:id/step", h.Step)
 		reading.POST("/runs/:id/feedback", h.Feedback)

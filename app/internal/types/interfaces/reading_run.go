@@ -11,6 +11,7 @@ type ReadingRunRepository interface {
 	CreateRun(ctx context.Context, run *types.ReadingRun) error
 	GetRun(ctx context.Context, tenantID uint64, userID, runID string) (*types.ReadingRun, error)
 	GetActiveRun(ctx context.Context, tenantID uint64, userID, sessionID string) (*types.ReadingRun, error)
+	ListHistoryRuns(ctx context.Context, tenantID uint64, userID string, statuses []types.ReadingRunStatus, limit int) ([]*types.ReadingRun, error)
 	UpdateRun(ctx context.Context, run *types.ReadingRun) error
 	StopActiveRuns(ctx context.Context, tenantID uint64, userID, sessionID string) error
 	CreateStep(ctx context.Context, step *types.ReadingRunStep) error
@@ -99,6 +100,7 @@ type ReadingRunService interface {
 	Create(ctx context.Context, req *types.CreateReadingRunRequest) (*types.ReadingRun, error)
 	Get(ctx context.Context, runID string) (*types.ReadingRun, error)
 	GetActive(ctx context.Context, sessionID string) (*types.ReadingRun, error)
+	ListHistory(ctx context.Context, limit int) ([]*types.ReadingHistoryItem, error)
 	Step(ctx context.Context, runID string) (*types.ReadingRun, error)
 	Feedback(ctx context.Context, runID string, req *types.ReadingFeedbackRequest) (*types.ReadingRun, error)
 	JudgeQuestion(ctx context.Context, runID, questionID string) (*types.ReadingRun, error)

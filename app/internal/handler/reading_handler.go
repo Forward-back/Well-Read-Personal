@@ -260,6 +260,24 @@ func (h *ReadingHandler) UpdateConclusion(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": conclusion})
 }
 
+func (h *ReadingHandler) ListHistory(c *gin.Context) {
+	limit := 50
+	if raw := c.Query("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			_ = c.Error(errors.NewBadRequestError("limit 必须是正整数"))
+			return
+		}
+		limit = parsed
+	}
+	items, err := h.service.ListHistory(c.Request.Context(), limit)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": items})
+}
+
 func (h *ReadingHandler) ListDrafts(c *gin.Context) {
 	drafts, err := h.service.ListDrafts(c.Request.Context())
 	if err != nil {

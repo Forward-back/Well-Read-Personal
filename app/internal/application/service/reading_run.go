@@ -318,6 +318,79 @@ func (s *readingRunService) GetActive(ctx context.Context, sessionID string) (*t
 	return run, nil
 }
 
+func (s *readingRunService) ListHistory(ctx context.Context, limit int) ([]*types.ReadingHistoryItem, error) {
+	caller, err := readingCaller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	runs, err := s.repo.ListHistoryRuns(ctx, caller.TenantID, caller.UserID, []types.ReadingRunStatus{
+		types.ReadingRunFinished, types.ReadingRunStopped, types.ReadingRunAbandoned,
+	}, limit)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*types.ReadingHistoryItem, 0, len(runs))
+	for _, run := range runs {
+		if run == nil {
+			continue
+		}
+		item := &types.ReadingHistoryItem{
+			ID: run.ID, SessionID: run.SessionID, Status: run.Status, Phase: run.Phase,
+			CreatedAt: run.CreatedAt, UpdatedAt: run.UpdatedAt,
+		}
+		if s.sessionRepo != nil && run.SessionID != "" {
+			if session, getErr := s.sessionRepo.Get(ctx, caller.TenantID, caller.UserID, run.SessionID); getErr == nil && session != nil {
+				item.Title = strings.TrimSpace(session.Title)
+			}
+		}
+		var plan types.ReadingPlan
+		if err := json.Unmarshal(run.Plan, &plan); err == nil {
+			item.Goal = plan.Goal
+			item.Depth = plan.Depth
+			item.TotalSections = len(plan.Sections)
+			for _, section := range plan.Sections {
+				if section.Read {
+					item.ReadSections++
+				}
+			}
+		}
+		var documentIDs []string
+		if err := json.Unmarshal(run.DocumentIDs, &documentIDs); err == nil && len(documentIDs) > 0 {
+			byID := make(map[string]*types.Knowledge, len(documentIDs))
+			if s.knowledgeRepo != nil {
+				if docs, getErr := s.knowledgeRepo.GetKnowledgeBatch(ctx, caller.TenantID, documentIDs); getErr == nil {
+					for _, doc := range docs {
+						if doc != nil {
+							byID[doc.ID] = doc
+						}
+					}
+				}
+			}
+			for _, docID := range documentIDs {
+				doc := byID[docID]
+				entry := types.ReadingHistoryDocument{ID: docID}
+				if doc != nil {
+					entry.Title = strings.TrimSpace(doc.Title)
+					if entry.Title == "" {
+						entry.Title = strings.TrimSpace(doc.FileName)
+					}
+					entry.FileName = doc.FileName
+					entry.KnowledgeBaseID = doc.KnowledgeBaseID
+				}
+				item.Documents = append(item.Documents, entry)
+			}
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
 func (s *readingRunService) Step(ctx context.Context, runID string) (*types.ReadingRun, error) {
 	caller, err := readingCaller(ctx)
 	if err != nil {

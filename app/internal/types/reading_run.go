@@ -213,6 +213,31 @@ type ReadingRun struct {
 
 func (ReadingRun) TableName() string { return "reading_runs" }
 
+// ReadingHistoryDocument is the display metadata for one document in a
+// finished/stopped run. Missing documents keep their ID with an empty title.
+type ReadingHistoryDocument struct {
+	ID              string `json:"id"`
+	Title           string `json:"title"`
+	FileName        string `json:"file_name,omitempty"`
+	KnowledgeBaseID string `json:"knowledge_base_id,omitempty"`
+}
+
+// ReadingHistoryItem is one non-active run shown in the reading history drawer.
+type ReadingHistoryItem struct {
+	ID            string                   `json:"id"`
+	SessionID     string                   `json:"session_id"`
+	Title         string                   `json:"title"`
+	Status        ReadingRunStatus         `json:"status"`
+	Phase         string                   `json:"phase,omitempty"`
+	Goal          string                   `json:"goal,omitempty"`
+	Depth         string                   `json:"depth,omitempty"`
+	Documents     []ReadingHistoryDocument `json:"documents"`
+	ReadSections  int                      `json:"read_sections"`
+	TotalSections int                      `json:"total_sections"`
+	CreatedAt     time.Time                `json:"created_at"`
+	UpdatedAt     time.Time                `json:"updated_at"`
+}
+
 // ReadingRunStep is one executed action.
 type ReadingRunStep struct {
 	ID           string    `json:"id" gorm:"type:varchar(36);primaryKey"`

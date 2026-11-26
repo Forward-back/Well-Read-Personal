@@ -59,6 +59,24 @@ func (r *readingRunRepository) GetActiveRun(
 	return &run, nil
 }
 
+func (r *readingRunRepository) ListHistoryRuns(
+	ctx context.Context, tenantID uint64, userID string,
+	statuses []types.ReadingRunStatus, limit int,
+) ([]*types.ReadingRun, error) {
+	query := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND user_id = ?", tenantID, userID).
+		Where("status IN ?", statuses).
+		Order("updated_at DESC")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	var runs []*types.ReadingRun
+	if err := query.Find(&runs).Error; err != nil {
+		return nil, err
+	}
+	return runs, nil
+}
+
 func (r *readingRunRepository) UpdateRun(ctx context.Context, run *types.ReadingRun) error {
 	return updateReadingRun(r.db.WithContext(ctx), run)
 }
