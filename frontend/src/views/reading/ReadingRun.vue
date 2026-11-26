@@ -6228,16 +6228,16 @@ onBeforeUnmount(() => {
 
 /* dark */
 :global(html[theme-mode="dark"] .reading-page) {
-  --rv-text: #f1f0ea;
-  --rv-text-2: #b4b6b2;
-  --rv-text-3: #8b8c87;
-  --rv-bg: #171816;
-  --rv-side: #1b1c19;
-  --rv-hair: var(--w-hairline, #2e2f2a);
-  --rv-hover: #23241f;
-  --rv-green: var(--w-page-accent, #53d98d);
-  --rv-green-deep: var(--w-page-accent-active, #3fc47c);
-  --rv-green-bg: var(--w-page-accent-soft, #1d3328);
+  --rv-text: var(--w-ink, #f3efe8);
+  --rv-text-2: var(--w-body, #c8c1b5);
+  --rv-text-3: var(--w-muted, #978e80);
+  --rv-bg: var(--w-window, #191714);
+  --rv-side: var(--w-surface, #211e1a);
+  --rv-hair: var(--w-hairline, #3a342c);
+  --rv-hover: var(--w-surface-hover, #2e2923);
+  --rv-green: var(--w-page-accent, #5edb95);
+  --rv-green-deep: var(--w-page-accent, #5edb95);
+  --rv-green-bg: var(--w-page-accent-soft, #1e3a2b);
   --rv-sage: #25312b;
   --rv-sage-d: #9fc4b4;
   --rv-haze: #1e2a31;
@@ -6250,6 +6250,10 @@ onBeforeUnmount(() => {
   --rv-mauve: #2a2431;
   --rv-mauve-d: #c1a6ca;
   --rv-yellow: #d8b36a;
+}
+
+:global(html[theme-mode="dark"] .reading-page .rv-primary) {
+  color: var(--w-page-accent-ink, #0e130f);
 }
 
 :global(html[theme-mode="dark"] .rv-doc-row.on),

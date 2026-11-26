@@ -718,7 +718,7 @@ onMounted(() => {
   --td-info-color-light: #dfe7ea;
 }
 
-:global(html[theme-mode='light']) .review-v3 {
+:global(html[theme-mode='light'] .review-v3) {
   --rvn-ink: var(--w-detail-text-primary, #3f3a34);
   --rvn-ink-soft: var(--w-detail-text-secondary, #6e675e);
   --rvn-muted: var(--w-detail-text-placeholder, #857c70);
@@ -727,34 +727,35 @@ onMounted(() => {
   --td-text-color-placeholder: var(--rvn-muted);
 }
 
-:global([theme-mode='dark']) .review-v3 {
-  color: #f2f1ee;
-  --rvn-canvas: #262420;
-  --rvn-paper: #2b2925;
-  --rvn-surface: #33302a;
-  --rvn-surface-deep: #3b3731;
-  --rvn-ink: #f2f1ee;
-  --rvn-ink-soft: #c7c2b9;
-  --rvn-muted: #9c948a;
-  --rvn-line: var(--w-hairline, #403c35);
-  --rvn-line-strong: rgba(242, 241, 238, 0.18);
-  --rvn-gray-soft: #35312b;
+:global(html[theme-mode='dark'] .review-v3) {
+  color: var(--w-ink, #f3efe8);
+  --rvn-canvas: var(--w-window, #191714);
+  --rvn-paper: var(--w-surface, #211e1a);
+  --rvn-surface: var(--w-surface-raised, #2a2621);
+  --rvn-surface-deep: var(--w-surface-hover, #2e2923);
+  --rvn-ink: var(--w-ink, #f3efe8);
+  --rvn-ink-soft: var(--w-body, #c8c1b5);
+  --rvn-muted: var(--w-muted, #978e80);
+  --rvn-line: var(--w-hairline, #3a342c);
+  --rvn-line-strong: var(--w-line-strong, #4b4338);
+  --rvn-gray-soft: var(--w-surface-raised, #2a2621);
   --rvn-brand-bg: var(--w-page-accent-soft);
   --rvn-brand-line: var(--w-page-accent-line);
   --rvn-accent-soft: var(--w-page-accent-soft);
-  --rvn-red-soft: #332827;
-  --rvn-orange-soft: #332d25;
+  --rvn-red-soft: #332523;
+  --rvn-orange-soft: #30291f;
   --rvn-yellow-soft: #333026;
-  --rvn-green-soft: #28302a;
+  --rvn-green-soft: #253029;
   --rvn-purple-soft: #2e2936;
   --td-brand-color-light: var(--w-page-accent-soft);
-  --td-text-color-primary: #f2f1ee;
-  --td-text-color-secondary: #c7c2b9;
-  --td-text-color-placeholder: #9c948a;
-  --td-component-stroke: var(--w-hairline, #403c35);
-  --td-bg-color-container: #2b2925;
-  --td-bg-color-container-hover: #33302a;
-  --td-bg-color-container-active: #3b3731;
+  --td-text-color-primary: var(--w-ink, #f3efe8);
+  --td-text-color-secondary: var(--w-body, #c8c1b5);
+  --td-text-color-placeholder: var(--w-muted, #978e80);
+  --td-component-stroke: var(--w-hairline, #3a342c);
+  --td-component-border: var(--w-line-strong, #4b4338);
+  --td-bg-color-container: var(--w-surface, #211e1a);
+  --td-bg-color-container-hover: var(--w-surface-hover, #2e2923);
+  --td-bg-color-container-active: var(--w-surface-raised, #2a2621);
 }
 
 .review-v3__inner > .page-topbar .review-v3__nav { gap: 16px; margin-right: 0; }

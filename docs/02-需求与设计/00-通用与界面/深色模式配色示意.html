@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WellRead 深色模式配色示意</title>
+<style>
+  :root {
+    color-scheme: dark;
+
+    /* ── WellRead dark foundation ───────────────────────────────────────── */
+    --stage: #12100e;
+    --window: #191714;
+    --surface: #211e1a;
+    --surface-raised: #2a2621;
+    --surface-hover: #2e2923;
+    --line: #3a342c;
+    --line-strong: #4b4338;
+
+    --ink: #f3efe8;
+    --body: #c8c1b5;
+    --muted: #978e80;
+    --disabled: #6c655b;
+
+    /* Default page accent (chat / knowledge / reading / review / skills) */
+    --accent-source: #07c05f;
+    --accent: color-mix(in srgb, var(--accent-source) 70%, var(--ink));
+    --accent-hover: color-mix(in srgb, var(--accent-source) 55%, var(--ink));
+    --accent-active: color-mix(in srgb, var(--accent-source) 82%, var(--window));
+    --accent-soft: color-mix(in srgb, var(--accent-source) 18%, var(--window));
+    --accent-line: color-mix(in srgb, var(--accent-source) 42%, var(--window));
+    --accent-focus: color-mix(in srgb, var(--accent-source) 35%, transparent);
+    --accent-ink: #0e130f;
+
+    /* Semantic colors: dark text tint + dark fill */
+    --success: #9ed3b2;
+    --success-soft: #222e24;
+    --warning: #dcc08c;
+    --warning-soft: #332b1f;
+    --danger: #e2a39a;
+    --danger-soft: #342421;
+    --info: #a9c8d8;
+    --info-soft: #1e2a31;
+
+    /* Review / Morandi semantics */
+    --sev: #e0a49b;
+    --sev-soft: #332523;
+    --warn: #d6b48b;
+    --warn-soft: #30291f;
+    --observe: #a9c7d8;
+    --observe-soft: #1e2a31;
+    --healthy: #b7cdb0;
+    --healthy-soft: #253029;
+
+    --radius-card: 12px;
+    --radius-control: 8px;
+    --radius-panel: 16px;
+    --shadow-pop: 0 14px 36px rgba(0, 0, 0, 0.48);
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--stage);
+    color: var(--body);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.65;
+  }
+  h1, h2, h3, p { margin: 0; }
+  code, .mono { font-family: var(--mono); }
+
+  .page {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 48px 24px 96px;
+  }
+  .eyebrow {
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  h1 { margin-top: 8px; color: var(--ink); font-size: 30px; line-height: 1.25; }
+  .lede { max-width: 720px; margin-top: 12px; color: var(--body); font-size: 15px; }
+
+  .rules {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+    margin-top: 28px;
+  }
+  .rule {
+    padding: 16px 18px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    background: var(--surface);
+  }
+  .rule strong { display: block; margin-bottom: 4px; color: var(--ink); font-size: 14px; }
+  .rule span { color: var(--muted); font-size: 13px; }
+
+  section { margin-top: 44px; }
+  h2 { color: var(--ink); font-size: 20px; }
+  .section-note { margin-top: 6px; color: var(--muted); font-size: 13px; }
+
+  .palette {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-top: 18px;
+  }
+  .swatch {
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    background: var(--surface);
+  }
+  .swatch__chip { height: 72px; }
+  .swatch__body { padding: 10px 12px; }
+  .swatch__name { color: var(--ink); font-size: 13px; font-weight: 600; }
+  .swatch__value { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+
+  .stack {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 18px;
+  }
+  .surface-sample {
+    min-height: 130px;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    background: var(--surface);
+  }
+  .surface-sample.raised { background: var(--surface-raised); }
+  .surface-sample.window { background: var(--window); }
+  .surface-sample b { color: var(--ink); }
+  .surface-sample p { margin-top: 4px; color: var(--muted); font-size: 13px; }
+
+  .type-samples {
+    margin-top: 18px;
+    padding: 22px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    background: var(--surface);
+  }
+  .type-samples .t1 { color: var(--ink); font-size: 22px; font-weight: 600; }
+  .type-samples .t2 { margin-top: 8px; color: var(--ink); font-size: 16px; font-weight: 600; }
+  .type-samples .t3 { margin-top: 8px; color: var(--body); font-size: 14px; }
+  .type-samples .t4 { margin-top: 8px; color: var(--muted); font-size: 13px; }
+  .type-samples .t5 { margin-top: 8px; color: var(--disabled); font-size: 13px; }
+
+  .components {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+    margin-top: 18px;
+  }
+  .component {
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    background: var(--surface);
+  }
+  .component h3 { margin-bottom: 12px; color: var(--ink); font-size: 14px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .btn {
+    height: 32px;
+    padding: 0 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    background: transparent;
+    color: var(--body);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .btn:hover { border-color: var(--line-strong); background: var(--surface-hover); }
+  .btn.primary {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-weight: 600;
+  }
+  .btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .btn.ghost-danger { border-color: var(--danger-soft); color: var(--danger); }
+  .input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    background: var(--window);
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .input.focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-focus); }
+  .tabs { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius-control); width: fit-content; }
+  .tab { padding: 5px 12px; border: 0; border-radius: 6px; background: none; color: var(--muted); font: inherit; font-size: 13px; }
+  .tab.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 7px; font-size: 12px; white-space: nowrap; }
+  .tag.ok { background: var(--success-soft); color: var(--success); }
+  .tag.warn { background: var(--warning-soft); color: var(--warning); }
+  .tag.bad { background: var(--danger-soft); color: var(--danger); }
+  .tag.info { background: var(--info-soft); color: var(--info); }
+  .dot { display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: currentColor; }
+
+  .card-demo { padding: 18px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); }
+  .card-demo .meta { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .card-demo .title { color: var(--ink); font-size: 16px; font-weight: 600; }
+  .card-demo .desc { margin-top: 6px; color: var(--muted); font-size: 13px; }
+
+  .accent-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 12px;
+    margin-top: 18px;
+  }
+  .accent-sample { padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); }
+  .accent-sample .accent-dot { width: 22px; height: 22px; border-radius: 7px; margin-bottom: 10px; }
+  .accent-sample strong { display: block; color: var(--ink); font-size: 13px; }
+  .accent-sample span { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+
+  .mock {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr) 260px;
+    gap: 1px;
+    margin-top: 18px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-panel);
+    background: var(--line);
+    min-height: 300px;
+  }
+  .mock__side, .mock__main, .mock__rail { padding: 16px; background: var(--window); }
+  .mock__side { background: var(--surface); }
+  .mock__rail { background: var(--surface); }
+  .mock__title { color: var(--ink); font-size: 14px; font-weight: 600; }
+  .mock__line { height: 10px; margin-top: 10px; border-radius: 4px; background: var(--surface-raised); }
+  .mock__line.short { width: 62%; }
+  .mock__line.accent { background: var(--accent-soft); }
+  .mock__card { margin-top: 16px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface-raised); }
+  .mock__card strong { color: var(--ink); font-size: 14px; }
+  .mock__card p { margin-top: 6px; color: var(--muted); font-size: 13px; }
+  .mock__quote { margin-top: 10px; padding: 10px 12px; border-left: 2px solid var(--accent-line); background: var(--surface); color: var(--body); font-size: 13px; }
+
+  .token-table {
+    width: 100%;
+    margin-top: 18px;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .token-table th, .token-table td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+  }
+  .token-table th { color: var(--muted); font-weight: 600; }
+  .token-table td:first-child { color: var(--ink); font-family: var(--mono); white-space: nowrap; }
+  .token-table td:last-child { color: var(--muted); }
+  .token-table code { color: var(--body); }
+
+  .callout {
+    margin-top: 18px;
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-control);
+    background: var(--surface);
+    color: var(--body);
+    font-size: 13px;
+  }
+  .callout b { color: var(--ink); }
+
+  @media (max-width: 820px) {
+    .mock { grid-template-columns: 1fr; }
+    .stack { grid-template-columns: 1fr; }
+    .page { padding: 28px 16px 64px; }
+  }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="eyebrow">WellRead · Dark Mode</div>
+  <h1>深色模式配色示意</h1>
+  <p class="lede">
+    全站共用一套中性暖炭暗色基底。页面不再各自定义暗色背景；复习、精读、技能只保留布局与语义色差异。品牌绿与功能主操作色在暗色下自动提亮，静态卡片只用发丝线，阴影只给浮层。
+  </p>
+
+  <div class="rules">
+    <div class="rule"><strong>一套底色</strong><span>问答、知识库、精读、复习、技能全部使用同一窗口/纸面/抬高面。</span></div>
+    <div class="rule"><strong>三级表面</strong><span>窗口 → 纸面 → 抬高面；静态卡片无阴影，弹窗/下拉/抽屉才允许阴影。</span></div>
+    <div class="rule"><strong>暖炭而非纯黑</strong><span>不使用 #000 / #fff；正文与背景保持 7:1 以上阅读对比。</span></div>
+    <div class="rule"><strong>主色自动适配</strong><span>UI 设置的主操作色只提供色相；暗色下自动提亮并生成 hover/active/soft/line。</span></div>
+  </div>
+
+  <section>
+    <h2>1. 基础色板</h2>
+    <p class="section-note">所有页面从这组 token 取值；页面级变量只做映射，不再复制色值。</p>
+    <div class="palette">
+      <div class="swatch"><div class="swatch__chip" style="background:#12100e"></div><div class="swatch__body"><div class="swatch__name">Stage</div><div class="swatch__value">#12100E · --w-base</div></div></div>
+      <div class="swatch"><div class="swatch__chip" style="background:#191714"></div><div class="swatch__body"><div class="swatch__name">Window</div><div class="swatch__value">#191714 · --w-window / canvas</div></div></div>
+      <div class="swatch"><div class="swatch__chip" style="background:#211e1a"></div><div class="swatch__body"><div class="swatch__name">Surface</div><div class="swatch__value">#211E1A · cards / rails</div></div></div>
+      <div class="swatch"><div class="swatch__chip" style="background:#2a2621"></div><div class="swatch__body"><div class="swatch__name">Raised</div><div class="swatch__value">#2A2621 · inputs / menus</div></div></div>
+      <div class="swatch"><div class="swatch__chip" style="background:#3a342c"></div><div class="swatch__body"><div class="swatch__name">Hairline</div><div class="swatch__value">#3A342C · 1px</div></div></div>
+      <div class="swatch"><div class="swatch__chip" style="background:#f3efe8"></div><div class="swatch__body"><div class="swatch__name">Ink</div><div class="swatch__value">#F3EFE8 · primary text</div></div></div>
+      <div class="swatch"><div class="swatch__chip" style="background:#c8c1b5"></div><div class="swatch__body"><div class="swatch__name">Body</div><div class="swatch__value">#C8C1B5 · secondary</div></div></div>
+      <div class="swatch"><div class="swatch__chip" style="background:#978e80"></div><div class="swatch__body"><div class="swatch__name">Muted</div><div class="swatch__value">#978E80 · placeholder</div></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. 三级表面</h2>
+    <p class="section-note">窗口承载页面画布；纸面承载卡片、侧栏；抬高面承载输入、菜单、悬浮操作。任何页面不再出现纯白纸面。</p>
+    <div class="stack">
+      <div class="surface-sample window"><b>窗口 / 画布</b><p>--w-window<br>页面根、顶栏底层、阅读主区</p></div>
+      <div class="surface-sample"><b>纸面 / 卡片</b><p>--w-surface<br>知识卡、复习卡、技能卡、侧栏</p></div>
+      <div class="surface-sample raised"><b>抬高面 / 浮层</b><p>--w-surface-raised<br>输入框、菜单、弹窗内容、抽屉</p></div>
+    </div>
+    <div class="callout"><b>阴影规则：</b>静态卡片与页面区块只使用 1px 发丝线；只有模态、下拉、抽屉、悬浮预览使用 <code>--shadow-pop</code>。</div>
+  </section>
+
+  <section>
+    <h2>3. 文字层级</h2>
+    <div class="type-samples">
+      <div class="t1">页面标题 22px / 600 / Ink</div>
+      <div class="t2">区块标题 16px / 600 / Ink</div>
+      <div class="t3">正文 14px / 400 / Body · 用于说明、卡片正文与设置项。</div>
+      <div class="t4">次要信息 13px / 400 / Muted · 用于路径、时间、元数据。</div>
+      <div class="t5">禁用 / 空态 13px / 400 / Disabled</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>4. 控件与状态</h2>
+    <div class="components">
+      <div class="component">
+        <h3>按钮</h3>
+        <div class="row">
+          <button class="btn primary">主操作</button>
+          <button class="btn">次操作</button>
+          <button class="btn ghost-danger">删除</button>
+        </div>
+      </div>
+      <div class="component">
+        <h3>输入与聚焦</h3>
+        <div class="input">搜索或输入内容…</div>
+        <div class="input focus" style="margin-top:8px">聚焦态：accent 边框 + 柔光环</div>
+      </div>
+      <div class="component">
+        <h3>分段与标签</h3>
+        <div class="tabs"><button class="tab on">今日</button><button class="tab">卡片</button><button class="tab">统计</button></div>
+        <div class="row" style="margin-top:12px">
+          <span class="tag ok"><i class="dot"></i>已启用</span>
+          <span class="tag warn">警告</span>
+          <span class="tag bad">严重</span>
+          <span class="tag info">观察</span>
+        </div>
+      </div>
+      <div class="component">
+        <h3>选中态</h3>
+        <div class="card-demo" style="border-color:var(--accent);background:var(--accent-soft)">
+          <div class="title" style="font-size:14px">选中卡片</div>
+          <div class="desc">边框使用 accent；底色使用 accent-soft（18% 混入窗口）。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>5. 功能主操作色自动适配</h2>
+    <p class="section-note">UI 设置中的颜色只作为色相来源。暗色模式统一派生：accent = 70% 源色 + 30% Ink；hover 再提亮；soft/line 与窗口混合。</p>
+    <div class="accent-grid">
+      <div class="accent-sample"><div class="accent-dot" style="background:#5edb95"></div><strong>默认亮绿</strong><span>#07C05F → #5EDB95</span></div>
+      <div class="accent-sample"><div class="accent-dot" style="background:color-mix(in srgb,#5a7688 70%,#f3efe8)"></div><strong>复习灰蓝</strong><span>#5A7688 → 提亮灰蓝</span></div>
+      <div class="accent-sample"><div class="accent-dot" style="background:color-mix(in srgb,#5c6b51 70%,#f3efe8)"></div><strong>技能鼠尾草</strong><span>#5C6B51 → 提亮鼠尾草</span></div>
+      <div class="accent-sample"><div class="accent-dot" style="background:color-mix(in srgb,#a2685c 70%,#f3efe8)"></div><strong>陶土危险</strong><span>#A2685C → 提亮陶土</span></div>
+    </div>
+    <div class="callout"><b>按钮文字：</b>暗色实心主按钮使用 <code>--accent-ink</code>（近黑）而不是白字，避免亮绿/亮蓝底白字对比不足；语义标签只使用低饱和填充。</div>
+  </section>
+
+  <section>
+    <h2>6. 页面样例</h2>
+    <p class="section-note">同一个窗口内，左侧栏、主区、右栏只是表面层级不同；顶部页头透明，保持标题 16 / 副信息 13。</p>
+    <div class="mock">
+      <aside class="mock__side">
+        <div class="mock__title">目录 / 笔记</div>
+        <div class="mock__line short"></div>
+        <div class="mock__line"></div>
+        <div class="mock__line short"></div>
+        <div class="mock__line accent"></div>
+      </aside>
+      <div class="mock__main">
+        <div class="mock__title">工作区</div>
+        <div class="mock__line short" style="background:var(--line)"></div>
+        <div class="mock__card">
+          <strong>原始主张</strong>
+          <p>证据与结论使用同一文字层级；只通过间距和发丝线分组。</p>
+          <div class="mock__quote">「引用原文」→ 证据节点；点击打开对应原文。</div>
+        </div>
+        <div class="row" style="margin-top:14px">
+          <button class="btn primary">继续</button>
+          <button class="btn">暂停</button>
+        </div>
+      </div>
+      <aside class="mock__rail">
+        <div class="mock__title">辅助信息</div>
+        <div class="mock__line"></div>
+        <div class="mock__line short"></div>
+        <div class="mock__line"></div>
+      </aside>
+    </div>
+  </section>
+
+  <section>
+    <h2>7. Token 映射</h2>
+    <table class="token-table">
+      <thead><tr><th>Token</th><th>值 / 规则</th><th>用途</th></tr></thead>
+      <tbody>
+        <tr><td>--w-base</td><td><code>#12100E</code></td><td>壳层最外层背景</td></tr>
+        <tr><td>--w-window</td><td><code>#191714</code></td><td>中央应用窗与页面画布</td></tr>
+        <tr><td>--w-surface</td><td><code>#211E1A</code></td><td>卡片、侧栏、纸面</td></tr>
+        <tr><td>--w-surface-raised</td><td><code>#2A2621</code></td><td>输入、菜单、抬高面</td></tr>
+        <tr><td>--w-hairline</td><td><code>#3A342C</code></td><td>1px 静态边界</td></tr>
+        <tr><td>--w-ink / body / muted</td><td><code>#F3EFE8 / #C8C1B5 / #978E80</code></td><td>三级文字</td></tr>
+        <tr><td>--w-page-accent</td><td><code>color-mix(源色 70%, ink)</code></td><td>暗色主操作色</td></tr>
+        <tr><td>--w-page-accent-soft</td><td><code>color-mix(源色 18%, window)</code></td><td>选中底、当前页签</td></tr>
+        <tr><td>--td-bg-color-container</td><td><code>--w-surface</code></td><td>TDesign 卡片/容器</td></tr>
+        <tr><td>--td-component-stroke</td><td><code>--w-hairline</code></td><td>TDesign 边框</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <div class="callout" style="margin-top:28px">
+    <b>验收口径：</b>五页在暗色下使用同一窗口底色；页面根不出现纯白/纯黑块；静态卡片无阴影；输入框与菜单使用抬高面；功能主操作色只改变色相，不改变暗色对比规则；弹窗/下拉/抽屉使用浮层阴影。
+  </div>
+</main>
+</body>
+</html>

@@ -128,7 +128,7 @@ function palette() {
     text: cssVar('--td-text-color-secondary', '#787774'),
     primary: cssVar('--td-text-color-primary', '#373530'),
     border: cssVar('--td-component-stroke', '#e9e7e2'),
-    background: dark ? '#2a2926' : '#ffffff',
+    background: dark ? '#211e1a' : '#ffffff',
   }
 }
 
@@ -1355,6 +1355,10 @@ onBeforeUnmount(() => {
 .cal-cell--0 { background: var(--rvn-gray-soft); }
 .cal-cell--1 { background: var(--rvn-accent-soft); }
 .cal-cell--2 { background: #aec3cf; }
+
+:global(html[theme-mode="dark"] .cal-cell--2) {
+  background: color-mix(in srgb, var(--rvn-accent) 52%, var(--rvn-paper));
+}
 .cal-cell--3 { background: var(--rvn-accent); }
 
 .cal-legend {

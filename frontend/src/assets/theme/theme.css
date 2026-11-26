@@ -200,3 +200,35 @@ select:-webkit-autofill {
     border-color: var(--td-brand-color);
     box-shadow: none;
 }
+
+/* WellRead neutral warm-charcoal dark foundation.
+   AppShell adds page-specific accents; this block keeps TDesign popups and
+   teleported overlays on the same surfaces as the shell. */
+:root[theme-mode="dark"] {
+    --td-bg-color-container: #211e1a;
+    --td-bg-color-container-select: #2a2621;
+    --td-bg-color-container-hover: #2e2923;
+    --td-bg-color-container-active: #332e27;
+    --td-bg-color-secondarycontainer: #2a2621;
+    --td-bg-color-secondarycontainer-hover: #332e27;
+    --td-bg-color-secondarycontainer-active: #3a342c;
+    --td-bg-color-page: #191714;
+    --td-bg-color-sidebar: #211e1a;
+    --td-bg-color-settings-modal: #211e1a;
+    --td-bg-color-component: #2a2621;
+    --td-bg-color-component-hover: #332e27;
+    --td-bg-color-component-active: #3a342c;
+    --td-bg-color-component-disabled: #1f1c18;
+    --td-component-stroke: #3a342c;
+    --td-component-border: #4b4338;
+    --td-text-color-primary: #f3efe8;
+    --td-text-color-secondary: #c8c1b5;
+    --td-text-color-placeholder: #978e80;
+    --td-text-color-disabled: #6c655b;
+    --td-text-color-anti: #12100e;
+    --td-brand-color: #5edb95;
+    --td-brand-color-hover: #82e8ae;
+    --td-brand-color-active: #4fcf88;
+    --td-brand-color-focus: rgba(94, 219, 149, 0.24);
+    --td-brand-color-light: #1e3a2b;
+}

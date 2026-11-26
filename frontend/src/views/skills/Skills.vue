@@ -522,18 +522,23 @@ html[theme-mode="light"] .skills-page {
 .skp-scope-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
 
 html[theme-mode="dark"] .skills-page {
-  --skp-line: #403c35;
-  --skp-line-soft: #35312b;
-  --skp-ink: #f2f1ee;
-  --skp-ink-2: #c7c2b9;
-  --skp-ink-3: #9c948a;
-  --skp-surface-tint: #2f2d28;
-  --skp-surface-sage: #2b302a;
-  --skp-preview: #2b2925;
-  --skp-surface: #2b2925;
-  --skp-input: #33302a;
-  --skp-hover: #33302a;
-  --skp-detail-head: linear-gradient(180deg, #33362f 0%, #2b2925 64%);
+  --skp-line: var(--w-hairline, #3a342c);
+  --skp-line-soft: color-mix(in srgb, var(--w-hairline, #3a342c) 60%, var(--w-window, #191714));
+  --skp-ink: var(--w-ink, #f3efe8);
+  --skp-ink-2: var(--w-body, #c8c1b5);
+  --skp-ink-3: var(--w-muted, #978e80);
+  --skp-surface-tint: var(--w-surface-raised, #2a2621);
+  --skp-surface-sage: color-mix(in srgb, var(--w-page-accent, #5edb95) 10%, var(--w-surface, #211e1a));
+  --skp-preview: var(--w-surface, #211e1a);
+  --skp-surface: var(--w-surface, #211e1a);
+  --skp-input: var(--w-surface-raised, #2a2621);
+  --skp-hover: var(--w-surface-hover, #2e2923);
+  --skp-detail-head: linear-gradient(180deg, var(--w-surface-raised, #2a2621) 0%, var(--w-surface, #211e1a) 64%);
+}
+
+html[theme-mode="dark"] .skp-btn.pri,
+html[theme-mode="dark"] .skp-btn.pri:hover {
+  color: var(--w-page-accent-ink, #0e130f);
 }
 
 @media (max-width: 900px) {

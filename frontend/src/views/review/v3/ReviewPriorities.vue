@@ -152,6 +152,22 @@ function nameOf(cell: ReviewHeatmapCell) {
   border-color: var(--rvn-line);
 }
 
+:global(html[theme-mode="dark"] .priority-item--severe) {
+  border-color: color-mix(in srgb, var(--rvn-red) 32%, var(--rvn-line));
+}
+
+:global(html[theme-mode="dark"] .priority-item--warning) {
+  border-color: color-mix(in srgb, var(--rvn-orange) 32%, var(--rvn-line));
+}
+
+:global(html[theme-mode="dark"] .priority-item--observe) {
+  border-color: color-mix(in srgb, var(--rvn-accent) 32%, var(--rvn-line));
+}
+
+:global(html[theme-mode="dark"] .priority-item--healthy) {
+  border-color: color-mix(in srgb, var(--rvn-green) 32%, var(--rvn-line));
+}
+
 .priority-item__main {
   display: flex;
   flex-direction: column;

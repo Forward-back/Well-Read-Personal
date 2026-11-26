@@ -385,4 +385,12 @@ onMounted(async () => {
   box-shadow: none;
   border-radius: var(--w-card-radius, 12px);
 }
+
+html[theme-mode="dark"] .skp-picker .skp-picker-use {
+  color: #0e130f;
+}
+
+html[theme-mode="dark"] .skp-picker {
+  --skp-picker-accent: color-mix(in srgb, var(--w-accent-chat, #07c05f) 70%, #f3efe8);
+}
 </style>

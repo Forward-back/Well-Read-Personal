@@ -591,15 +591,21 @@ onUnmounted(() => {
   --w-muted: #5f6b5f;
   --w-line: #bfc1b7;
   --w-hairline: #e6e1d7;
+  --w-line-strong: #d3c9b6;
+  --w-surface: #ffffff;
+  --w-surface-raised: #f8f6f1;
+  --w-surface-hover: #f1efea;
   --w-card-radius: 12px;
   --w-control-radius: 8px;
   --w-panel-radius: 16px;
-  --w-page-accent: #07c05f;
+  --w-page-accent-source: #07c05f;
+  --w-page-accent: var(--w-page-accent-source);
   --w-page-accent-hover: color-mix(in srgb, var(--w-page-accent) 82%, white);
   --w-page-accent-active: color-mix(in srgb, var(--w-page-accent) 78%, black);
   --w-page-accent-soft: color-mix(in srgb, var(--w-page-accent) 13%, white);
   --w-page-accent-line: color-mix(in srgb, var(--w-page-accent) 36%, white);
   --w-page-accent-focus: color-mix(in srgb, var(--w-page-accent) 24%, transparent);
+  --w-page-accent-ink: #ffffff;
   --w-green: #07c05f;
   --w-green-dark: #07c05f;
   --w-green-deep: #06b04d;
@@ -645,33 +651,50 @@ onUnmounted(() => {
 }
 
 html[theme-mode="dark"] .app-shell {
-  --w-base: #141a12;
-  --w-topbar: #273321;
-  --w-window: #1e261b;
-  --w-cream: #252d21;
-  --w-paper: #2c3527;
-  --w-accent: #384232;
-  --w-ink: #f2f6ec;
-  --w-body: #c6d0bd;
-  --w-muted: #9aa891;
-  --w-line: #4a5542;
-  --w-hairline: #3a4235;
-  --w-green: #53d98d;
-  --w-green-dark: #7be0a7;
-  --w-green-deep: #a5efc2;
-  --w-green-soft: #1d3a2a;
+  --w-base: #12100e;
+  --w-topbar: #191714;
+  --w-window: #191714;
+  --w-cream: #211e1a;
+  --w-paper: #2a2621;
+  --w-accent: #2a2621;
+  --w-ink: #f3efe8;
+  --w-body: #c8c1b5;
+  --w-muted: #978e80;
+  --w-line: #3a342c;
+  --w-hairline: #3a342c;
+  --w-line-strong: #4b4338;
+  --w-surface: #211e1a;
+  --w-surface-raised: #2a2621;
+  --w-surface-hover: #2e2923;
+  --w-green: #5edb95;
+  --w-green-dark: #5edb95;
+  --w-green-deep: #8be8b3;
+  --w-green-soft: #1e3a2b;
   --w-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.55);
-  --td-brand-color: #53d98d;
-  --td-brand-color-hover: #7be0a7;
-  --td-brand-color-active: #a5efc2;
-  --td-brand-color-focus: rgba(83, 217, 141, 0.24);
-  --td-brand-color-light: #1d3a2a;
+  --td-bg-color-container: #211e1a;
+  --td-bg-color-container-hover: #2e2923;
+  --td-bg-color-container-active: #332e27;
+  --td-bg-color-secondarycontainer: #2a2621;
+  --td-bg-color-secondarycontainer-hover: #332e27;
+  --td-bg-color-secondarycontainer-active: #3a342c;
+  --td-bg-color-page: #191714;
+  --td-component-stroke: #3a342c;
+  --td-component-border: #4b4338;
+  --td-text-color-primary: #f3efe8;
+  --td-text-color-secondary: #c8c1b5;
+  --td-text-color-placeholder: #978e80;
+  --td-text-color-disabled: #6c655b;
+  --td-brand-color: #5edb95;
+  --td-brand-color-hover: #82e8ae;
+  --td-brand-color-active: #4fcf88;
+  --td-brand-color-focus: rgba(94, 219, 149, 0.24);
+  --td-brand-color-light: #1e3a2b;
 }
 
 /* Per-feature primary action colour. The owner can override any page from
    UI settings; unset pages keep the shared bright green. */
 .app-shell[data-feature] {
-  --w-page-accent: #07c05f;
+  --w-page-accent: var(--w-page-accent-source);
   --w-page-accent-hover: color-mix(in srgb, var(--w-page-accent) 82%, white);
   --w-page-accent-active: color-mix(in srgb, var(--w-page-accent) 78%, black);
   --w-page-accent-soft: color-mix(in srgb, var(--w-page-accent) 13%, white);
@@ -685,11 +708,11 @@ html[theme-mode="dark"] .app-shell {
   --td-brand-color-disabled: color-mix(in srgb, var(--w-page-accent) 45%, white);
 }
 
-.app-shell[data-feature="chat"] { --w-page-accent: var(--w-accent-chat, #07c05f); }
-.app-shell[data-feature="knowledge"] { --w-page-accent: var(--w-accent-knowledge, #07c05f); }
-.app-shell[data-feature="reading"] { --w-page-accent: var(--w-accent-reading, #07c05f); }
-.app-shell[data-feature="review"] { --w-page-accent: var(--w-accent-review, #07c05f); }
-.app-shell[data-feature="skills"] { --w-page-accent: var(--w-accent-skills, #07c05f); }
+.app-shell[data-feature="chat"] { --w-page-accent-source: var(--w-accent-chat, #07c05f); }
+.app-shell[data-feature="knowledge"] { --w-page-accent-source: var(--w-accent-knowledge, #07c05f); }
+.app-shell[data-feature="reading"] { --w-page-accent-source: var(--w-accent-reading, #07c05f); }
+.app-shell[data-feature="review"] { --w-page-accent-source: var(--w-accent-review, #07c05f); }
+.app-shell[data-feature="skills"] { --w-page-accent-source: var(--w-accent-skills, #07c05f); }
 
 .app-shell[data-feature="chat"],
 .app-shell[data-feature="knowledge"] {
@@ -698,10 +721,19 @@ html[theme-mode="dark"] .app-shell {
 }
 
 html[theme-mode="dark"] .app-shell[data-feature] {
-  --w-page-accent-soft: color-mix(in srgb, var(--w-page-accent) 22%, #1e261b);
-  --w-page-accent-line: color-mix(in srgb, var(--w-page-accent) 45%, #1e261b);
+  --w-page-accent: color-mix(in srgb, var(--w-page-accent-source) 70%, var(--w-ink));
+  --w-page-accent-hover: color-mix(in srgb, var(--w-page-accent-source) 55%, var(--w-ink));
+  --w-page-accent-active: color-mix(in srgb, var(--w-page-accent-source) 82%, var(--w-window));
+  --w-page-accent-soft: color-mix(in srgb, var(--w-page-accent-source) 18%, var(--w-window));
+  --w-page-accent-line: color-mix(in srgb, var(--w-page-accent-source) 42%, var(--w-window));
+  --w-page-accent-focus: color-mix(in srgb, var(--w-page-accent-source) 35%, transparent);
+  --w-page-accent-ink: #0e130f;
+  --td-brand-color: var(--w-page-accent);
+  --td-brand-color-hover: var(--w-page-accent-hover);
+  --td-brand-color-active: var(--w-page-accent-active);
   --td-brand-color-light: var(--w-page-accent-soft);
-  --td-brand-color-focus: color-mix(in srgb, var(--w-page-accent) 30%, transparent);
+  --td-brand-color-focus: var(--w-page-accent-focus);
+  --td-brand-color-disabled: color-mix(in srgb, var(--w-page-accent-source) 38%, var(--w-window));
 }
 
 .page-fade-enter-active,

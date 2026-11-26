@@ -534,6 +534,22 @@ button.heatmap__rowhead {
   background: var(--rvn-gray-soft);
 }
 
+:global(html[theme-mode="dark"] .heatmap__cell--severe) {
+  background: color-mix(in srgb, var(--rvn-red) 62%, var(--rvn-paper));
+}
+
+:global(html[theme-mode="dark"] .heatmap__cell--warning) {
+  background: color-mix(in srgb, var(--rvn-orange) 52%, var(--rvn-paper));
+}
+
+:global(html[theme-mode="dark"] .heatmap__cell--observe) {
+  background: color-mix(in srgb, var(--rvn-accent) 38%, var(--rvn-paper));
+}
+
+:global(html[theme-mode="dark"] .heatmap__cell--healthy) {
+  background: color-mix(in srgb, var(--rvn-green) 36%, var(--rvn-paper));
+}
+
 .heatmap__cell--missing {
   background: transparent;
 }

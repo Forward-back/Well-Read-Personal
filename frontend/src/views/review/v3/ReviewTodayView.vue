@@ -294,6 +294,14 @@ function onGroupChange(value: string | number | Array<string | number>) {
   border-color: #cdd8c9;
 }
 
+:global(html[theme-mode="dark"] .today-review__card--blue) {
+  border-color: color-mix(in srgb, var(--rvn-accent) 32%, var(--rvn-line));
+}
+
+:global(html[theme-mode="dark"] .today-review__card--green) {
+  border-color: color-mix(in srgb, var(--rvn-green) 32%, var(--rvn-line));
+}
+
 .today-review__card--gray {
   background: var(--rvn-gray-soft);
   border-color: var(--rvn-line);
