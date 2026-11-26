@@ -437,7 +437,7 @@ html[theme-mode="light"] .skills-page {
 .skp-ed-pane { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .skp-ed-pane textarea {
   flex: 1; width: 100%; min-height: 0; height: auto; border: 0; outline: 0; resize: none; background: var(--skp-surface);
-  color: #3f3a32; font-family: var(--skp-mono); font-size: 14px; line-height: 1.95; padding: 22px 24px;
+  color: var(--skp-ink); font-family: var(--skp-mono); font-size: 14px; line-height: 1.95; padding: 22px 24px;
   overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none;
 }
 .skp-ed-pane textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
@@ -445,11 +445,11 @@ html[theme-mode="light"] .skills-page {
 .skp-pv-pane {
   height: 100%; min-height: 0; box-sizing: border-box; border-left: 1px dashed #d8cebd; padding: 24px 28px;
   background: var(--skp-preview); overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none;
-  font-family: var(--skp-serif); font-size: 15px; line-height: 2.05; color: #4a4339; word-break: break-word;
+  font-family: var(--skp-serif); font-size: 15px; line-height: 2.05; color: var(--skp-ink); word-break: break-word;
 }
 .skp-pv-pane::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .skp-pv-pane h1, .skp-pv-pane h2, .skp-pv-pane h3, .skp-pv-pane h4, .skp-pv-pane h5, .skp-pv-pane h6 {
-  font-family: var(--skp-serif); margin: 18px 0 10px; color: #3f3a32; line-height: 1.5;
+  font-family: var(--skp-serif); margin: 18px 0 10px; color: var(--skp-ink); line-height: 1.5;
 }
 .skp-pv-pane h1 { font-size: 24px; border-bottom: 1px solid var(--skp-line); padding-bottom: 8px; }
 .skp-pv-pane h2 { font-size: 20px; border-bottom: 1px solid var(--skp-line); padding-bottom: 6px; }
