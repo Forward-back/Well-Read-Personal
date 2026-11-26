@@ -701,7 +701,7 @@ const handleAction = (action: 'download' | 'edit' | 'view-trace' | 'reparse' | '
   box-sizing: border-box;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 12px;
+  gap: 24px;
   align-content: flex-start;
   width: 100%;
 
@@ -887,7 +887,7 @@ const handleAction = (action: 'download' | 'edit' | 'view-trace' | 'reparse' | '
     display: flex;
     align-items: flex-start;
     gap: 0;
-    margin-bottom: 6px;
+    margin-bottom: 12px;
   }
 
   .card-content-title {

@@ -4,6 +4,7 @@
     class="app-shell"
     :class="{
       'app-shell--detail': isDetailRoute,
+      'app-shell--reading': isReadingRoute,
       'app-shell--fullscreen': fullscreenEligible && fullscreen,
       'app-shell--window-hidden': windowHidden,
     }"
@@ -174,6 +175,7 @@ type PrimaryNavItem = { key: string; label: string; icon: Component; path?: stri
 const route = useRoute()
 const router = useRouter()
 const isDetailRoute = computed(() => route.path.startsWith('/platform'))
+const isReadingRoute = computed(() => route.path.startsWith('/platform/reading'))
 const fullscreenEligible = computed(() => isDetailRoute.value || route.path === '/')
 
 watch(
@@ -924,11 +926,30 @@ html[theme-mode="dark"] .app-window {
 }
 
 .app-window__content {
+  position: relative;
   height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* 页面版心：最大 1200px 居中，左右留白 max(24px, 5%)；精读保留自身工作台版心。 */
+.app-shell:not(.app-shell--reading) .app-window__content > * {
+  width: 100%;
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 24px;
+  padding-right: 24px;
+  box-sizing: border-box;
+}
+
+/* 复习页原有 10% 版心由壳层统一接管，避免叠加。 */
+.app-shell:not(.app-shell--reading) .review-v3__inner,
+.app-shell:not(.app-shell--reading) .cluster-page__inner {
+  padding-left: 0;
+  padding-right: 0;
 }
 
 /* Detail pages use a configurable canvas; the landing keeps the green window.

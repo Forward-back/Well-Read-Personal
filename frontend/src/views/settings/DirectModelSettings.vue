@@ -2,8 +2,8 @@
   <div class="direct-model-settings">
     <header class="block__header">
       <div>
-        <h3>直连模型</h3>
-        <p>直连模式不检索知识库，直接调用该模型回答，可另行开启联网搜索。必须选择支持思考模式的问答模型；未配置时输入栏的直连模式不可用。</p>
+        <h3>{{ $t('settingsPages.directModel.title') }}</h3>
+        <p>{{ $t('settingsPages.directModel.desc') }}</p>
       </div>
     </header>
 
@@ -12,24 +12,26 @@
         v-model="selectedModelId"
         :options="options"
         :loading="loading"
-        :placeholder="options.length ? '选择直连模型' : '暂无支持思考模式的问答模型'"
+        :placeholder="options.length ? $t('settingsPages.directModel.selectPlaceholder') : $t('settingsPages.directModel.noThinkingModels')"
         clearable
         class="model-select"
       />
-      <t-button theme="primary" :loading="saving" :disabled="!dirty || saving" @click="save">保存</t-button>
+      <t-button theme="primary" :loading="saving" :disabled="!dirty || saving" @click="save">{{ $t('settingsPages.directModel.save') }}</t-button>
     </div>
-    <p v-if="currentModelId" class="current">当前直连模型：{{ currentModelName || currentModelId }}</p>
-    <p v-else class="current current--empty">当前未配置直连模型</p>
+    <p v-if="currentModelId" class="current">{{ $t('settingsPages.directModel.current', { model: currentModelName || currentModelId }) }}</p>
+    <p v-else class="current current--empty">{{ $t('settingsPages.directModel.currentEmpty') }}</p>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { listModels, type ModelConfig } from '@/api/model'
 import { getDirectConfig, updateDirectConfig } from '@/api/settings'
 import { modelSupportsThinking } from '@/utils/thinkingControl'
 
+const { t } = useI18n()
 const loading = ref(false)
 const saving = ref(false)
 const models = ref<ModelConfig[]>([])
@@ -54,7 +56,7 @@ const load = async () => {
     currentModelId.value = config?.data?.direct_model_id || ''
     selectedModelId.value = currentModelId.value
   } catch {
-    MessagePlugin.error('读取直连配置失败')
+    MessagePlugin.error(t('settingsPages.directModel.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -65,9 +67,9 @@ const save = async () => {
   try {
     await updateDirectConfig(selectedModelId.value || '')
     currentModelId.value = selectedModelId.value || ''
-    MessagePlugin.success(selectedModelId.value ? '直连模型已保存' : '已清除直连模型')
+    MessagePlugin.success(selectedModelId.value ? t('settingsPages.directModel.saved') : t('settingsPages.directModel.cleared'))
   } catch (e: any) {
-    MessagePlugin.error(e?.message || '保存直连模型失败')
+    MessagePlugin.error(e?.message || t('settingsPages.directModel.saveFailed'))
   } finally {
     saving.value = false
   }

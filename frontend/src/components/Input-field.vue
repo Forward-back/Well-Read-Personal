@@ -14,6 +14,7 @@ import type { SteerQueueItem } from '@/api/chat/steer';
 import { chatSubmitShortcut } from '@/utils/chatSubmitShortcut';
 import KnowledgeBaseSelector from './KnowledgeBaseSelector.vue';
 import MentionSelector from './MentionSelector.vue';
+import SkillSelector from './SkillSelector.vue';
 import { getCaretCoordinates } from '@/utils/caret';
 import { getRootZoom, rectToCssPx, cssViewportSize } from '@/utils/zoom';
 import { type ModelConfig } from '@/api/model';
@@ -85,16 +86,6 @@ const selectedSkillId = computed({
     settingsStore.settings.selectedSkillId = value;
   },
 });
-const skillOptions = computed(() => {
-  if (selectableSkills.value.length === 0) return []
-  return [
-    { value: '', label: t('input.skill.none') },
-    ...selectableSkills.value.map((skill) => ({
-      value: skill.id,
-      label: skill.version ? `${skill.name} · ${skill.version}` : skill.name,
-    })),
-  ]
-})
 const loadSelectableSkills = async () => {
   try {
     const response = await listSelectableSkills();
@@ -2701,21 +2692,7 @@ defineExpose({
           </t-tooltip>
 
           <!-- 技能选择：仅普通知识问答注入；选择本身不改变技能内容 -->
-          <t-tooltip
-            v-if="!settingsStore.settings.isAgentEnabled"
-            :content="$t('input.skill.emptyHint')"
-            :disabled="selectableSkills.length > 0"
-            placement="top"
-          >
-            <t-select
-              v-model="selectedSkillId"
-              class="skill-selector"
-              size="small"
-              :options="skillOptions"
-              :disabled="selectableSkills.length === 0"
-              :placeholder="selectableSkills.length > 0 ? $t('input.skill.none') : $t('input.skill.empty')"
-            />
-          </t-tooltip>
+          <SkillSelector v-if="!settingsStore.settings.isAgentEnabled" v-model="selectedSkillId" />
 
           <!-- 模型显示 -->
           <t-tooltip :content="isModelLockedByAgent ? $t('input.modelLockedByAgent') : ''"
@@ -3535,13 +3512,6 @@ const getImgSrc = (url: string) => {
     width: 16px;
     height: 16px;
   }
-}
-
-/* 技能选择：紧凑下拉，避免挤压输入区 */
-.skill-selector {
-  width: 132px;
-  flex-shrink: 0;
-  margin-left: 8px;
 }
 
 /* 模型显示样式 */

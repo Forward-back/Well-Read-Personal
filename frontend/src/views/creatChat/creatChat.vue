@@ -249,7 +249,7 @@ const handleKBEditorSuccess = (kbId: string) => {
     display: flex;
     justify-content: center;
     align-items: stretch;
-    padding: 48px 24px 24px;
+    padding: 96px 24px 48px;
     box-sizing: border-box;
 }
 
@@ -261,12 +261,12 @@ const handleKBEditorSuccess = (kbId: string) => {
     max-width: 960px;
     height: 100%;
     min-height: 0;
-    gap: 24px;
+    gap: 48px;
 
     :deep(.answers-input) {
         position: static;
         transform: translateX(0);
-        margin-top: auto;
+        margin-top: 136px;
     }
 }
 
@@ -311,12 +311,13 @@ const handleKBEditorSuccess = (kbId: string) => {
 
 .suggested-questions-container {
     width: 100%;
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-height: 0;
+    max-height: 40vh;
     overflow-y: auto;
     max-width: 960px;
     margin: 0;
-    padding: 0 16px;
+    padding: 0;
     transition: height 0.35s @suggested-ease;
 }
 

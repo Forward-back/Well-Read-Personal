@@ -1,27 +1,26 @@
 <template>
-  <t-dialog v-model:visible="visible" header="帮助与关于" :footer="false" width="520px">
+  <t-dialog v-model:visible="visible" :header="$t('settingsPages.help.header')" :footer="false" width="520px">
     <div class="help-body">
       <section>
-        <h3>快捷键</h3>
+        <h3>{{ $t('settingsPages.help.shortcuts') }}</h3>
         <ul>
-          <li><kbd>Ctrl K</kbd> 打开全局搜索</li>
-          <li><kbd>空格</kbd> 复习时翻面</li>
-          <li><kbd>1</kbd> 忘记 · <kbd>2</kbd> 想得慢 · <kbd>3</kbd> 想起来 · <kbd>4</kbd> 秒答</li>
-          <li><kbd>Esc</kbd> 暂存退出复习</li>
+          <li><kbd>Ctrl K</kbd> {{ $t('settingsPages.help.shortcutSearch') }}</li>
+          <li><kbd>{{ $t('settingsPages.help.spaceKey') }}</kbd> {{ $t('settingsPages.help.shortcutFlip') }}</li>
+          <li><kbd>1</kbd> {{ $t('settingsPages.help.ratingForgot') }} · <kbd>2</kbd> {{ $t('settingsPages.help.ratingSlow') }} · <kbd>3</kbd> {{ $t('settingsPages.help.ratingRecalled') }} · <kbd>4</kbd> {{ $t('settingsPages.help.ratingEasy') }}</li>
+          <li><kbd>Esc</kbd> {{ $t('settingsPages.help.shortcutExit') }}</li>
         </ul>
       </section>
       <section>
-        <h3>项目</h3>
-        <p>WellRead Personal · 本地单 owner 知识库</p>
-        <p class="help-muted">版本 {{ version }} · {{ commit }}</p>
+        <h3>{{ $t('settingsPages.help.project') }}</h3>
+        <p>{{ $t('settingsPages.help.projectDesc') }}</p>
+        <p class="help-muted">{{ $t('settingsPages.help.versionLine', { version, commit }) }}</p>
         <a href="https://github.com/Forward-back" target="_blank" rel="noopener noreferrer">github.com/Forward-back</a>
       </section>
       <section>
-        <h3>素材</h3>
+        <h3>{{ $t('settingsPages.help.assets') }}</h3>
         <p class="help-muted">
-          动态图标与手绘图标来自
-          <a href="https://icons8.com" target="_blank" rel="noopener noreferrer">Icons8</a>；
-          草地背景来自 PostHog 网站，仅个人本地使用。
+          {{ $t('settingsPages.help.assetsBefore') }}
+          <a href="https://icons8.com" target="_blank" rel="noopener noreferrer">Icons8</a>{{ $t('settingsPages.help.assetsAfter') }}
         </p>
       </section>
     </div>

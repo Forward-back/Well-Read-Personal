@@ -2,44 +2,44 @@
   <section class="block">
     <header class="block__header">
       <div>
-        <h3>Agent 联网搜索配置</h3>
-        <p>仅 Agent 使用这些配置；直连模式的联网搜索在「账户与助手」中单独设置。</p>
+        <h3>{{ $t('settingsPages.webSearchProvider.title') }}</h3>
+        <p>{{ $t('settingsPages.webSearchProvider.desc') }}</p>
       </div>
-      <t-button theme="primary" @click="openCreate">新建配置</t-button>
+      <t-button theme="primary" @click="openCreate">{{ $t('settingsPages.webSearchProvider.create') }}</t-button>
     </header>
 
     <t-loading :loading="loading">
       <div v-if="providers.length === 0" class="empty">
-        尚未创建联网搜索配置。Agent 启用联网搜索前需要在这里创建并绑定。
+        {{ $t('settingsPages.webSearchProvider.empty') }}
       </div>
       <div v-else class="provider-list">
         <article v-for="provider in providers" :key="provider.id" class="provider-card">
           <div class="provider-main">
             <div class="provider-title-row">
               <span class="provider-name">{{ provider.name }}</span>
-              <t-tag v-if="provider.is_default" theme="primary" variant="light" size="small">默认</t-tag>
+              <t-tag v-if="provider.is_default" theme="primary" variant="light" size="small">{{ $t('settingsPages.webSearchProvider.default') }}</t-tag>
               <t-tag variant="outline" size="small">{{ providerLabel(provider.provider) }}</t-tag>
             </div>
             <p v-if="provider.description" class="provider-desc">{{ provider.description }}</p>
             <p class="provider-meta">
-              Key：{{ provider.credentials?.api_key?.configured ? '已配置' : '未配置' }}
+              Key: {{ provider.credentials?.api_key?.configured ? $t('settingsPages.webSearchProvider.keyConfigured') : $t('settingsPages.webSearchProvider.keyMissing') }}
             </p>
           </div>
           <div class="provider-actions">
             <t-button size="small" variant="text" :loading="testingId === provider.id" @click="testProvider(provider)">
-              测试连接
+              {{ $t('settingsPages.webSearchProvider.test') }}
             </t-button>
-            <t-button size="small" variant="text" @click="openEdit(provider)">编辑</t-button>
+            <t-button size="small" variant="text" @click="openEdit(provider)">{{ $t('settingsPages.webSearchProvider.edit') }}</t-button>
             <t-button
               v-if="!provider.is_default"
               size="small"
               variant="text"
               @click="setDefault(provider)"
             >
-              设为默认
+              {{ $t('settingsPages.webSearchProvider.setDefault') }}
             </t-button>
             <t-button size="small" variant="text" theme="danger" @click="removeProvider(provider)">
-              删除
+              {{ $t('settingsPages.webSearchProvider.delete') }}
             </t-button>
           </div>
         </article>
@@ -48,26 +48,26 @@
 
     <t-dialog
       v-model:visible="dialogVisible"
-      :header="editing ? '编辑联网搜索配置' : '新建联网搜索配置'"
+      :header="editing ? $t('settingsPages.webSearchProvider.editTitle') : $t('settingsPages.webSearchProvider.createTitle')"
       width="560px"
-      :confirm-btn="{ content: '保存', theme: 'primary', loading: saving }"
+      :confirm-btn="{ content: $t('settingsPages.webSearchProvider.save'), theme: 'primary', loading: saving }"
       @confirm="save"
     >
       <div class="form">
         <label class="field">
-          <span class="field-label">名称</span>
-          <t-input v-model="form.name" placeholder="例如：DeepSeek 搜索" />
+          <span class="field-label">{{ $t('settingsPages.webSearchProvider.name') }}</span>
+          <t-input v-model="form.name" :placeholder="$t('settingsPages.webSearchProvider.namePlaceholder')" />
         </label>
         <label class="field">
-          <span class="field-label">供应商</span>
+          <span class="field-label">{{ $t('settingsPages.webSearchProvider.provider') }}</span>
           <t-select v-model="form.provider" :disabled="editing">
             <t-option value="deepseek" label="DeepSeek" />
             <t-option value="duckduckgo" label="DuckDuckGo" />
           </t-select>
         </label>
         <label class="field">
-          <span class="field-label">描述</span>
-          <t-input v-model="form.description" placeholder="可选" />
+          <span class="field-label">{{ $t('settingsPages.webSearchProvider.description') }}</span>
+          <t-input v-model="form.description" :placeholder="$t('settingsPages.webSearchProvider.descriptionPlaceholder')" />
         </label>
 
         <div v-if="!editing" class="field">
@@ -75,30 +75,30 @@
           <t-input
             v-model="form.apiKey"
             type="password"
-            :placeholder="form.provider === 'deepseek' ? 'DeepSeek API Key' : 'DuckDuckGo 可留空'"
+            :placeholder="form.provider === 'deepseek' ? 'DeepSeek API Key' : $t('settingsPages.webSearchProvider.apiKeyPlaceholder')"
           />
         </div>
 
         <div v-else class="field">
           <span class="field-label">API Key</span>
           <t-radio-group v-model="form.keyAction" variant="default-filled">
-            <t-radio-button value="keep">保留</t-radio-button>
-            <t-radio-button value="replace">更新</t-radio-button>
-            <t-radio-button value="clear" :disabled="!editingKeyConfigured">清除</t-radio-button>
+            <t-radio-button value="keep">{{ $t('settingsPages.webSearchProvider.keep') }}</t-radio-button>
+            <t-radio-button value="replace">{{ $t('settingsPages.webSearchProvider.replace') }}</t-radio-button>
+            <t-radio-button value="clear" :disabled="!editingKeyConfigured">{{ $t('settingsPages.webSearchProvider.clear') }}</t-radio-button>
           </t-radio-group>
           <t-input
             v-if="form.keyAction === 'replace'"
             v-model="form.apiKey"
             type="password"
-            placeholder="输入新的 API Key"
+            :placeholder="$t('settingsPages.webSearchProvider.newKeyPlaceholder')"
           />
           <p v-if="form.keyAction === 'clear'" class="danger-hint">
-            保存后将清除已存 Key，该配置会立即不可用。
+            {{ $t('settingsPages.webSearchProvider.clearHint') }}
           </p>
         </div>
 
         <label class="field field--row">
-          <span class="field-label">设为默认</span>
+          <span class="field-label">{{ $t('settingsPages.webSearchProvider.setDefaultLabel') }}</span>
           <t-switch v-model="form.isDefault" />
         </label>
       </div>
@@ -108,6 +108,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import {
   createWebSearchProvider,
@@ -120,6 +121,7 @@ import {
   type WebSearchProviderEntity,
 } from '@/api/web-search-provider'
 
+const { t } = useI18n()
 const providers = ref<WebSearchProviderEntity[]>([])
 const loading = ref(false)
 const saving = ref(false)
@@ -154,7 +156,7 @@ const load = async () => {
     const response: any = await listWebSearchProviders()
     providers.value = Array.isArray(response?.data) ? response.data : []
   } catch (e: any) {
-    MessagePlugin.error(e?.message || '读取联网搜索配置失败')
+    MessagePlugin.error(e?.message || t('settingsPages.webSearchProvider.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -181,15 +183,15 @@ const openEdit = (provider: WebSearchProviderEntity) => {
 
 const save = async () => {
   if (!form.name.trim()) {
-    MessagePlugin.warning('请填写配置名称')
+    MessagePlugin.warning(t('settingsPages.webSearchProvider.nameRequired'))
     return
   }
   if (!editing.value && form.provider === 'deepseek' && !form.apiKey.trim()) {
-    MessagePlugin.warning('DeepSeek 需要填写 API Key')
+    MessagePlugin.warning(t('settingsPages.webSearchProvider.deepseekKeyRequired'))
     return
   }
   if (editing.value && form.keyAction === 'replace' && !form.apiKey.trim()) {
-    MessagePlugin.warning('请输入新的 API Key')
+    MessagePlugin.warning(t('settingsPages.webSearchProvider.newKeyRequired'))
     return
   }
 
@@ -216,11 +218,11 @@ const save = async () => {
         await putWebSearchProviderCredentials(editing.value.id!, { api_key: form.apiKey.trim() })
       }
     }
-    MessagePlugin.success('联网搜索配置已保存')
+    MessagePlugin.success(t('settingsPages.webSearchProvider.saved'))
     dialogVisible.value = false
     await load()
   } catch (e: any) {
-    MessagePlugin.error(e?.error?.message || e?.message || '保存联网搜索配置失败')
+    MessagePlugin.error(e?.error?.message || e?.message || t('settingsPages.webSearchProvider.saveFailed'))
   } finally {
     saving.value = false
   }
@@ -231,7 +233,7 @@ const setDefault = async (provider: WebSearchProviderEntity) => {
     await updateWebSearchProvider(provider.id!, { is_default: true })
     await load()
   } catch (e: any) {
-    MessagePlugin.error(e?.error?.message || e?.message || '设置默认失败')
+    MessagePlugin.error(e?.error?.message || e?.message || t('settingsPages.webSearchProvider.defaultFailed'))
   }
 }
 
@@ -240,9 +242,9 @@ const testProvider = async (provider: WebSearchProviderEntity) => {
   try {
     const response: any = await testWebSearchProvider(provider.id)
     const count = response?.data?.results ?? 0
-    MessagePlugin.success(`连接正常，返回 ${count} 条结果`)
+    MessagePlugin.success(t('settingsPages.webSearchProvider.testSuccess', { count }))
   } catch (e: any) {
-    MessagePlugin.error(e?.error?.message || e?.message || '连接测试失败')
+    MessagePlugin.error(e?.error?.message || e?.message || t('settingsPages.webSearchProvider.testFailed'))
   } finally {
     testingId.value = ''
   }
@@ -250,17 +252,17 @@ const testProvider = async (provider: WebSearchProviderEntity) => {
 
 const removeProvider = (provider: WebSearchProviderEntity) => {
   const dialog = DialogPlugin.confirm({
-    header: '删除联网搜索配置',
-    body: `确定删除「${provider.name}」？被 Agent 引用时无法删除。`,
-    confirmBtn: { content: '删除', theme: 'danger' },
+    header: t('settingsPages.webSearchProvider.deleteTitle'),
+    body: t('settingsPages.webSearchProvider.deleteBody', { name: provider.name }),
+    confirmBtn: { content: t('settingsPages.webSearchProvider.delete'), theme: 'danger' },
     onConfirm: async () => {
       try {
         await deleteWebSearchProvider(provider.id!)
-        MessagePlugin.success('配置已删除')
+        MessagePlugin.success(t('settingsPages.webSearchProvider.deleted'))
         dialog.hide()
         await load()
       } catch (e: any) {
-        MessagePlugin.error(e?.error?.message || e?.message || '删除失败')
+        MessagePlugin.error(e?.error?.message || e?.message || t('settingsPages.webSearchProvider.deleteFailed'))
       }
     },
   })

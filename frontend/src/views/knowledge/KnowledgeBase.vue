@@ -7,6 +7,7 @@ import { useRoute, useRouter } from 'vue-router';
 import EmptyKnowledge from '@/components/empty-knowledge.vue';
 import ContextualGuide from '@/components/ContextualGuide.vue';
 import KBInfoPopover from '@/components/KBInfoPopover.vue';
+import PageTopbar from '@/components/layout/PageTopbar.vue';
 import KBSwitcherDropdown from '@/components/KBSwitcherDropdown.vue';
 import { getSessionsList, createSessions, generateSessionsTitle } from "@/api/chat/index";
 import { useMenuStore } from '@/stores/menu';
@@ -2749,8 +2750,8 @@ async function createNewSession(value: string): Promise<void> {
   <template v-if="!isFAQ">
     <div ref="dialogHostRef" class="knowledge-layout">
       <div class="document-header">
-        <div class="document-header-title">
-          <div class="document-title-row">
+        <PageTopbar>
+          <template #lead>
             <h2 class="document-breadcrumb">
               <button type="button" class="breadcrumb-link" @click="handleNavigateToKbList">
                 {{ $t('menu.knowledgeBase') }}
@@ -2804,7 +2805,8 @@ async function createNewSession(value: string): Promise<void> {
                   @click="activeKbTab = 'documents'">{{ $t('knowledgeEditor.document.title') }}</span>
               </template>
             </h2>
-            <!-- 标题行右侧的动作锚点：聚拢"信息"和"设置"两个圆形按钮。 -->
+          </template>
+          <template #actions>
             <div class="kb-title-actions">
               <KBInfoPopover v-if="kbInfo && !authStore.isLiteMode" :kb-info="kbInfo"
                 :supported-file-types="[...supportedFileTypes]" />
@@ -2843,7 +2845,9 @@ async function createNewSession(value: string): Promise<void> {
                 </button>
               </t-tooltip>
             </div>
-          </div>
+          </template>
+        </PageTopbar>
+        <div class="knowledge-header-notes">
           <p class="document-subtitle">{{ $t('knowledgeEditor.document.subtitle') }}</p>
           <p v-if="unsupportedFileTypes.length" class="parser-hint" @click="goToParserSettings">
             <t-icon name="info-circle" class="parser-hint-icon" />
@@ -3753,7 +3757,7 @@ async function createNewSession(value: string): Promise<void> {
 }
 
 .doc-filter-bar {
-  padding: 0 0 12px 0;
+  padding: 0 0 24px 0;
   flex-shrink: 0;
   display: grid;
   grid-template-columns: 1fr auto;
@@ -4193,42 +4197,59 @@ async function createNewSession(value: string): Promise<void> {
 
 // Header 样式（无底部分割线，留更多空间给下方内容区）
 .document-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
+  display: block;
   flex-shrink: 0;
-
-  .document-header-title {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .document-title-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
+  margin-top: -24px;
 
   .kb-title-actions {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    flex-shrink: 0;
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
     margin-left: 4px;
+
+    &::-webkit-scrollbar { display: none; }
   }
 
   .document-breadcrumb {
     display: flex;
     align-items: center;
     gap: 6px;
+    min-width: 0;
+    overflow: hidden;
     margin: 0;
-    font-size: 20px;
+    font-size: 13.5px;
+    line-height: 20px;
     font-weight: 600;
     color: var(--td-text-color-primary);
+    white-space: nowrap;
+    flex-wrap: nowrap;
+  }
+
+  .breadcrumb-link {
+    min-width: 0;
+    max-width: 280px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .breadcrumb-tab,
+  .breadcrumb-tab-sep,
+  .breadcrumb-separator {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .knowledge-header-notes {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 16px 12px;
   }
 
   .breadcrumb-link {
@@ -4611,7 +4632,7 @@ async function createNewSession(value: string): Promise<void> {
   display: grid;
   // 文档卡片信息量较大（标题 + 摘要 + 标签/类型），保持稍宽的最小列宽，避免一行塞太多导致内容拥挤。
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 12px;
+  gap: 24px;
   align-content: flex-start;
   width: 100%;
 

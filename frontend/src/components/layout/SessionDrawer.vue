@@ -5,7 +5,7 @@
       class="session-drawer"
       :class="{ 'session-drawer--rail': mode === 'rail' }"
       role="dialog"
-      aria-label="问答记录"
+      :aria-label="t('settingsPages.sessionDrawer.historyAria')"
       @click.stop
     >
       <div class="session-drawer__head">
@@ -14,8 +14,8 @@
           <button
             type="button"
             class="session-drawer__close"
-            aria-label="搜索历史对话"
-            title="搜索历史对话"
+            :aria-label="t('settingsPages.sessionDrawer.searchHistory')"
+            :title="t('settingsPages.sessionDrawer.searchHistory')"
             @click="openSearch"
           >
             <t-icon name="search" />
@@ -24,8 +24,8 @@
             v-if="mode !== 'rail'"
             type="button"
             class="session-drawer__close"
-            aria-label="关闭"
-            title="关闭"
+            :aria-label="t('settingsPages.sessionDrawer.close')"
+            :title="t('settingsPages.sessionDrawer.close')"
             @click="close"
           >
             <t-icon name="close" />
@@ -41,11 +41,11 @@
       <div class="session-drawer__list">
         <div v-if="loading" class="session-drawer__state">
           <t-loading size="small" />
-          <span>加载中…</span>
+          <span>{{ t('settingsPages.sessionDrawer.loading') }}</span>
         </div>
         <button v-else-if="!sessions.length" type="button" class="session-drawer__empty" @click="newChat">
           {{ t('menu.noSessions') }}
-          <span>新建对话</span>
+          <span>{{ t('settingsPages.sessionDrawer.newChat') }}</span>
         </button>
 
         <template v-else>
@@ -57,7 +57,7 @@
             <button
               type="button"
               class="session-row__more"
-              aria-label="更多操作"
+              :aria-label="t('settingsPages.sessionDrawer.moreActions')"
               @click.stop="toggleMenu(row.id)"
             >
               <t-icon name="ellipsis" />
@@ -80,7 +80,7 @@
 
             <div v-if="activeMenuId === row.id" class="session-row__menu" @click.stop>
               <button type="button" @click="startRename(row)">
-                <t-icon name="edit" /> 重命名
+                <t-icon name="edit" /> {{ t('settingsPages.sessionDrawer.rename') }}
               </button>
               <button type="button" @click="togglePin(row)">
                 <t-icon :name="row.is_pinned ? 'pin-filled' : 'pin'" />
@@ -96,7 +96,7 @@
           </div>
 
           <button v-if="sessions.length < total" type="button" class="session-drawer__more" @click="load(false)">
-            加载更多
+            {{ t('settingsPages.sessionDrawer.loadMore') }}
           </button>
         </template>
       </div>
@@ -182,16 +182,20 @@ async function load(reset = true) {
     }
     const nextPage = reset ? 1 : page.value + 1
     const res: any = await getSessionsList(nextPage, PAGE_SIZE)
-    const rows = (res?.data || []).map(mapRow)
+    const rawRows = Array.isArray(res?.data) ? res.data : []
+    const rows = rawRows.filter((item: any) => !item.reading_run_id).map(mapRow)
     sessions.value = sortRows(reset ? rows : [...sessions.value, ...rows])
     page.value = nextPage
-    total.value = Number(res?.total ?? sessions.value.length)
+    total.value = Math.max(
+      sessions.value.length,
+      Number(res?.total ?? sessions.value.length) - (rawRows.length - rows.length),
+    )
   } catch {
     if (reset) {
       sessions.value = []
       total.value = 0
     }
-    MessagePlugin.error('加载会话失败')
+    MessagePlugin.error(t('settingsPages.sessionDrawer.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -280,7 +284,7 @@ function confirmClear(row: SessionRow) {
     header: t('chatHeader.clearConfirmTitle'),
     body: t('chatHeader.clearConfirmBody'),
     theme: 'warning',
-    confirmBtn: '清空',
+    confirmBtn: t('settingsPages.sessionDrawer.clearConfirm'),
     cancelBtn: t('common.cancel'),
     onConfirm: async () => {
       try {

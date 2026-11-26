@@ -2,8 +2,8 @@
   <section class="block">
     <header class="block__header">
       <div>
-        <h3>联网搜索</h3>
-        <p>直连模式可显式开启联网搜索；网页来源由后端根据搜索结果生成，不依赖模型编造 URL。</p>
+        <h3>{{ $t('settingsPages.webSearch.title') }}</h3>
+        <p>{{ $t('settingsPages.webSearch.desc') }}</p>
       </div>
     </header>
 
@@ -27,9 +27,9 @@
         type="password"
         clearable
         class="key-input"
-        :placeholder="keyConfigured ? '已保存 Key，留空表示保留' : '留空则复用直连模型 Key'"
+        :placeholder="keyConfigured ? $t('settingsPages.webSearch.savedKeyPlaceholder') : $t('settingsPages.webSearch.emptyKeyPlaceholder')"
       />
-      <span class="key-status">{{ keyConfigured ? 'Key 已配置' : '未单独配置 Key' }}</span>
+      <span class="key-status">{{ keyConfigured ? $t('settingsPages.webSearch.keyConfigured') : $t('settingsPages.webSearch.keyNotConfigured') }}</span>
       <t-button
         v-if="keyConfigured"
         variant="text"
@@ -37,21 +37,22 @@
         :loading="clearing"
         @click="clearKey"
       >
-        清除已保存 Key
+        {{ $t('settingsPages.webSearch.clearKey') }}
       </t-button>
     </div>
 
     <p v-if="fallbackWarning" class="fallback-warning">{{ fallbackWarning }}</p>
 
     <div class="action-row">
-      <span class="current">当前搜索引擎：{{ currentProviderLabel }}</span>
-      <t-button theme="primary" :loading="saving" :disabled="saving || loading" @click="save">保存</t-button>
+      <span class="current">{{ $t('settingsPages.webSearch.currentProvider', { provider: currentProviderLabel }) }}</span>
+      <t-button theme="primary" :loading="saving" :disabled="saving || loading" @click="save">{{ $t('settingsPages.webSearch.save') }}</t-button>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import {
   getTenantWebSearchConfig,
@@ -59,10 +60,12 @@ import {
   type WebSearchConfig,
 } from '@/api/web-search'
 
-const providers = [
-  { value: 'deepseek', label: 'DeepSeek', description: '使用 DeepSeek Search API；留空 Key 时复用直连模型凭据。' },
-  { value: 'duckduckgo', label: 'DuckDuckGo', description: '无需 API Key；受网络环境影响，部分部署可能不可达。' },
-] as const
+const { t } = useI18n()
+
+const providers = computed(() => [
+  { value: 'deepseek', label: 'DeepSeek', description: t('settingsPages.webSearch.deepseekDesc') },
+  { value: 'duckduckgo', label: 'DuckDuckGo', description: t('settingsPages.webSearch.duckduckgoDesc') },
+] as const)
 
 const form = reactive({
   provider: 'deepseek',
@@ -81,16 +84,16 @@ const saving = ref(false)
 const clearing = ref(false)
 
 const currentProviderLabel = computed(
-  () => providers.find((item) => item.value === form.provider)?.label || form.provider,
+  () => providers.value.find((item) => item.value === form.provider)?.label || form.provider,
 )
 
 const fallbackWarning = computed(() => {
   if (form.provider !== 'deepseek' || keyConfigured.value) return ''
   if (!fallbackAvailable.value) {
-    return '未单独配置 DeepSeek Key，且直连模型没有可用 Key，联网搜索将无法使用。'
+    return t('settingsPages.webSearch.warningNoFallback')
   }
   if (fallbackProvider.value && fallbackProvider.value.toLowerCase() !== 'deepseek') {
-    return `当前会复用直连模型 Key，但直连模型供应商为 ${fallbackProvider.value}，可能不是 DeepSeek 凭据。`
+    return t('settingsPages.webSearch.warningProviderMismatch', { provider: fallbackProvider.value })
   }
   return ''
 })
@@ -113,7 +116,7 @@ const load = async () => {
     const response = await getTenantWebSearchConfig()
     applyConfig((response?.data || {}) as WebSearchConfig)
   } catch (e: any) {
-    MessagePlugin.error(e?.message || '读取联网搜索配置失败')
+    MessagePlugin.error(e?.message || t('settingsPages.webSearch.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -131,10 +134,10 @@ const save = async () => {
       compression_method: form.compressionMethod,
       blacklist: form.blacklist,
     })
-    MessagePlugin.success('联网搜索配置已保存')
+    MessagePlugin.success(t('settingsPages.webSearch.saved'))
     await load()
   } catch (e: any) {
-    MessagePlugin.error(e?.message || '保存联网搜索配置失败')
+    MessagePlugin.error(e?.message || t('settingsPages.webSearch.saveFailed'))
   } finally {
     saving.value = false
   }
@@ -142,9 +145,9 @@ const save = async () => {
 
 const clearKey = () => {
   const dialog = DialogPlugin.confirm({
-    header: '清除 DeepSeek Key',
-    body: '清除后将回退到直连模型 Key；如直连模型不是 DeepSeek，联网搜索可能失败。',
-    confirmBtn: { content: '清除', theme: 'danger' },
+    header: t('settingsPages.webSearch.clearTitle'),
+    body: t('settingsPages.webSearch.clearBody'),
+    confirmBtn: { content: t('settingsPages.webSearch.clearConfirm'), theme: 'danger' },
     onConfirm: async () => {
       clearing.value = true
       try {
@@ -157,11 +160,11 @@ const clearKey = () => {
           compression_method: form.compressionMethod,
           blacklist: form.blacklist,
         })
-        MessagePlugin.success('已清除保存的 Key')
+        MessagePlugin.success(t('settingsPages.webSearch.cleared'))
         dialog.hide()
         await load()
       } catch (e: any) {
-        MessagePlugin.error(e?.message || '清除 Key 失败')
+        MessagePlugin.error(e?.message || t('settingsPages.webSearch.clearFailed'))
       } finally {
         clearing.value = false
       }

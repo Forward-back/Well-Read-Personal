@@ -2,21 +2,21 @@
   <div class="about-settings">
     <section class="card">
       <h3>WellRead Personal</h3>
-      <p>个人版知识库与精读工作台。单账号、本地部署，保留知识库、问答、精读与技能。</p>
+      <p>{{ $t('settingsPages.about.intro') }}</p>
       <dl>
-        <div><dt>版本</dt><dd>{{ version }}</dd></div>
-        <div><dt>运行模式</dt><dd>个人版（单用户）</dd></div>
-        <div><dt>数据目录</dt><dd><code>data/rag/</code>（本地，不进入版本库）</dd></div>
+        <div><dt>{{ $t('settingsPages.about.version') }}</dt><dd>{{ version }}</dd></div>
+        <div><dt>{{ $t('settingsPages.about.mode') }}</dt><dd>{{ $t('settingsPages.about.modeValue') }}</dd></div>
+        <div><dt>{{ $t('settingsPages.about.storage') }}</dt><dd><code>data/rag/</code>{{ $t('settingsPages.about.storageNote') }}</dd></div>
       </dl>
     </section>
     <section class="card">
-      <h3>组成服务</h3>
+      <h3>{{ $t('settingsPages.about.services') }}</h3>
       <ul>
-        <li><strong>app</strong>：Go 后端，账号、知识库、模型与队列。</li>
-        <li><strong>frontend</strong>：Vue 3 界面。</li>
-        <li><strong>rag</strong>：检索与生成侧车。</li>
-        <li><strong>mcp</strong>：外部 MCP 只读接入。</li>
-        <li><strong>docreader</strong>：文档解析。</li>
+        <li><strong>app</strong>: {{ $t('settingsPages.about.appDesc') }}</li>
+        <li><strong>frontend</strong>: {{ $t('settingsPages.about.frontendDesc') }}</li>
+        <li><strong>rag</strong>: {{ $t('settingsPages.about.ragDesc') }}</li>
+        <li><strong>mcp</strong>: {{ $t('settingsPages.about.mcpDesc') }}</li>
+        <li><strong>docreader</strong>: {{ $t('settingsPages.about.docreaderDesc') }}</li>
       </ul>
     </section>
   </div>

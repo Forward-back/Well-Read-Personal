@@ -240,6 +240,8 @@ function onGroupChange(value: string | number | Array<string | number>) {
 <style lang="less" scoped>
 .today-view {
   min-width: 0;
+  max-width: 1120px;
+  margin: 0 auto;
 }
 
 .today-view__loading :deep(.t-loading__parent) {
@@ -265,7 +267,7 @@ function onGroupChange(value: string | number | Array<string | number>) {
 }
 
 .today-review {
-  margin-top: 24px;
+  margin-top: 32px;
 
   .rv-h2 {
     margin-top: 0;
@@ -354,9 +356,10 @@ function onGroupChange(value: string | number | Array<string | number>) {
 .today-view__grid {
   display: grid;
   grid-template-columns: minmax(0, 64%) minmax(260px, 1fr);
-  gap: 40px;
+  gap: 48px;
   align-items: start;
-  margin-top: 32px;
+  margin-top: 40px;
+  padding-right: 16px;
 }
 
 .today-view__tree {
@@ -373,7 +376,7 @@ function onGroupChange(value: string | number | Array<string | number>) {
   }
 
   .rv-h3 {
-    margin-top: 26px;
+    margin-top: 32px;
   }
 }
 
@@ -454,7 +457,8 @@ function onGroupChange(value: string | number | Array<string | number>) {
 @media (max-width: 960px) {
   .today-view__grid {
     grid-template-columns: minmax(0, 1fr);
-    gap: 24px;
+    gap: 32px;
+    padding-right: 0;
   }
 }
 

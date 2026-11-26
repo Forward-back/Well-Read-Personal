@@ -244,6 +244,32 @@ export interface ReadingRun {
   understandings?: ReadingUnderstanding[]
 }
 
+export interface ReadingHistoryDocument {
+  id: string
+  title: string
+  file_name?: string
+  knowledge_base_id?: string
+}
+
+export interface ReadingHistoryItem {
+  id: string
+  session_id: string
+  title: string
+  status: string
+  phase?: string
+  goal?: string
+  depth?: ReadingDepth
+  documents: ReadingHistoryDocument[]
+  read_sections: number
+  total_sections: number
+  created_at: string
+  updated_at: string
+}
+
+export function listReadingHistory(limit = 50) {
+  return get<{ data: ReadingHistoryItem[] }>(`/api/v1/reading/runs/history?limit=${limit}`)
+}
+
 export function createReadingRun(payload: {
   session_id: string
   document_ids: string[]

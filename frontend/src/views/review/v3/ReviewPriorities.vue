@@ -57,20 +57,20 @@ function nameOf(cell: ReviewHeatmapCell) {
         :class="`priority-item--${normalizeVulnerability(cell.level)}`"
         @click="emit('select', cell)"
       >
-        <div class="priority-item__row">
-          <ReviewLevelTag :level="cell.level" />
-          <span class="priority-item__intensity">{{ formatIntensity(cell.intensity) }}</span>
-        </div>
-        <div class="priority-item__name" :title="nameOf(cell)">{{ nameOf(cell) }}</div>
-        <div class="priority-item__row">
+        <div class="priority-item__main">
+          <div class="priority-item__row">
+            <ReviewLevelTag :level="cell.level" />
+            <span class="priority-item__intensity">{{ formatIntensity(cell.intensity) }}</span>
+          </div>
+          <div class="priority-item__name" :title="nameOf(cell)">{{ nameOf(cell) }}</div>
           <span class="priority-item__meta">
             {{ t('review.v3.prioritySummary', { severe: cell.severe, warning: cell.warning }) }}
           </span>
-          <span class="priority-item__action">
-            {{ t('review.v3.goReinforce') }}
-            <ReviewIcon name="arrow-right" :size="12" />
-          </span>
         </div>
+        <span class="priority-item__action">
+          {{ t('review.v3.goReinforce') }}
+          <ReviewIcon name="arrow-right" :size="12" />
+        </span>
       </button>
     </div>
 
@@ -88,7 +88,7 @@ function nameOf(cell: ReviewHeatmapCell) {
 <style lang="less" scoped>
 .priorities {
   min-width: 0;
-  margin-top: 4px;
+  margin-top: 8px;
 }
 
 .priorities .rv-h2 {
@@ -98,15 +98,16 @@ function nameOf(cell: ReviewHeatmapCell) {
 .priorities__list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
+  gap: 12px;
 }
 
 .priority-item {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
+  align-items: center;
+  gap: 24px;
   width: 100%;
-  padding: 12px 14px;
+  padding: 16px 24px;
   font-family: inherit;
   text-align: left;
   cursor: pointer;
@@ -151,11 +152,18 @@ function nameOf(cell: ReviewHeatmapCell) {
   border-color: var(--rvn-line);
 }
 
+.priority-item__main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
 .priority-item__row {
   display: flex;
   gap: 8px;
   align-items: center;
-  justify-content: space-between;
   min-width: 0;
 }
 
@@ -183,10 +191,12 @@ function nameOf(cell: ReviewHeatmapCell) {
 
 .priority-item__action {
   display: inline-flex;
-  gap: 2px;
+  flex: none;
+  gap: 4px;
   align-items: center;
   font-size: 14px;
   color: var(--rvn-brand-deep);
+  white-space: nowrap;
 }
 
 .priorities__empty {
@@ -208,7 +218,7 @@ function nameOf(cell: ReviewHeatmapCell) {
 }
 
 .priorities__observe {
-  margin: 10px 0 0;
+  margin: 8px 0 0;
   font-size: 14px;
   color: var(--rvn-muted);
 }

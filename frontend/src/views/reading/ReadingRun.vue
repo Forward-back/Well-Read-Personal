@@ -17,6 +17,9 @@
           {{ $t('reading.viewConfig') }}
         </button>
       </nav>
+      <button type="button" class="rv-action-btn rv-history-btn" @click="historyOpen = true">
+        {{ $t('reading.history') }}
+      </button>
       <div class="rv-topbar__spacer" />
       <div v-if="run && !showConfigView" class="rv-progress">
         <span class="rv-progress__bar"><i :style="{ width: readPercent + '%' }" /></span>
@@ -771,6 +774,8 @@
       </aside>
     </div>
 
+    <ReadingHistoryDrawer v-model:visible="historyOpen" @open="openHistoryRun" />
+
     <t-dialog v-model:visible="addDocDialogVisible" :header="$t('reading.addDocuments')" width="560px" :footer="false">
       <div class="reading-add-dialog">
         <input v-model="addDocSearch" class="rv-field" :placeholder="$t('reading.searchAddDocs')" />
@@ -867,6 +872,7 @@ import {
   type ReadingDocument,
   type ReadingDraft as ApiReadingDraft,
   type ReadingEvidence,
+  type ReadingHistoryItem,
   type ReadingQuestionNode,
   type ReadingRun,
   type ReadingRunStep,
@@ -875,6 +881,7 @@ import {
 } from '@/api/reading'
 import { listReviewGroups, type ReviewGroupNode } from '@/api/review'
 import ReadingThoughtChain from '@/components/ReadingThoughtChain.vue'
+import ReadingHistoryDrawer from './ReadingHistoryDrawer.vue'
 import DocumentPreview from '@/components/document-preview.vue'
 import { useShellUiStore } from '@/stores/shellUi'
 import { hydrateProtectedFileImages } from '@/utils/security'
@@ -988,6 +995,7 @@ const leftWidth = ref(loadStoredLeftWidth())
 const rightWidth = ref(loadStoredRightWidth())
 const storageKey = 'gaze_active_reading_run_id'
 const configView = ref(false)
+const historyOpen = ref(false)
 const mobileLeftOpen = ref(false)
 const mobileRightOpen = ref(false)
 const previewSectionId = ref('')
@@ -2882,6 +2890,30 @@ function switchView(view: 'workbench' | 'config') {
   mobileRightOpen.value = false
   if (view === 'workbench') previewSectionId.value = ''
   syncViewQuery(view === 'config')
+}
+
+
+const openHistoryRun = async (item: ReadingHistoryItem) => {
+  try {
+    const response = await getReadingRun(item.id)
+    run.value = response.data
+    configView.value = false
+    previewSectionId.value = ''
+    feedback.value = ''
+    selectedTraceRound.value = 0
+    localStorage.setItem(storageKey, response.data.id)
+    const query: Record<string, string> = {}
+    for (const [key, value] of Object.entries(route.query)) {
+      if (typeof value === 'string' && value) query[key] = value
+    }
+    delete query.view
+    query.run_id = response.data.id
+    await router.replace({ path: route.path, query })
+    void loadReadingDocuments()
+    historyOpen.value = false
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('reading.historyOpenFailed'))
+  }
 }
 
 const workbenchVisible = computed(() => Boolean(run.value) && !showConfigView.value)

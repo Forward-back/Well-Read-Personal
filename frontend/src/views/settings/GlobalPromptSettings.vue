@@ -2,12 +2,12 @@
   <section class="block">
     <header class="block__header">
       <div>
-        <h3>全局系统提示词</h3>
-        <p>作用于问答与精读助手的全局指令。技能可在其范围内补充风格与任务要求，但不能覆盖引用与不编造规则。</p>
+        <h3>{{ $t('settingsPages.globalPrompt.title') }}</h3>
+        <p>{{ $t('settingsPages.globalPrompt.desc') }}</p>
       </div>
       <div class="actions">
-        <t-button variant="outline" theme="default" :loading="loading" @click="handleReset">恢复默认</t-button>
-        <t-button theme="primary" :loading="saving" :disabled="loading" @click="handleSave">保存</t-button>
+        <t-button variant="outline" theme="default" :loading="loading" @click="handleReset">{{ $t('settingsPages.globalPrompt.reset') }}</t-button>
+        <t-button theme="primary" :loading="saving" :disabled="loading" @click="handleSave">{{ $t('settingsPages.globalPrompt.save') }}</t-button>
       </div>
     </header>
 
@@ -16,11 +16,11 @@
         v-model="prompt"
         class="prompt-editor"
         :autosize="{ minRows: 10, maxRows: 24 }"
-        placeholder="加载内置提示词中…"
+        :placeholder="$t('settingsPages.globalPrompt.loadingPlaceholder')"
       />
       <p class="hint">
-        留空即使用内置提示词；保存后对新会话与后续问答生效。
-        <span v-if="isCustom" class="custom-badge">当前为自定义提示词</span>
+        {{ $t('settingsPages.globalPrompt.hint') }}
+        <span v-if="isCustom" class="custom-badge">{{ $t('settingsPages.globalPrompt.customBadge') }}</span>
       </p>
     </t-loading>
   </section>
@@ -28,9 +28,11 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import { getPromptTemplates, saveAgentSystemPrompt, type PromptTemplate } from '@/api/settings'
 
+const { t } = useI18n()
 const loading = ref(false)
 const saving = ref(false)
 const prompt = ref('')
@@ -49,7 +51,7 @@ async function load() {
     prompt.value = displayContent(templates)
     isCustom.value = templates?.length === 1 && templates[0]?.id === 'personal_global_override'
   } catch (error: any) {
-    MessagePlugin.error(error?.message || '加载提示词失败')
+    MessagePlugin.error(error?.message || t('settingsPages.globalPrompt.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -65,9 +67,9 @@ async function persist(value: string) {
     } else {
       prompt.value = response?.data?.agent_system_prompt || value
     }
-    MessagePlugin.success(value.trim() ? '提示词已保存' : '已恢复默认提示词')
+    MessagePlugin.success(value.trim() ? t('settingsPages.globalPrompt.saved') : t('settingsPages.globalPrompt.defaultRestored'))
   } catch (error: any) {
-    MessagePlugin.error(error?.message || '保存提示词失败')
+    MessagePlugin.error(error?.message || t('settingsPages.globalPrompt.saveFailed'))
   } finally {
     saving.value = false
   }
@@ -79,8 +81,8 @@ function handleSave() {
 
 function handleReset() {
   const dialog = DialogPlugin.confirm({
-    header: '恢复默认提示词',
-    body: '将丢弃当前自定义内容并恢复内置提示词，是否继续？',
+    header: t('settingsPages.globalPrompt.resetTitle'),
+    body: t('settingsPages.globalPrompt.resetBody'),
     onConfirm: async () => {
       dialog.destroy()
       await persist('')

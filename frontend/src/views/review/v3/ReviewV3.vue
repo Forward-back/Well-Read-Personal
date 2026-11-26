@@ -26,6 +26,7 @@ import ReviewGenerateDialog from './ReviewGenerateDialog.vue'
 import ReviewMode from './ReviewMode.vue'
 import ReviewTodayView from './ReviewTodayView.vue'
 import ReviewIcon from './ReviewIcon.vue'
+import PageTopbar from '@/components/layout/PageTopbar.vue'
 import type { ReviewFlatGroup } from './types'
 import './vulnerability.css'
 import './review-ui.css'
@@ -484,11 +485,11 @@ onMounted(() => {
 <template>
   <div ref="pageRoot" class="review-v3 rv-vuln-scope">
     <div class="review-v3__inner">
-      <header v-if="!generateVisible && !reviewVisible && !cardsDetail" class="rv-page-head">
-        <div class="rv-page-head__main">
-          <h1>{{ viewMeta.label }}</h1>
-        </div>
-        <div class="rv-page-head__actions">
+      <PageTopbar
+        v-if="!generateVisible && !reviewVisible && !cardsDetail"
+        :title="viewMeta.label"
+      >
+        <template #nav>
           <nav class="review-v3__nav">
             <button
               v-for="view in [
@@ -505,14 +506,16 @@ onMounted(() => {
               {{ view.label }}
             </button>
           </nav>
+        </template>
+        <template #actions>
           <t-dropdown :options="moreOptions" placement="bottom-right" @click="onMoreAction">
             <button type="button" class="rv-btn rv-btn--ghost rv-btn--sm" data-testid="review-v3-more">
               {{ t('review.v3.moreActions') }}
               <ReviewIcon name="chevron-down" :size="12" />
             </button>
           </t-dropdown>
-        </div>
-      </header>
+        </template>
+      </PageTopbar>
 
       <ReviewGenerateDialog
         v-if="generateVisible"
@@ -638,6 +641,10 @@ onMounted(() => {
 }
 
 .review-v3 {
+  --page-topbar-bg: var(--rvn-paper);
+  --page-topbar-line: var(--rvn-line);
+  --page-topbar-title: var(--rvn-ink);
+  --page-topbar-meta: var(--rvn-muted);
   position: relative;
   height: 100%;
   overflow-y: auto;
@@ -740,6 +747,11 @@ onMounted(() => {
   --td-bg-color-container-hover: #33302a;
   --td-bg-color-container-active: #3b3731;
 }
+
+.review-v3__inner > .page-topbar { margin: -24px 0 24px; }
+.review-v3__inner > .page-topbar :deep(.page-topbar__title) { font-size: 16px; line-height: 24px; }
+
+.review-v3__inner > .page-topbar .review-v3__nav { gap: 16px; margin-right: 0; }
 
 .review-v3__inner {
   width: 100%;
