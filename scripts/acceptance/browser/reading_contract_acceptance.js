@@ -58,7 +58,7 @@ const env = readEnv()
 
 function sql(query) {
   return execSync(
-    `docker exec Gaze-postgres psql -U root -d WellRead -tAc ${JSON.stringify(query)}`,
+    `docker exec WellRead-Postgres psql -U root -d WellRead -tAc ${JSON.stringify(query)}`,
     { encoding: 'utf8' },
   ).trim()
 }

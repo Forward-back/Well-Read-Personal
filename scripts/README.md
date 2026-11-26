@@ -2,7 +2,7 @@
 
 只放跨 app / frontend / rag 的构建与运维脚本。
 
-- `build_images.sh`：构建 gaze-app / gaze-docreader / gaze-ui 镜像。
+- `build_images.sh`：构建 wellread-app / wellread-docreader / wellread-frontend 镜像。
 - `package-lite.sh`：构建并打包 Lite 发行包。
 - `check-env.sh`：检查 `deployments/.env` 与本机依赖。
 - `ingest_data.py`：把本地语料批量导入 app 并触发 RAG reload；默认读取仓库内 `data/rag/Data`（gitignore）。

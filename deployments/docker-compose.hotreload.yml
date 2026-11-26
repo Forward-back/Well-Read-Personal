@@ -13,7 +13,7 @@
 # - go 构建缓存走 named volume,重编译秒级完成
 services:
   app:
-    image: gaze-app-dev:latest
+    image: wellread-app-dev:latest
     build:
       context: ../app
       dockerfile: docker/Dockerfile.app

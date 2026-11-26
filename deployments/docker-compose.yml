@@ -6,14 +6,14 @@
 name: app
 services:
   frontend:
-    image: gaze-ui:${GAZE_VERSION:-latest}
+    image: wellread-frontend:${GAZE_VERSION:-latest}
     build:
       context: ../frontend
       args:
         VITE_FRONTEND_COMMIT: ${VITE_FRONTEND_COMMIT:-unknown}
         NPM_REGISTRY: ${NPM_REGISTRY:-}
         NODE_MAX_OLD_SPACE_SIZE: ${NODE_MAX_OLD_SPACE_SIZE:-4096}
-    container_name: Gaze-frontend
+    container_name: WellRead-Frontend
     ports:
       - "${FRONTEND_PORT:-6151}:80"
     environment:
@@ -26,11 +26,11 @@ services:
       app:
         condition: service_healthy
     networks:
-      - Gaze-network
+      - WellRead-network
     restart: unless-stopped
 
   app:
-    image: gaze-app:${GAZE_VERSION:-latest}
+    image: wellread-app:${GAZE_VERSION:-latest}
     build:
       context: ../app
       dockerfile: docker/Dockerfile.app
@@ -40,7 +40,7 @@ services:
         - GOPROXY_ARG=${GOPROXY_ARG:-https://goproxy.cn,direct}
         - RUSTUP_DIST_SERVER_ARG=${RUSTUP_DIST_SERVER:-}
         - RUSTUP_UPDATE_ROOT_ARG=${RUSTUP_UPDATE_ROOT:-}
-    container_name: Gaze-app
+    container_name: WellRead-App
     ports:
       - "${APP_PORT:-6152}:8080"
     volumes:
@@ -149,19 +149,19 @@ services:
       ylsw:
         condition: service_healthy
     networks:
-      - Gaze-network
+      - WellRead-network
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
   docreader:
-    image: gaze-docreader:${GAZE_VERSION:-latest}
+    image: wellread-docreader:${GAZE_VERSION:-latest}
     build:
       context: ../app
       dockerfile: docker/Dockerfile.docreader
       args:
         - APT_MIRROR=${APT_MIRROR:-}
-    container_name: Gaze-docreader
+    container_name: WellRead-Docreader
     expose:
       - "50051"
     volumes:
@@ -225,7 +225,7 @@ services:
       retries: 3
       start_period: 60s
     networks:
-      - Gaze-network
+      - WellRead-network
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -238,8 +238,8 @@ services:
       args:
         # 国内网络走镜像代理前缀(与 YLSW 自家 compose 一致)
         BASE_IMAGE: ${YLSW_BASE_IMAGE:-docker.1ms.run/library/python:3.12-slim}
-    image: gaze-ylsw:${GAZE_VERSION:-latest}
-    container_name: Gaze-ylsw
+    image: wellread-gaze:${GAZE_VERSION:-latest}
+    container_name: WellRead-Gaze
     expose:
       - "5000"
     environment:
@@ -281,14 +281,14 @@ services:
       retries: 3
       start_period: 30s
     networks:
-      - Gaze-network
+      - WellRead-network
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
   postgres:
     image: paradedb/paradedb:v0.22.2-pg17
-    container_name: Gaze-postgres
+    container_name: WellRead-Postgres
     environment:
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
@@ -296,7 +296,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks:
-      - Gaze-network
+      - WellRead-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
@@ -308,14 +308,14 @@ services:
 
   redis:
     image: redis:7.0-alpine
-    container_name: Gaze-redis
+    container_name: WellRead-Redis
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     restart: always
     networks:
-      - Gaze-network
+      - WellRead-network
 
 networks:
-  Gaze-network:
+  WellRead-network:
     driver: bridge
 
 volumes:

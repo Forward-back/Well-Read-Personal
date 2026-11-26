@@ -116,7 +116,7 @@ async function api(page, method, url) {
 }
 
 function psql(sql) {
-  const res = spawnSync('docker', ['exec', 'Gaze-postgres', 'psql', '-U', 'root', '-d', 'WellRead', '-t', '-A', '-c', sql], { encoding: 'utf8' })
+  const res = spawnSync('docker', ['exec', 'WellRead-Postgres', 'psql', '-U', 'root', '-d', 'WellRead', '-t', '-A', '-c', sql], { encoding: 'utf8' })
   if (res.status !== 0) throw new Error((res.stderr || res.stdout || 'psql failed').trim())
   return (res.stdout || '').trim()
 }

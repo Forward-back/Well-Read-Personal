@@ -17,6 +17,7 @@ export DOCKER_BUILDKIT=1
 
 # 版本信息
 VERSION="1.0.0"
+IMAGE_TAG="${GAZE_VERSION:-latest}"
 SCRIPT_NAME=$(basename "$0")
 
 # 显示帮助信息
@@ -128,7 +129,7 @@ get_version_info() {
 
 # 构建应用镜像
 build_app_image() {
-    log_info "构建应用镜像 (gaze-app)..."
+    log_info "构建应用镜像 (wellread-app)..."
 
     cd "$PROJECT_ROOT/app"
     
@@ -146,7 +147,7 @@ build_app_image() {
         --build-arg GO_VERSION_ARG="$GO_VERSION" \
         --build-arg WITH_ANYDOC=${WITH_ANYDOC:-1} \
         -f docker/Dockerfile.app \
-        -t gaze-app:latest \
+        -t wellread-app:${IMAGE_TAG} \
         .
     
     if [ $? -eq 0 ]; then
@@ -160,7 +161,7 @@ build_app_image() {
 
 # 构建文档读取器镜像
 build_docreader_image() {
-    log_info "构建文档读取器镜像 (gaze-docreader)..."
+    log_info "构建文档读取器镜像 (wellread-docreader)..."
 
     cd "$PROJECT_ROOT/app"
     
@@ -170,7 +171,7 @@ build_docreader_image() {
         --build-arg TARGETARCH=$TARGETARCH \
         --build-arg APT_MIRROR=${APT_MIRROR:-} \
         -f docker/Dockerfile.docreader \
-        -t gaze-docreader:latest \
+        -t wellread-docreader:${IMAGE_TAG} \
         .
     
     if [ $? -eq 0 ]; then
@@ -184,7 +185,7 @@ build_docreader_image() {
 
 # 构建前端镜像（多阶段：npm 在 builder 内执行，无需宿主机预构建 dist）
 build_frontend_image() {
-    log_info "构建前端镜像 (gaze-ui)..."
+    log_info "构建前端镜像 (wellread-frontend)..."
     
     cd "$PROJECT_ROOT"
     
@@ -197,7 +198,7 @@ build_frontend_image() {
         ${NPM_REGISTRY:+--build-arg NPM_REGISTRY="$NPM_REGISTRY"} \
         ${NODE_MAX_OLD_SPACE_SIZE:+--build-arg NODE_MAX_OLD_SPACE_SIZE="$NODE_MAX_OLD_SPACE_SIZE"} \
         -f frontend/Dockerfile \
-        -t gaze-ui:latest \
+        -t wellread-frontend:${IMAGE_TAG} \
         frontend/
     
     if [ $? -eq 0 ]; then
@@ -265,21 +266,21 @@ clean_images() {
     
     # 停止相关容器
     log_info "停止相关容器..."
-    docker stop $(docker ps -q --filter "ancestor=gaze-app:latest" 2>/dev/null) 2>/dev/null || true
-    docker stop $(docker ps -q --filter "ancestor=gaze-docreader:latest" 2>/dev/null) 2>/dev/null || true
-    docker stop $(docker ps -q --filter "ancestor=gaze-ui:latest" 2>/dev/null) 2>/dev/null || true
+    docker stop $(docker ps -q --filter "ancestor=wellread-app:${IMAGE_TAG}" 2>/dev/null) 2>/dev/null || true
+    docker stop $(docker ps -q --filter "ancestor=wellread-docreader:${IMAGE_TAG}" 2>/dev/null) 2>/dev/null || true
+    docker stop $(docker ps -q --filter "ancestor=wellread-frontend:${IMAGE_TAG}" 2>/dev/null) 2>/dev/null || true
     
     # 删除相关容器
     log_info "删除相关容器..."
-    docker rm $(docker ps -aq --filter "ancestor=gaze-app:latest" 2>/dev/null) 2>/dev/null || true
-    docker rm $(docker ps -aq --filter "ancestor=gaze-docreader:latest" 2>/dev/null) 2>/dev/null || true
-    docker rm $(docker ps -aq --filter "ancestor=gaze-ui:latest" 2>/dev/null) 2>/dev/null || true
+    docker rm $(docker ps -aq --filter "ancestor=wellread-app:${IMAGE_TAG}" 2>/dev/null) 2>/dev/null || true
+    docker rm $(docker ps -aq --filter "ancestor=wellread-docreader:${IMAGE_TAG}" 2>/dev/null) 2>/dev/null || true
+    docker rm $(docker ps -aq --filter "ancestor=wellread-frontend:${IMAGE_TAG}" 2>/dev/null) 2>/dev/null || true
     
     # 删除镜像
     log_info "删除本地镜像..."
-    docker rmi gaze-app:latest 2>/dev/null || true
-    docker rmi gaze-docreader:latest 2>/dev/null || true
-    docker rmi gaze-ui:latest 2>/dev/null || true
+    docker rmi wellread-app:${IMAGE_TAG} 2>/dev/null || true
+    docker rmi wellread-docreader:${IMAGE_TAG} 2>/dev/null || true
+    docker rmi wellread-frontend:${IMAGE_TAG} 2>/dev/null || true
     
     docker image prune -f
     

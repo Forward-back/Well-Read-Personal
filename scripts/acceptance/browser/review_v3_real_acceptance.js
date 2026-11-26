@@ -52,7 +52,7 @@ const env = readEnv()
 function psql(sql) {
   const res = spawnSync(
     'docker',
-    ['exec', 'Gaze-postgres', 'psql', '-U', env.DB_USER || 'root', '-d', env.DB_NAME || 'WellRead', '-t', '-A', '-c', sql],
+    ['exec', 'WellRead-Postgres', 'psql', '-U', env.DB_USER || 'root', '-d', env.DB_NAME || 'WellRead', '-t', '-A', '-c', sql],
     { encoding: 'utf8' },
   )
   if (res.status !== 0) throw new Error((res.stderr || res.stdout || 'psql failed').trim())

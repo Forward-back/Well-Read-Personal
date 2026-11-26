@@ -8,7 +8,7 @@
 #
 #   docker build --platform linux/amd64 \
 #     --build-arg VITE_FRONTEND_COMMIT=$(git rev-parse --short HEAD) \
-#     -t gaze-ui:latest \
+#     -t wellread-frontend:latest \
 #     frontend/
 #
 # Optional npm mirror (e.g. corporate registry):

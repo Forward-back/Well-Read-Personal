@@ -6,11 +6,11 @@
 
 ```mermaid
 flowchart LR
-    FE[Gaze-frontend<br/>:6151] --> APP[Gaze-app<br/>:6152]
-    APP --> PG[(Gaze-postgres<br/>PostgreSQL)]
-    APP --> RD[(Gaze-redis)]
-    APP --> DR[Gaze-docreader<br/>:50051 内部]
-    APP --> YL[Gaze-ylsw<br/>:5000 内网]
+    FE[WellRead-Frontend<br/>:6151] --> APP[WellRead-App<br/>:6152]
+    APP --> PG[(WellRead-Postgres<br/>PostgreSQL)]
+    APP --> RD[(WellRead-Redis)]
+    APP --> DR[WellRead-Docreader<br/>:50051 内部]
+    APP --> YL[WellRead-Gaze<br/>:5000 内网]
     YL --> MYSQL[(外部 MySQL<br/>YLSW_Service_Table)]
     YL --> EXT[(data/rag<br/>models/index)]
     APP --> FILES[(data-files volume)]
@@ -19,10 +19,10 @@ flowchart LR
 
 | 服务 | 镜像 | 端口 | 依赖 | 持久化 |
 |---|---|---|---|---|
-| frontend | `gaze-ui:<GAZE_VERSION>` | `${FRONTEND_PORT:-6151}:80` | app healthy | 无 |
-| app | `gaze-app:<GAZE_VERSION>` | `${APP_PORT:-6152}:8080` | postgres/docreader/ylsw healthy，redis started | `data-files`、`docreader-tmp:ro` |
-| docreader | `gaze-docreader:<GAZE_VERSION>` | 内部 `50051` | 无 | `docreader-tmp` |
-| ylsw | `gaze-ylsw:<GAZE_VERSION>` | `expose 5000`（仅 Docker 内网） | 无 | 绑定 `data/rag` |
+| frontend | `wellread-frontend:<GAZE_VERSION>` | `${FRONTEND_PORT:-6151}:80` | app healthy | 无 |
+| app | `wellread-app:<GAZE_VERSION>` | `${APP_PORT:-6152}:8080` | postgres/docreader/ylsw healthy，redis started | `data-files`、`docreader-tmp:ro` |
+| docreader | `wellread-docreader:<GAZE_VERSION>` | 内部 `50051` | 无 | `docreader-tmp` |
+| ylsw | `wellread-gaze:<GAZE_VERSION>` | `expose 5000`（仅 Docker 内网） | 无 | 绑定 `data/rag` |
 | postgres | `paradedb/paradedb:v0.22.2-pg17` | 内部 `5432` | 无 | `postgres-data` |
 | redis | `redis:7.0-alpine` | 内部 `6379` | 无 | AOF 容器内 |
 
@@ -178,7 +178,7 @@ docker compose -f deployments/docker-compose.yml \
   -f deployments/docker-compose.hotreload.yml logs -f app
 ```
 
-overlay 会把 `../app` 挂到 `/app`，使用 `gaze-app-dev:latest` + air；首次构建较慢，后续 Go 编译走 named volume 缓存。
+overlay 会把 `../app` 挂到 `/app`，使用 `wellread-app-dev:latest` + air；首次构建较慢，后续 Go 编译走 named volume 缓存。
 
 切回正式镜像：
 
@@ -247,7 +247,7 @@ app 启动会按 `AUTO_MIGRATE` 执行迁移；迁移前先备份 PostgreSQL。
 | 前端 502 | app 是否 healthy；`APP_HOST/APP_PORT` 是否正确；`docker compose logs app` |
 | app unhealthy | DB/Redis 连接；迁移失败；`/health` 日志 |
 | ylsw 403 | `YLSW_ENGINE_TOKEN` 在 app/ylsw 两侧不一致 |
-| ylsw unhealthy | RAG 本地数据目录权限；MySQL 连通；FAISS 索引；`docker logs Gaze-ylsw` |
+| ylsw unhealthy | RAG 本地数据目录权限；MySQL 连通；FAISS 索引；`docker logs WellRead-Gaze` |
 | postgres 启动失败 | 旧数据卷版本/密码不匹配；不要直接删卷，先备份 |
 | 端口被占用 | 改 `FRONTEND_PORT`/`APP_PORT`，或清理旧容器；ylsw 不占宿主端口 |
 | 上传大文件失败 | `MAX_FILE_SIZE_MB`、nginx `client_max_body_size`、后端限制 |
