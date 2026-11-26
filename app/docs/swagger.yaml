@@ -2942,10 +2942,21 @@ definitions:
         - $ref: '#/definitions/gaze_internal_types.ParserEngineConfig'
         description: Parser engine config overrides (MinerU endpoint, API key, etc.).
           Used when parsing documents; overrides env.
+      reading_extraction_model_id:
+        description: |-
+          ReadingExtractionModelID handles structure pre-reading and per-chapter
+          extraction. Empty falls back to ReadingModelID; thinking is optional.
+        type: string
       reading_model_id:
         description: |-
           ReadingModelID is the workspace default model for interactive document
           reading. Reading never uses the normal RAG/generation model.
+        type: string
+      reading_synthesis_model_id:
+        description: |-
+          ReadingSynthesisModelID handles synthesis, answer judgment, contradiction
+          adjudication, and self-test generation. Empty falls back to
+          ReadingModelID; it must support thinking.
         type: string
       retrieval_config:
         allOf:
@@ -8597,6 +8608,1022 @@ paths:
       summary: 获取模型厂商列表
       tags:
       - 模型管理
+  /reading/drafts:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 列出精读草稿
+      tags:
+      - 精读
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 创建精读草稿
+      tags:
+      - 精读
+  /reading/drafts/{draftId}:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: draftId
+        in: path
+        name: draftId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 删除精读草稿
+      tags:
+      - 精读
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: draftId
+        in: path
+        name: draftId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 更新精读草稿
+      tags:
+      - 精读
+  /reading/runs:
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 创建精读运行
+      tags:
+      - 精读
+  /reading/runs/{id}:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 获取精读运行
+      tags:
+      - 精读
+  /reading/runs/{id}/abandon:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 终止精读
+      tags:
+      - 精读
+  /reading/runs/{id}/add-documents:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 添加精读文档
+      tags:
+      - 精读
+  /reading/runs/{id}/conclusions/{conclusionId}:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: conclusionId
+        in: path
+        name: conclusionId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 更新精读结论
+      tags:
+      - 精读
+  /reading/runs/{id}/contradictions/{contradictionId}/resolve:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: contradictionId
+        in: path
+        name: contradictionId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 处理精读矛盾
+      tags:
+      - 精读
+  /reading/runs/{id}/documents:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 获取精读文档
+      tags:
+      - 精读
+  /reading/runs/{id}/export:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 导出精读
+      tags:
+      - 精读
+  /reading/runs/{id}/feedback:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 提交精读回答
+      tags:
+      - 精读
+  /reading/runs/{id}/jump:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 跳转精读章节
+      tags:
+      - 精读
+  /reading/runs/{id}/questions/{questionId}/judge:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: questionId
+        in: path
+        name: questionId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 判定精读问题
+      tags:
+      - 精读
+  /reading/runs/{id}/report:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 删除精读报告
+      tags:
+      - 精读
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 获取精读报告
+      tags:
+      - 精读
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 保存精读报告
+      tags:
+      - 精读
+  /reading/runs/{id}/resume:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 继续精读
+      tags:
+      - 精读
+  /reading/runs/{id}/self-tests:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 获取精读自测题
+      tags:
+      - 精读
+  /reading/runs/{id}/self-tests/import:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 导入精读自测题
+      tags:
+      - 精读
+  /reading/runs/{id}/step:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 推进精读步骤
+      tags:
+      - 精读
+  /reading/runs/{id}/stop:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 暂停精读
+      tags:
+      - 精读
+  /reading/runs/{id}/terms/{termId}:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: termId
+        in: path
+        name: termId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 更新精读术语
+      tags:
+      - 精读
+  /reading/runs/{id}/understanding:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 更新理解确认
+      tags:
+      - 精读
+  /reading/runs/active:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 获取进行中的精读运行
+      tags:
+      - 精读
+  /reading/runs/history:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 获取精读历史
+      tags:
+      - 精读
+  /review/cards:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 列出复习卡片
+      tags:
+      - 复习
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 创建复习卡片
+      tags:
+      - 复习
+  /review/cards/{id}:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 删除复习卡片
+      tags:
+      - 复习
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 获取复习卡片
+      tags:
+      - 复习
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 更新复习卡片
+      tags:
+      - 复习
+  /review/cards/{id}/angles/preview:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 预览卡片新角度
+      tags:
+      - 复习
+  /review/cards/{id}/move:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 移动复习卡片
+      tags:
+      - 复习
+  /review/cards/{id}/performance:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 获取卡片表现
+      tags:
+      - 复习
+  /review/cards/{id}/reset:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 重置卡片调度
+      tags:
+      - 复习
+  /review/cards/{id}/restore:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 恢复复习卡片
+      tags:
+      - 复习
+  /review/cards/{id}/sources/{source_id}:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: source_id
+        in: path
+        name: source_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 重绑复习来源
+      tags:
+      - 复习
+  /review/cards/{id}/sources/{source_id}/unavailable:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: source_id
+        in: path
+        name: source_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 标记复习来源不可用
+      tags:
+      - 复习
+  /review/cards/{id}/split/apply:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 应用拆分卡片
+      tags:
+      - 复习
+  /review/cards/{id}/split/preview:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 预览拆分卡片
+      tags:
+      - 复习
+  /review/cards/{id}/status:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 设置卡片暂停状态
+      tags:
+      - 复习
+  /review/cards/batch:
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 批量操作复习卡片
+      tags:
+      - 复习
+  /review/cards/merge:
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 合并复习卡片
+      tags:
+      - 复习
+  /review/clusters/detail:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 获取漏洞簇详情
+      tags:
+      - 复习
+  /review/clusters/root-cause:
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 分析漏洞根因
+      tags:
+      - 复习
+  /review/export:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 导出复习数据
+      tags:
+      - 复习
+  /review/generations/import:
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 导入生成的复习卡片
+      tags:
+      - 复习
+  /review/generations/preview:
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 预览生成复习卡片
+      tags:
+      - 复习
+  /review/groups:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 列出复习卡组
+      tags:
+      - 复习
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 创建复习卡组
+      tags:
+      - 复习
+  /review/groups/{id}:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 删除复习卡组
+      tags:
+      - 复习
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 更新复习卡组
+      tags:
+      - 复习
+  /review/groups/{id}/move:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 移动复习卡组
+      tags:
+      - 复习
+  /review/heatmap:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 获取漏洞热力图
+      tags:
+      - 复习
+  /review/queue:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 获取今日复习队列
+      tags:
+      - 复习
+  /review/reviews:
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 提交复习评分
+      tags:
+      - 复习
+  /review/sessions:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 列出复习会话
+      tags:
+      - 复习
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 开始复习会话
+      tags:
+      - 复习
+  /review/sessions/{id}:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 获取复习会话
+      tags:
+      - 复习
+  /review/sessions/{id}/abandon:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 放弃复习会话
+      tags:
+      - 复习
+  /review/sessions/active:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 获取进行中的复习会话
+      tags:
+      - 复习
+  /review/stats:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 获取复习统计
+      tags:
+      - 复习
   /sessions:
     get:
       consumes:

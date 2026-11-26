@@ -20,6 +20,13 @@ func NewReadingHandler(service interfaces.ReadingRunService) *ReadingHandler {
 	return &ReadingHandler{service: service}
 }
 
+// Create godoc
+// @Summary      创建精读运行
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Security     Bearer
+// @Router       /reading/runs [post]
 func (h *ReadingHandler) Create(c *gin.Context) {
 	var req types.CreateReadingRunRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -34,6 +41,14 @@ func (h *ReadingHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"success": true, "data": run})
 }
 
+// Get godoc
+// @Summary      获取精读运行
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id} [get]
 func (h *ReadingHandler) Get(c *gin.Context) {
 	run, err := h.service.Get(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -43,6 +58,13 @@ func (h *ReadingHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
 }
 
+// GetActive godoc
+// @Summary      获取进行中的精读运行
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Security     Bearer
+// @Router       /reading/runs/active [get]
 func (h *ReadingHandler) GetActive(c *gin.Context) {
 	run, err := h.service.GetActive(c.Request.Context(), c.Query("session_id"))
 	if err != nil {
@@ -52,6 +74,14 @@ func (h *ReadingHandler) GetActive(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
 }
 
+// Step godoc
+// @Summary      推进精读步骤
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/step [post]
 func (h *ReadingHandler) Step(c *gin.Context) {
 	run, err := h.service.Step(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -61,6 +91,14 @@ func (h *ReadingHandler) Step(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
 }
 
+// Feedback godoc
+// @Summary      提交精读回答
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/feedback [post]
 func (h *ReadingHandler) Feedback(c *gin.Context) {
 	var req types.ReadingFeedbackRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -75,6 +113,15 @@ func (h *ReadingHandler) Feedback(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
 }
 
+// JudgeQuestion godoc
+// @Summary      判定精读问题
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Param        questionId  path  string  true  "questionId"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/questions/{questionId}/judge [post]
 func (h *ReadingHandler) JudgeQuestion(c *gin.Context) {
 	run, err := h.service.JudgeQuestion(c.Request.Context(), c.Param("id"), c.Param("questionId"))
 	if err != nil {
@@ -84,6 +131,15 @@ func (h *ReadingHandler) JudgeQuestion(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
 }
 
+// ResolveContradiction godoc
+// @Summary      处理精读矛盾
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Param        contradictionId  path  string  true  "contradictionId"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/contradictions/{contradictionId}/resolve [post]
 func (h *ReadingHandler) ResolveContradiction(c *gin.Context) {
 	var req types.ReadingContradictionResolutionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -100,6 +156,14 @@ func (h *ReadingHandler) ResolveContradiction(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
 }
 
+// GetReport godoc
+// @Summary      获取精读报告
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/report [get]
 func (h *ReadingHandler) GetReport(c *gin.Context) {
 	report, err := h.service.GetReport(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -109,6 +173,14 @@ func (h *ReadingHandler) GetReport(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": report})
 }
 
+// GetDocuments godoc
+// @Summary      获取精读文档
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/documents [get]
 func (h *ReadingHandler) GetDocuments(c *gin.Context) {
 	documents, err := h.service.GetDocuments(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -118,6 +190,14 @@ func (h *ReadingHandler) GetDocuments(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": documents})
 }
 
+// SaveReport godoc
+// @Summary      保存精读报告
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/report [put]
 func (h *ReadingHandler) SaveReport(c *gin.Context) {
 	var req types.SaveReadingReportRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -132,6 +212,14 @@ func (h *ReadingHandler) SaveReport(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": report})
 }
 
+// DeleteReport godoc
+// @Summary      删除精读报告
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/report [delete]
 func (h *ReadingHandler) DeleteReport(c *gin.Context) {
 	baseVersion := -1
 	if raw := c.Query("base_version"); raw != "" {
@@ -168,6 +256,14 @@ func (h *ReadingHandler) MigrateLegacy(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"migrated": migrated}})
 }
 
+// AddDocuments godoc
+// @Summary      添加精读文档
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/add-documents [post]
 func (h *ReadingHandler) AddDocuments(c *gin.Context) {
 	var req types.AddReadingDocumentsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -182,6 +278,14 @@ func (h *ReadingHandler) AddDocuments(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
 }
 
+// Stop godoc
+// @Summary      暂停精读
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/stop [post]
 func (h *ReadingHandler) Stop(c *gin.Context) {
 	run, err := h.service.Stop(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -191,6 +295,14 @@ func (h *ReadingHandler) Stop(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
 }
 
+// Abandon godoc
+// @Summary      终止精读
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/abandon [post]
 func (h *ReadingHandler) Abandon(c *gin.Context) {
 	run, err := h.service.Abandon(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -200,6 +312,14 @@ func (h *ReadingHandler) Abandon(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
 }
 
+// Jump godoc
+// @Summary      跳转精读章节
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/jump [post]
 func (h *ReadingHandler) Jump(c *gin.Context) {
 	var req types.JumpReadingSectionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -214,6 +334,14 @@ func (h *ReadingHandler) Jump(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
 }
 
+// UpdateUnderstanding godoc
+// @Summary      更新理解确认
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/understanding [put]
 func (h *ReadingHandler) UpdateUnderstanding(c *gin.Context) {
 	var req types.UpdateReadingUnderstandingRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -228,6 +356,15 @@ func (h *ReadingHandler) UpdateUnderstanding(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
 }
 
+// UpdateTerm godoc
+// @Summary      更新精读术语
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Param        termId  path  string  true  "termId"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/terms/{termId} [put]
 func (h *ReadingHandler) UpdateTerm(c *gin.Context) {
 	var req types.UpdateReadingNoteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -244,6 +381,15 @@ func (h *ReadingHandler) UpdateTerm(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": term})
 }
 
+// UpdateConclusion godoc
+// @Summary      更新精读结论
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Param        conclusionId  path  string  true  "conclusionId"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/conclusions/{conclusionId} [put]
 func (h *ReadingHandler) UpdateConclusion(c *gin.Context) {
 	var req types.UpdateReadingNoteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -260,6 +406,13 @@ func (h *ReadingHandler) UpdateConclusion(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": conclusion})
 }
 
+// ListHistory godoc
+// @Summary      获取精读历史
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Security     Bearer
+// @Router       /reading/runs/history [get]
 func (h *ReadingHandler) ListHistory(c *gin.Context) {
 	limit := 50
 	if raw := c.Query("limit"); raw != "" {
@@ -278,6 +431,13 @@ func (h *ReadingHandler) ListHistory(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": items})
 }
 
+// ListDrafts godoc
+// @Summary      列出精读草稿
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Security     Bearer
+// @Router       /reading/drafts [get]
 func (h *ReadingHandler) ListDrafts(c *gin.Context) {
 	drafts, err := h.service.ListDrafts(c.Request.Context())
 	if err != nil {
@@ -287,6 +447,13 @@ func (h *ReadingHandler) ListDrafts(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": drafts})
 }
 
+// CreateDraft godoc
+// @Summary      创建精读草稿
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Security     Bearer
+// @Router       /reading/drafts [post]
 func (h *ReadingHandler) CreateDraft(c *gin.Context) {
 	var req types.ReadingDraftRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -301,6 +468,14 @@ func (h *ReadingHandler) CreateDraft(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"success": true, "data": draft})
 }
 
+// UpdateDraft godoc
+// @Summary      更新精读草稿
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        draftId  path  string  true  "draftId"
+// @Security     Bearer
+// @Router       /reading/drafts/{draftId} [put]
 func (h *ReadingHandler) UpdateDraft(c *gin.Context) {
 	var req types.ReadingDraftRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -315,6 +490,14 @@ func (h *ReadingHandler) UpdateDraft(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": draft})
 }
 
+// DeleteDraft godoc
+// @Summary      删除精读草稿
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        draftId  path  string  true  "draftId"
+// @Security     Bearer
+// @Router       /reading/drafts/{draftId} [delete]
 func (h *ReadingHandler) DeleteDraft(c *gin.Context) {
 	if err := h.service.DeleteDraft(c.Request.Context(), c.Param("draftId")); err != nil {
 		_ = c.Error(err)
@@ -323,6 +506,14 @@ func (h *ReadingHandler) DeleteDraft(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
+// Resume godoc
+// @Summary      继续精读
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/resume [post]
 func (h *ReadingHandler) Resume(c *gin.Context) {
 	run, err := h.service.Resume(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -332,6 +523,14 @@ func (h *ReadingHandler) Resume(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
 }
 
+// Export godoc
+// @Summary      导出精读
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/export [get]
 func (h *ReadingHandler) Export(c *gin.Context) {
 	format := c.DefaultQuery("format", "markdown")
 	report, err := h.service.Export(c.Request.Context(), c.Param("id"), format)
@@ -342,6 +541,14 @@ func (h *ReadingHandler) Export(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": report})
 }
 
+// ListSelfTests godoc
+// @Summary      获取精读自测题
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/self-tests [get]
 func (h *ReadingHandler) ListSelfTests(c *gin.Context) {
 	tests, err := h.service.ListSelfTests(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -351,6 +558,14 @@ func (h *ReadingHandler) ListSelfTests(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": tests})
 }
 
+// ImportSelfTests godoc
+// @Summary      导入精读自测题
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/self-tests/import [post]
 func (h *ReadingHandler) ImportSelfTests(c *gin.Context) {
 	var req types.ImportReadingSelfTestsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

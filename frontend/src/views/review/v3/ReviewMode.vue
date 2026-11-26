@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { MessagePlugin } from 'tdesign-vue-next'
@@ -9,12 +9,13 @@ import {
   submitReview,
   type ReviewCard,
   type ReviewCardDetail,
+  type ReviewCardSource,
   type ReviewRating,
   type ReviewSessionState,
 } from '@/api/review'
-import { getKnowledgeDetails } from '@/api/knowledge-base'
+import { getChunkByIdOnly, getKnowledgeDetails } from '@/api/knowledge-base'
 import { createChatMarkdownRenderer, renderChatMarkdown } from '@/utils/chatMarkdownRenderer'
-import { sanitizeMarkdownHTML } from '@/utils/security'
+import { hydrateProtectedFileImages, sanitizeMarkdownHTML } from '@/utils/security'
 import ReviewLevelTag from './ReviewLevelTag.vue'
 import ReviewIcon from './ReviewIcon.vue'
 import { fallbackVulnerability, holdDays, scheduledIntervalDays } from './vulnerability'
@@ -90,6 +91,9 @@ const primarySource = computed(() =>
   sources.value.find(source => source.is_primary) || sources.value[0] || null,
 )
 const sourceExcerpt = computed(() => primarySource.value?.excerpt?.trim() || '')
+const sourceImages = ref<Array<{ url: string; source: ReviewCardSource }>>([])
+const sourceImagesRef = ref<HTMLElement | null>(null)
+let sourceImageSeq = 0
 
 function renderMarkdown(value: string | undefined) {
   if (!value) return ''
@@ -109,6 +113,7 @@ async function loadDetail() {
     const response = await getReviewCard(card.id)
     if (seq !== detailRequestSeq) return
     detail.value = response.data || null
+    if (showingAnswer.value) void loadSourceImages()
   } catch {
     if (seq === detailRequestSeq) detail.value = null
   }
@@ -124,6 +129,7 @@ function resetFromState(state: ReviewSessionState) {
   showingAnswer.value = false
   ratingError.value = ''
   finished.value = remaining.value.length === 0
+  clearSourceImages()
   if (!finished.value) void loadDetail()
 }
 
@@ -155,6 +161,7 @@ function advance() {
   remaining.value = remaining.value.slice(1)
   showingAnswer.value = false
   ratingError.value = ''
+  clearSourceImages()
   if (!remaining.value.length) {
     finished.value = true
     emit('completed')
@@ -171,14 +178,78 @@ function skipCard() {
 function showAnswer() {
   if (!currentCard.value || finished.value) return
   showingAnswer.value = true
+  void loadSourceImages()
+}
+
+function clearSourceImages() {
+  sourceImageSeq++
+  sourceImages.value = []
+}
+
+function extractChunkImageURLs(chunk: any): string[] {
+  const urls = new Set<string>()
+  const add = (value: unknown) => {
+    const url = String(value || '').trim()
+    if (!url) return
+    if (!/^(https?:|local:|storage:|resource:|minio:|cos:|tos:|s3:|oss:|ks3:|obs:)/i.test(url)) return
+    urls.add(url)
+  }
+  const rawInfo = chunk?.image_info
+  if (typeof rawInfo === 'string' && rawInfo.trim()) {
+    try {
+      const parsed = JSON.parse(rawInfo)
+      const entries = Array.isArray(parsed) ? parsed : [parsed]
+      for (const entry of entries) {
+        add(entry?.url)
+        add(entry?.original_url)
+      }
+    } catch {
+      // Ignore malformed image_info; the chunk body may still reference images.
+    }
+  }
+  const content = typeof chunk?.content === 'string' ? chunk.content : ''
+  for (const match of content.matchAll(/!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)) {
+    add(match[1])
+  }
+  for (const match of content.matchAll(/<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/gi)) {
+    add(match[1])
+  }
+  return [...urls]
+}
+
+async function loadSourceImages() {
+  const seq = ++sourceImageSeq
+  sourceImages.value = []
+  const ordered = [...sources.value].sort((a, b) => Number(b.is_primary) - Number(a.is_primary))
+  const seen = new Set<string>()
+  const collected: Array<{ url: string; source: ReviewCardSource }> = []
+  for (const source of ordered) {
+    if (!source.chunk_id || collected.length >= 3) continue
+    try {
+      const response: any = await getChunkByIdOnly(source.chunk_id)
+      if (seq !== sourceImageSeq) return
+      const chunk = response?.data || response
+      for (const url of extractChunkImageURLs(chunk)) {
+        if (seen.has(url)) continue
+        seen.add(url)
+        collected.push({ url, source })
+        if (collected.length >= 3) break
+      }
+    } catch {
+      // A missing or unavailable chunk simply contributes no images.
+    }
+  }
+  if (seq !== sourceImageSeq) return
+  sourceImages.value = collected
+  await nextTick()
+  await hydrateProtectedFileImages(sourceImagesRef.value)
 }
 
 function suspend() {
   emit('close')
 }
 
-async function openSource() {
-  const source = primarySource.value
+async function openSource(source: ReviewCardSource | null = primarySource.value) {
   if (!source?.knowledge_id || sourceOpening.value) return
   sourceOpening.value = true
   try {
@@ -347,7 +418,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                   type="button"
                   class="rv-btn rv-btn--text rv-btn--sm"
                   :disabled="sourceOpening"
-                  @click="openSource"
+                  @click="openSource()"
                 >
                   {{ t('review.v3.openSource') }}
                   <ReviewIcon name="arrow-right" :size="12" />
@@ -357,6 +428,18 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                 {{ primarySource.path }}
               </p>
               <p>{{ sourceExcerpt || t('review.v3.sourceNoExcerpt') }}</p>
+              <div v-if="sourceImages.length" ref="sourceImagesRef" class="answer-zone__source-images">
+                <button
+                  v-for="image in sourceImages"
+                  :key="image.url"
+                  type="button"
+                  class="answer-zone__source-image"
+                  :title="image.source.path || t('review.v3.openSource')"
+                  @click="openSource(image.source)"
+                >
+                  <img :src="image.url" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1029,6 +1112,36 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   text-overflow: ellipsis;
   font-size: 14px !important;
   color: var(--rvn-muted) !important;
+}
+
+.answer-zone__source-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.answer-zone__source-image {
+  width: 108px;
+  height: 76px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--rvn-line);
+  border-radius: var(--rvn-radius-sm);
+  background: var(--rvn-surface);
+  cursor: pointer;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    padding: 3px;
+    box-sizing: border-box;
+  }
+
+  &:hover {
+    border-color: var(--rvn-brand);
+  }
 }
 
 .rate-row {
