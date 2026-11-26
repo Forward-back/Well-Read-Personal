@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WellRead · 智能体 Agent 工作台原型</title>
+<style>
+  :root, [data-theme="light"] {
+    color-scheme: light;
+    --stage: #ece9e2;
+    --window: #f7f5f0;
+    --surface: #ffffff;
+    --surface-soft: #fbf9f5;
+    --surface-hover: #f3f0ea;
+    --line: #e6e1d7;
+    --line-strong: #d3c9b6;
+    --ink: #37352f;
+    --body: #6b665f;
+    --muted: #928b7f;
+    --accent: #07c05f;
+    --accent-ink: #ffffff;
+    --accent-soft: #e9f8ec;
+    --accent-line: #b8e8c8;
+    --warning: #96794b;
+    --warning-soft: #f6f0e5;
+    --danger: #a2685c;
+    --danger-soft: #f7eeeb;
+    --add-bg: #e9f8ec;
+    --add-ink: #0b6b3a;
+    --del-bg: #f7eeeb;
+    --del-ink: #8e4f42;
+    --shadow-pop: 0 16px 40px rgba(55, 50, 42, 0.16);
+    --radius-card: 12px;
+    --radius-control: 8px;
+    --radius-window: 20px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  }
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --stage: #12100e;
+    --window: #191714;
+    --surface: #211e1a;
+    --surface-soft: #2a2621;
+    --surface-hover: #2e2923;
+    --line: #3a342c;
+    --line-strong: #4b4338;
+    --ink: #f3efe8;
+    --body: #c8c1b5;
+    --muted: #978e80;
+    --accent: #5edb95;
+    --accent-ink: #0e130f;
+    --accent-soft: #1e3a2b;
+    --accent-line: #326346;
+    --warning: #dcc08c;
+    --warning-soft: #332b1f;
+    --danger: #e2a39a;
+    --danger-soft: #342421;
+    --add-bg: #1e3a2b;
+    --add-ink: #9ed3b2;
+    --del-bg: #342421;
+    --del-ink: #e2a39a;
+    --shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.5);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--stage);
+    color: var(--body);
+    font: 14px/1.6 var(--font);
+    overflow: hidden;
+  }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { border: 0; background: none; cursor: pointer; }
+  button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  svg { flex: none; }
+  .mono { font-family: var(--mono); }
+
+  .app {
+    display: flex;
+    height: 100%;
+    padding: 12px;
+    gap: 12px;
+  }
+
+  /* ── shared shell left rail ─────────────────────────────────────────── */
+  .rail {
+    width: 58px;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 0;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--window);
+  }
+  .rail__brand {
+    width: 34px; height: 34px;
+    display: grid; place-items: center;
+    margin-bottom: 8px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: 15px; font-weight: 700;
+  }
+  .rail__item {
+    width: 46px; height: 42px;
+    display: grid; place-items: center; gap: 2px;
+    border-radius: 10px;
+    color: var(--muted);
+    font-size: 10px;
+  }
+  .rail__item:hover { color: var(--ink); background: var(--surface-hover); }
+  .rail__item.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .rail__icon { font-size: 16px; line-height: 1; }
+
+  .window {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-window);
+    background: var(--window);
+  }
+
+  /* ── page topbar ────────────────────────────────────────────────────── */
+  .topbar {
+    flex: none;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--line);
+    color: var(--ink);
+  }
+  .topbar__title { font-size: 16px; font-weight: 600; }
+  .topbar__meta { font-size: 13px; color: var(--muted); }
+  .topbar__spacer { flex: 1; }
+  .btn {
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    background: transparent;
+    color: var(--body);
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--line-strong); background: var(--surface-hover); color: var(--ink); }
+  .btn.primary { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .btn.primary:hover { filter: brightness(0.96); }
+  .btn.danger { color: var(--danger); }
+  .icon-btn { width: 30px; padding: 0; }
+  .theme-switch {
+    display: inline-flex;
+    padding: 2px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    background: var(--surface);
+  }
+  .theme-switch button { padding: 3px 9px; border-radius: 6px; font-size: 12px; color: var(--muted); }
+  .theme-switch button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+  /* ── workbench: tree + editor + agent ──────────────────────────────── */
+  .workbench {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 250px minmax(0, 1fr) 392px;
+    gap: 1px;
+    background: var(--line);
+  }
+  .pane { min-height: 0; overflow: hidden; }
+
+  /* document tree */
+  .tree-pane { background: var(--surface-soft); padding: 14px 10px; overflow-y: auto; }
+  .tree-head {
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 6px 10px;
+    color: var(--muted);
+    font-size: 12px; font-weight: 600; letter-spacing: .04em;
+  }
+  .tree-head .acts { margin-left: auto; display: flex; gap: 2px; }
+  .tree-head button { width: 24px; height: 24px; border-radius: 6px; color: var(--muted); }
+  .tree-head button:hover { background: var(--surface-hover); color: var(--ink); }
+  .tree-item {
+    display: flex; align-items: center; gap: 7px;
+    min-height: 32px; padding: 4px 9px;
+    border-radius: 7px;
+    color: var(--body); font-size: 13px;
+    cursor: pointer; white-space: nowrap;
+  }
+  .tree-item:hover { background: var(--surface-hover); color: var(--ink); }
+  .tree-item.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .tree-item.sub { padding-left: 24px; color: var(--muted); font-size: 12px; }
+  .tree-item .caret { width: 12px; color: var(--muted); font-size: 10px; }
+  .tree-item .dot { margin-left: auto; width: 6px; height: 6px; border-radius: 50%; background: var(--warning); }
+  .tree-item .count { margin-left: auto; font-size: 11px; color: var(--muted); }
+  .tree-sep { height: 1px; margin: 10px 6px; background: var(--line); }
+  .version-box {
+    margin: 12px 6px 0;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .version-box b { display: block; margin-bottom: 3px; color: var(--ink); font-size: 12px; }
+
+  /* editor */
+  .editor-pane { background: var(--window); display: flex; flex-direction: column; min-width: 0; }
+  .tabsbar { flex: none; height: 38px; display: flex; align-items: stretch; border-bottom: 1px solid var(--line); background: var(--surface-soft); }
+  .tab {
+    display: flex; align-items: center; gap: 7px;
+    max-width: 260px; padding: 0 12px;
+    border-right: 1px solid var(--line);
+    color: var(--muted); font-size: 12.5px;
+    white-space: nowrap; overflow: hidden;
+  }
+  .tab.on { background: var(--window); color: var(--ink); box-shadow: inset 0 2px 0 var(--accent); }
+  .tab .dirty { width: 7px; height: 7px; border-radius: 50%; background: var(--warning); }
+  .tabsbar .acts { margin-left: auto; display: flex; align-items: center; gap: 2px; padding: 0 8px; }
+  .tabsbar .acts button { width: 26px; height: 26px; border-radius: 6px; color: var(--muted); }
+  .tabsbar .acts button:hover { background: var(--surface-hover); color: var(--ink); }
+  .crumbs { flex: none; padding: 6px 16px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+  .crumbs b { color: var(--ink); font-weight: 600; }
+  .code { flex: 1; overflow: auto; padding: 16px 0 40px; font-family: var(--mono); font-size: 12.8px; line-height: 1.85; color: var(--ink); }
+  .line { display: flex; min-height: 24px; }
+  .ln { width: 48px; flex: none; padding-right: 12px; color: var(--muted); text-align: right; user-select: none; }
+  .ct { flex: 1; min-width: 0; padding-right: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .line.add { background: var(--add-bg); box-shadow: inset 3px 0 0 var(--accent); }
+  .line.del { background: var(--del-bg); box-shadow: inset 3px 0 0 var(--danger); }
+  .line.del .ct { color: var(--del-ink); text-decoration: line-through; }
+  .line.add .ct { color: var(--add-ink); }
+  .h1 { font-size: 1.35em; font-weight: 700; }
+  .h2 { font-size: 1.12em; font-weight: 700; }
+  .quote { color: var(--muted); }
+  .inline { padding: 1px 5px; border-radius: 4px; background: var(--surface-soft); font-size: .92em; }
+  .insert-tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    margin-right: 8px; padding: 1px 8px;
+    border: 1px solid var(--accent-line); border-radius: 999px;
+    color: var(--accent); background: var(--surface); font-size: 10.5px; font-weight: 700;
+  }
+  .diff-marker { color: var(--warning); }
+
+  /* agent panel */
+  .agent-pane {
+    background: var(--surface-soft);
+    display: flex; flex-direction: column;
+    min-height: 0;
+  }
+  .agent-head {
+    flex: none;
+    display: flex; align-items: center; gap: 9px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .avatar {
+    width: 30px; height: 30px; display: grid; place-items: center;
+    border-radius: 9px; background: var(--accent); color: var(--accent-ink);
+    font-size: 13px; font-weight: 700;
+  }
+  .agent-head .title { color: var(--ink); font-size: 13px; font-weight: 700; }
+  .agent-head .sub { margin-top: 1px; color: var(--muted); font-size: 11px; }
+  .agent-head .actions { margin-left: auto; display: flex; gap: 2px; }
+  .agent-head .actions button { width: 24px; height: 24px; border-radius: 6px; color: var(--muted); }
+  .agent-head .actions button:hover { background: var(--surface-hover); color: var(--ink); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+  .chip { padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 11px; }
+  .chip.agent { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .chat { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 100%; }
+  .msg .who { display: flex; align-items: center; gap: 6px; margin: 0 2px 4px; color: var(--muted); font-size: 11px; }
+  .bubble { padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--body); font-size: 12.5px; }
+  .msg.user { align-self: flex-end; }
+  .msg.user .bubble { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 4px; }
+  .msg.user .who { justify-content: flex-end; }
+  .tool {
+    border: 1px solid var(--line); border-radius: 9px;
+    background: var(--surface); overflow: hidden;
+  }
+  .tool-head { display: flex; align-items: center; gap: 7px; padding: 8px 11px; font-size: 12px; color: var(--ink); }
+  .tool-head .fn { color: var(--muted); font-family: var(--mono); font-size: 10.5px; }
+  .tool-head .state { margin-left: auto; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; }
+  .tool-head .state.done { background: var(--accent-soft); color: var(--accent); }
+  .tool-head .state.wait { background: var(--warning-soft); color: var(--warning); }
+  .tool-head .state.l1 { background: var(--accent-soft); color: var(--accent); }
+  .tool-body { padding: 0 11px 10px; color: var(--muted); font-size: 11.5px; line-height: 1.65; }
+  .tool-body .kv { display: flex; gap: 8px; }
+  .tool-body .k { width: 54px; flex: none; color: var(--muted); }
+  .tool-body .v { color: var(--body); }
+  .tool-actions { padding: 7px 11px; border-top: 1px solid var(--line); display: flex; gap: 8px; flex-wrap: wrap; }
+  .text-btn { padding: 0; color: var(--accent); font-size: 11.5px; }
+  .text-btn.danger { color: var(--danger); }
+  .diff-card { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--surface); }
+  .diff-head { padding: 8px 11px; border-bottom: 1px solid var(--line); color: var(--ink); font-size: 12px; }
+  .diff-head .stat { float: right; color: var(--muted); font-family: var(--mono); }
+  .diff-body { padding: 6px 0; font-family: var(--mono); font-size: 11.5px; line-height: 1.7; }
+  .diff-row { display: flex; gap: 8px; padding: 1px 11px; white-space: pre-wrap; }
+  .diff-row .sign { width: 10px; color: var(--muted); }
+  .diff-row.add { background: var(--add-bg); color: var(--add-ink); }
+  .diff-row.del { background: var(--del-bg); color: var(--del-ink); }
+  .pending {
+    padding: 11px 12px;
+    border: 1px solid var(--warning); border-radius: 9px;
+    background: var(--warning-soft);
+  }
+  .pending-head { display: flex; align-items: center; gap: 6px; color: var(--warning); font-size: 12px; font-weight: 700; }
+  .pending-meta { margin-top: 7px; color: var(--muted); font-size: 11px; line-height: 1.7; }
+  .pending-meta code { color: var(--body); font-family: var(--mono); }
+  .pending-actions { display: flex; gap: 8px; margin-top: 9px; flex-wrap: wrap; }
+  .composer { flex: none; border-top: 1px solid var(--line); padding: 10px 12px 12px; background: var(--surface-soft); }
+  .composer-modes { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+  .mode { padding: 3px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; }
+  .composer textarea {
+    width: 100%; height: 64px; resize: none;
+    padding: 9px 11px;
+    border: 1px solid var(--line); border-radius: var(--radius-control);
+    background: var(--surface); color: var(--ink);
+    outline: none; font-size: 12.5px; line-height: 1.6;
+  }
+  .composer textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+  .composer-foot { display: flex; align-items: center; gap: 10px; margin-top: 7px; color: var(--muted); font-size: 11px; }
+  .composer-foot .spacer { flex: 1; }
+  .send { height: 28px; padding: 0 12px; border-radius: 7px; background: var(--accent); color: var(--accent-ink); font-size: 12px; font-weight: 600; }
+
+  .collapsed .agent-pane { display: none; }
+  .collapsed .workbench { grid-template-columns: 250px minmax(0, 1fr); }
+
+  @media (max-width: 1100px) {
+    .workbench { grid-template-columns: 220px minmax(0, 1fr); }
+    .agent-pane { display: none; }
+    .collapsed .workbench { grid-template-columns: 220px minmax(0, 1fr); }
+  }
+  @media (max-width: 760px) {
+    .rail { display: none; }
+    .app { padding: 0; }
+    .window { border-radius: 0; border: 0; }
+    .workbench { grid-template-columns: 1fr; }
+    .tree-pane { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="rail" aria-label="WellRead 功能栏">
+    <div class="rail__brand">W</div>
+    <div class="rail__item"><span class="rail__icon">⌂</span>首页</div>
+    <div class="rail__item"><span class="rail__icon">◌</span>问答</div>
+    <div class="rail__item"><span class="rail__icon">▤</span>知识库</div>
+    <div class="rail__item"><span class="rail__icon">▭</span>精读</div>
+    <div class="rail__item"><span class="rail__icon">▦</span>复习</div>
+    <div class="rail__item"><span class="rail__icon">☆</span>技能</div>
+    <div class="rail__item on"><span class="rail__icon">◎</span>智能体</div>
+  </aside>
+
+  <main class="window">
+    <header class="topbar">
+      <span class="topbar__title">智能体</span>
+      <span class="topbar__meta">Agent · 文档工作台</span>
+      <span class="topbar__spacer"></span>
+      <div class="theme-switch" aria-label="主题">
+        <button id="btn-light" class="on" onclick="setTheme('light')">浅色</button>
+        <button id="btn-dark" onclick="setTheme('dark')">深色</button>
+      </div>
+      <button class="btn" title="新任务">＋ 新任务</button>
+      <button class="btn icon-btn" title="历史会话">◷</button>
+      <button class="btn icon-btn" title="版本历史">⑂</button>
+      <button class="btn icon-btn" title="折叠对话" onclick="toggleAgent()">⟩</button>
+    </header>
+
+    <div class="workbench">
+      <aside class="pane tree-pane" aria-label="知识库文档">
+        <div class="tree-head">
+          产品设计知识库
+          <span class="acts"><button title="新建文档">＋</button><button title="刷新">↻</button></span>
+        </div>
+        <div class="tree-item sub"><span class="caret">⌄</span>需求与评审<span class="count">8</span></div>
+        <div class="tree-item sub"><span class="caret">⌄</span>Agent功能需求文档-V3-定稿.md<span class="dot" title="Agent 已修改"></span></div>
+        <div class="tree-item sub"><span class="caret"></span>缓存设计.md</div>
+        <div class="tree-item sub"><span class="caret"></span>交付检查清单.md</div>
+        <div class="tree-item sub"><span class="caret">›</span>知识卡片<span class="count">12</span></div>
+        <div class="tree-item sub"><span class="caret">›</span>附录<span class="count">3</span></div>
+        <div class="tree-sep"></div>
+        <div class="tree-item"><span class="caret">⌄</span>技术方案</div>
+        <div class="tree-item sub"><span class="caret"></span>MD文档版本控制_技术方案.md</div>
+        <div class="version-box">
+          <b>当前版本 v12</b>
+          main · 2026-11-26 20:42<br>
+          上次提交：Agent 插入知识摘要块
+        </div>
+      </aside>
+
+      <section class="pane editor-pane" aria-label="文档编辑器">
+        <div class="tabsbar">
+          <div class="tab on">▤ Agent功能需求文档-V3-定稿.md <span class="dirty" title="有未提交修改"></span></div>
+          <div class="tab">会话摘要_2026-11-26.md</div>
+          <div class="acts"><button title="拆分编辑器">◫</button><button title="更多">⋯</button></div>
+        </div>
+        <div class="crumbs">需求与评审 › <b>Agent功能需求文档-V3-定稿.md</b> › <span style="color:var(--accent)">知识摘要（Agent 插入）</span></div>
+        <div class="code">
+          <div class="line"><span class="ln">1</span><span class="ct h1">知识库平台 Agent 功能需求文档（V3 定稿版）</span></div>
+          <div class="line"><span class="ln">2</span><span class="ct"></span></div>
+          <div class="line"><span class="ln">3</span><span class="ct quote">&gt; 版本：V3.0（定稿版） · 日期：2026-11-26 · 状态：已定稿</span></div>
+          <div class="line"><span class="ln">4</span><span class="ct"></span></div>
+          <div class="line add"><span class="ln">5</span><span class="ct"><span class="insert-tag">✓ Agent 插入 · 知识摘要</span>缓存设计 · 核心知识</span></div>
+          <div class="line add"><span class="ln">6</span><span class="ct">- 三类缓存：Prompt 前缀缓存 C1、检索结果缓存 C2（15–30 min）、文档解析缓存 C3（随 content_hash 失效）</span></div>
+          <div class="line add"><span class="ln">7</span><span class="ct">- 写后失效：文档变更采用事件驱动失效；缓存条目记录 doc_version 防脏读</span></div>
+          <div class="line add"><span class="ln">8</span><span class="ct">- 缓存只省检索计算，不省权限：命中后仍按当前文档范围二次过滤</span></div>
+          <div class="line add"><span class="ln">9</span><span class="ct">- 失效风暴保护：批量导入合并失效事件，重建进入低优先级队列限速执行</span></div>
+          <div class="line"><span class="ln">10</span><span class="ct"></span></div>
+          <div class="line"><span class="ln">11</span><span class="ct h2">## 2. 上下文设计</span></div>
+          <div class="line"><span class="ln">12</span><span class="ct">上下文由五层组成，按优先级注入：系统层 → 会话层 → 文档层 → 知识层 → 历史层。</span></div>
+          <div class="line"><span class="ln">13</span><span class="ct"></span></div>
+          <div class="line"><span class="ln">14</span><span class="ct h2">## 4. 工具封装</span></div>
+          <div class="line"><span class="ln">15</span><span class="ct">统一使用 JSON Schema（兼容 MCP inputSchema）。L2/L3 工具 <span class="inline">dry_run=true</span> 只返回 Diff 与 <span class="inline">pending_task_id</span>，不返回可执行 token。</span></div>
+          <div class="line del"><span class="ln">16</span><span class="ct">附录 C 原文内容……（Agent 已准备拆分，等待确认）</span></div>
+          <div class="line add"><span class="ln">17</span><span class="ct">&gt; 附录 C 已拆分至独立文档，此处保留回链：</span></div>
+          <div class="line add"><span class="ln">18</span><span class="ct">详见 [附录C_决策点裁决记录.md]（同目录）</span></div>
+          <div class="line"><span class="ln">19</span><span class="ct"></span></div>
+          <div class="line"><span class="ln">20</span><span class="ct h2">## 8. 分期落地建议</span></div>
+          <div class="line"><span class="ln">21</span><span class="ct">P0 文档编辑 Agent · P1 chunk 联动 · P2 归档与协作能力。</span></div>
+        </div>
+      </section>
+
+      <aside class="pane agent-pane" aria-label="Agent 对话">
+        <div class="agent-head">
+          <div class="avatar">W</div>
+          <div>
+            <div class="title">WellRead Agent</div>
+            <div class="sub">运行中 · 任务 #2041 · 上下文 18.2K / 128K</div>
+          </div>
+          <div class="actions"><button title="新任务">＋</button><button title="历史">◷</button><button title="折叠" onclick="toggleAgent()">⟩</button></div>
+        </div>
+        <div class="chips">
+          <span class="chip agent">编辑 Agent</span>
+          <span class="chip">意图路由 · 自动</span>
+          <span class="chip">文档范围 · 当前知识库</span>
+        </div>
+        <div class="chat">
+          <div class="msg user">
+            <div class="who">我 · 20:42</div>
+            <div class="bubble">把「缓存设计」提炼成核心摘要插到文档开头，再把附录 C 拆成独立文档。</div>
+          </div>
+          <div class="msg">
+            <div class="who">WellRead Agent <span class="chip agent">编辑 Agent</span></div>
+            <div class="bubble">已读取文档结构与缓存设计章节。摘要作为 L1 编辑执行并自动提交；拆分附录 C 属 L2 结构变更，我先给出 Diff，确认后才执行。</div>
+          </div>
+          <div class="tool">
+            <div class="tool-head">▤ 读取文档结构 <span class="fn">get_document</span><span class="state done">完成</span></div>
+            <div class="tool-body">
+              <div class="kv"><span class="k">风险级</span><span class="v">L0 只读 · 直接执行</span></div>
+              <div class="kv"><span class="k">返回</span><span class="v">全文 12.4K tokens · 8 章节 · doc_version = 12</span></div>
+            </div>
+          </div>
+          <div class="tool">
+            <div class="tool-head">✎ 插入知识摘要块 <span class="fn">edit_document_section</span><span class="state l1">L1 · 已执行</span></div>
+            <div class="tool-body">
+              <div class="kv"><span class="k">位置</span><span class="v">第 5–9 行 · 生成新版本 v13</span></div>
+              <div class="kv"><span class="k">来源</span><span class="v">§3 缓存设计（C1/C2/C3 + 失效策略）</span></div>
+            </div>
+            <div class="tool-actions"><button class="text-btn" onclick="undoEdit()">撤销本次修改（回滚至 v12）</button></div>
+          </div>
+          <div class="msg">
+            <div class="who">WellRead Agent</div>
+            <div class="bubble">摘要已写入并提交。附录 C 的拆分将新建 1 份文档、原文档移除附录段落，请确认 Diff。</div>
+          </div>
+          <div class="diff-card">
+            <div class="diff-head">Diff 预览 · 2 份文档变更 <span class="stat">+14 −6</span></div>
+            <div class="diff-body">
+              <div class="diff-row"><span class="sign"> </span>## 7. 非功能需求</div>
+              <div class="diff-row del"><span class="sign">−</span>## 附录 C：决策点裁决记录</div>
+              <div class="diff-row del"><span class="sign">−</span>| # | 决策点 | 裁决 |</div>
+              <div class="diff-row add"><span class="sign">+</span>&gt; 附录 C 已拆分至独立文档，此处保留回链。</div>
+              <div class="diff-row add"><span class="sign">+</span>详见 [附录C_决策点裁决记录.md]</div>
+              <div class="diff-row add"><span class="sign">+</span>【新文档】附录C_决策点裁决记录.md</div>
+            </div>
+          </div>
+          <div class="pending" id="pendingCard">
+            <div class="pending-head">⚠ 待确认变更 · L2 结构操作</div>
+            <div class="pending-meta">
+              <code>pending_task_id</code> pt_9f3c2a41-d08e-4b7f<br>
+              <code>confirm_token</code> <span id="tokenText">确认后由服务端签发 · 10 分钟 · 一次性</span><br>
+              影响：拆分附录 C + 回链改写 · 24h 内有效
+            </div>
+            <div class="pending-actions" id="pendingActions">
+              <button class="btn primary" onclick="confirmTask()">确认执行</button>
+              <button class="btn danger">驳回</button>
+              <button class="btn">设置过期</button>
+            </div>
+          </div>
+        </div>
+        <div class="composer">
+          <div class="composer-modes"><span class="mode">Agent 模式 · 可执行工具与写操作</span><span class="chip">询问模式仅只读</span></div>
+          <textarea placeholder="对当前文档下指令，或划词提问…（Enter 发送 / Shift+Enter 换行）"></textarea>
+          <div class="composer-foot"><span>@ 当前知识库</span><span>引用选区 L15</span><span class="spacer"></span><span>模型 · 窗口 ≥128K</span><button class="send">发送</button></div>
+        </div>
+      </aside>
+    </div>
+  </main>
+</div>
+
+<script>
+  function setTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    document.getElementById('btn-light').classList.toggle('on', theme === 'light');
+    document.getElementById('btn-dark').classList.toggle('on', theme === 'dark');
+  }
+  function toggleAgent() {
+    document.getElementById('app').classList.toggle('collapsed');
+  }
+  function confirmTask() {
+    const token = document.getElementById('tokenText');
+    if (token) token.textContent = '已签发 · 10 分钟有效 · 一次性';
+    const actions = document.getElementById('pendingActions');
+    if (actions) actions.innerHTML = '<span class="chip agent">✓ confirm_token 已签发 · apply_change 执行中</span>';
+    const card = document.getElementById('pendingCard');
+    if (card) card.style.borderColor = 'var(--accent)';
+  }
+  function undoEdit() {
+    alert('原型示意：撤销 L1 编辑并回滚至 v12；实际实现由版本服务生成前向 revert 版本。');
+  }
+</script>
+</body>
+</html>
