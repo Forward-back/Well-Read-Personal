@@ -287,7 +287,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   postgres:
-    image: paradedb/paradedb:v0.22.2-pg17
+    image: wellread-postgres:personal
     container_name: WellRead-Postgres
     environment:
       - POSTGRES_USER=${DB_USER}
@@ -307,7 +307,7 @@ services:
     stop_grace_period: 1m
 
   redis:
-    image: redis:7.0-alpine
+    image: wellread-redis:personal
     container_name: WellRead-Redis
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     restart: always

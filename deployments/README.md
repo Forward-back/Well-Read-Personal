@@ -23,8 +23,8 @@ flowchart LR
 | app | `wellread-app:<GAZE_VERSION>` | `${APP_PORT:-6152}:8080` | postgres/docreader/ylsw healthy，redis started | `data-files`、`docreader-tmp:ro` |
 | docreader | `wellread-docreader:<GAZE_VERSION>` | 内部 `50051` | 无 | `docreader-tmp` |
 | ylsw | `wellread-gaze:<GAZE_VERSION>` | `expose 5000`（仅 Docker 内网） | 无 | 绑定 `data/rag` |
-| postgres | `paradedb/paradedb:v0.22.2-pg17` | 内部 `5432` | 无 | `postgres-data` |
-| redis | `redis:7.0-alpine` | 内部 `6379` | 无 | AOF 容器内 |
+| postgres | `wellread-postgres:personal` | 内部 `5432` | 无 | `postgres-data` |
+| redis | `wellread-redis:personal` | 内部 `6379` | 无 | AOF 容器内 |
 
 健康检查：
 
