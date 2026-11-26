@@ -282,6 +282,14 @@
             <div class="rv-chapter-actions">
               <button type="button" class="rv-action-btn" @click="openOriginal">{{ $t('reading.originalText') }}</button>
               <button
+                v-if="run.status !== 'planning' && viewingSection"
+                type="button"
+                class="rv-action-btn"
+                @click="openFeynman"
+              >
+                {{ $t('reading.feynman') }}
+              </button>
+              <button
                 v-if="previewSectionId"
                 type="button"
                 class="rv-action-btn"
@@ -675,6 +683,30 @@
             <span>{{ $t('reading.notes') }}</span>
             <span class="rv-notes__count">{{ noteTotalCount }} {{ $t('reading.noteCountUnit') }}</span>
           </div>
+          <div class="rv-annotations">
+            <div class="rv-annotations__head">
+              <span>{{ $t('reading.annotations') }}</span>
+              <span class="rv-notes__count">{{ annotations.length }}</span>
+            </div>
+            <p v-if="!annotations.length" class="rv-hint">{{ $t('reading.annotationsEmpty') }}</p>
+            <article v-for="annotation in annotations" :key="annotation.id" class="rv-annotation">
+              <button type="button" class="rv-annotation__quote" @click="openAnnotationSource(annotation)">
+                「{{ annotation.quote }}」
+              </button>
+              <p v-if="annotation.comment" class="rv-annotation__comment">{{ annotation.comment }}</p>
+              <div class="rv-annotation__actions">
+                <button type="button" class="rv-note__action" @click="openAnnotationSource(annotation)">
+                  {{ $t('reading.annotationOpenSource') }}
+                </button>
+                <button type="button" class="rv-note__action" @click="openAnnotationCard(annotation)">
+                  {{ $t('reading.annotationMakeCard') }}
+                </button>
+                <button type="button" class="rv-note__action is-danger" @click="removeAnnotation(annotation)">
+                  {{ $t('common.delete') }}
+                </button>
+              </div>
+            </article>
+          </div>
           <div class="rv-notes__tabs">
             <button
               v-for="tab in noteTabs"
@@ -756,9 +788,21 @@
             <option v-for="doc in readingDocumentOptions" :key="doc.value" :value="doc.value">{{ doc.label }}</option>
           </select>
           <div ref="drawerToolbarRef" class="rv-drawer__toolbar" />
+          <button
+            v-if="previewSelectionText"
+            type="button"
+            class="rv-action-btn"
+            @click="openAnnotationDialog"
+          >
+            {{ $t('reading.annotationAdd') }}
+          </button>
           <button type="button" class="rv-drawer__close" @click="originalDrawerOpen = false">×</button>
         </header>
-        <div ref="documentPaneRef" class="rv-drawer__body rv-drawer__body--preview">
+        <div
+          ref="documentPaneRef"
+          class="rv-drawer__body rv-drawer__body--preview"
+          @mouseup="capturePreviewSelection"
+        >
           <div v-if="readingDocumentsLoading" class="rv-empty">{{ $t('reading.loadingDocument') }}</div>
           <DocumentPreview
             v-else-if="activeDocument"
@@ -818,6 +862,87 @@
       </div>
     </t-dialog>
 
+    <t-dialog v-model:visible="feynmanVisible" :header="$t('reading.feynmanTitle')" width="640px" :footer="false">
+      <div class="rv-feynman">
+        <p class="rv-hint">{{ $t('reading.feynmanHint') }}</p>
+        <textarea
+          v-model="feynmanText"
+          class="rv-textarea rv-feynman__input"
+          rows="7"
+          maxlength="4000"
+          :placeholder="$t('reading.feynmanPlaceholder')"
+        />
+        <div class="rv-dialog-actions">
+          <button type="button" class="rv-text-btn" @click="feynmanVisible = false">{{ $t('common.cancel') }}</button>
+          <button type="button" class="rv-primary" :disabled="feynmanSubmitting" @click="submitFeynman">
+            {{ feynmanSubmitting ? $t('reading.feynmanSubmitting') : $t('reading.feynmanSubmit') }}
+          </button>
+        </div>
+        <div class="rv-feynman__history">
+          <p v-if="feynmanHistoryLoading" class="rv-hint">{{ $t('reading.loadingDocument') }}</p>
+          <p v-else-if="!feynmanAttempts.length" class="rv-hint">{{ $t('reading.feynmanEmpty') }}</p>
+          <article v-for="attempt in feynmanAttempts.slice(0, 3)" :key="attempt.id" class="rv-feynman__result">
+            <div class="rv-feynman__score">
+              <strong>{{ attempt.score }}</strong><span>/ 100</span>
+              <em>{{ attempt.summary }}</em>
+            </div>
+            <div class="rv-feynman__dims">
+              <span>{{ $t('reading.feynmanCoverage') }} {{ attempt.coverage }}</span>
+              <span>{{ $t('reading.feynmanAccuracy') }} {{ attempt.accuracy }}</span>
+              <span>{{ $t('reading.feynmanEvidenceScore') }} {{ attempt.evidence_score }}</span>
+            </div>
+            <div v-if="attempt.omissions?.length" class="rv-feynman__points">
+              <b>{{ $t('reading.feynmanOmissions') }}</b>
+              <p v-for="(point, index) in attempt.omissions" :key="'o' + index">{{ point.text }}</p>
+            </div>
+            <div v-if="attempt.errors?.length" class="rv-feynman__points is-error">
+              <b>{{ $t('reading.feynmanErrors') }}</b>
+              <p v-for="(point, index) in attempt.errors" :key="'e' + index">{{ point.text }}</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </t-dialog>
+
+    <t-dialog v-model:visible="annotationDialogVisible" :header="$t('reading.annotationTitle')" width="560px" :footer="false">
+      <div class="rv-annotation-dialog">
+        <div class="rv-annotation-dialog__quote">「{{ annotationQuote }}」</div>
+        <textarea
+          v-model="annotationComment"
+          class="rv-textarea"
+          rows="4"
+          maxlength="2000"
+          :placeholder="$t('reading.annotationPlaceholder')"
+        />
+        <div class="rv-dialog-actions">
+          <button type="button" class="rv-text-btn" @click="annotationDialogVisible = false">{{ $t('common.cancel') }}</button>
+          <button type="button" class="rv-primary" :disabled="annotationSaving" @click="saveAnnotation">
+            {{ annotationSaving ? $t('reading.saving') : $t('reading.annotationSave') }}
+          </button>
+        </div>
+      </div>
+    </t-dialog>
+
+    <t-dialog v-model:visible="annotationCardVisible" :header="$t('reading.annotationCardTitle')" width="520px" :footer="false">
+      <div class="rv-annotation-card-dialog">
+        <label class="rv-field-label">{{ $t('reading.annotationCardGroup') }}</label>
+        <select v-model="annotationCardGroupId" class="rv-field">
+          <option value="">{{ $t('reading.selfTestSelectGroup') }}</option>
+          <option v-for="group in reviewGroupOptions" :key="group.value" :value="group.value">{{ group.label }}</option>
+        </select>
+        <label class="rv-field-label">{{ $t('reading.annotationCardQuestion') }}</label>
+        <textarea v-model="annotationCardQuestion" class="rv-textarea" rows="3" />
+        <label class="rv-field-label">{{ $t('reading.annotationCardAnswer') }}</label>
+        <textarea v-model="annotationCardAnswer" class="rv-textarea" rows="4" />
+        <div class="rv-dialog-actions">
+          <button type="button" class="rv-text-btn" @click="annotationCardVisible = false">{{ $t('common.cancel') }}</button>
+          <button type="button" class="rv-primary" :disabled="annotationCardSaving" @click="submitAnnotationCard">
+            {{ annotationCardSaving ? $t('reading.saving') : $t('reading.annotationCardSave') }}
+          </button>
+        </div>
+      </div>
+    </t-dialog>
+
     <div v-if="evidenceFloat.visible" class="rv-evidence-float"
       :style="{ top: evidenceFloat.top + 'px', left: evidenceFloat.left + 'px' }"
       @mouseenter="cancelEvidenceClose" @mouseleave="hideEvidenceFloat">
@@ -843,8 +968,11 @@ import { getChunkByIdOnly, listKnowledgeBases, listKnowledgeFiles, listKnowledge
 import {
   abandonReadingRun,
   addReadingDocuments,
+  createCardFromReadingAnnotation,
+  createReadingAnnotation,
   createReadingDraft,
   createReadingRun,
+  deleteReadingAnnotation,
   deleteReadingDraft,
   deleteReadingReport,
   exportReadingRun,
@@ -856,22 +984,26 @@ import {
   judgeReadingQuestion,
   jumpReadingSection,
   listReadingDrafts,
+  listReadingFeynman,
   listReadingSelfTests,
   resolveReadingContradiction,
   resumeReadingRun,
   saveReadingReport,
   stepReadingRun,
   stopReadingRun,
+  submitReadingFeynman,
   updateReadingConclusion,
   updateReadingDraft,
   updateReadingTerm,
   updateReadingUnderstanding,
+  type ReadingAnnotation,
   type ReadingConclusion,
   type ReadingContradiction,
   type ReadingDepth,
   type ReadingDocument,
   type ReadingDraft as ApiReadingDraft,
   type ReadingEvidence,
+  type ReadingFeynmanAttempt,
   type ReadingHistoryItem,
   type ReadingQuestionNode,
   type ReadingRun,
@@ -1055,6 +1187,24 @@ const currentQuestion = computed(() => {
 
 const isStructured = computed(() => Number(run.value?.plan?.state_version || 0) >= 2)
 const activeTab = ref<'all' | 'terms' | 'conclusions' | 'open' | 'contradictions'>('all')
+const annotations = computed(() => run.value?.annotations || [])
+const feynmanVisible = ref(false)
+const feynmanSectionId = ref('')
+const feynmanText = ref('')
+const feynmanSubmitting = ref(false)
+const feynmanHistoryLoading = ref(false)
+const feynmanAttempts = ref<ReadingFeynmanAttempt[]>([])
+const annotationDialogVisible = ref(false)
+const annotationQuote = ref('')
+const annotationComment = ref('')
+const annotationSaving = ref(false)
+const previewSelectionText = ref('')
+const annotationCardVisible = ref(false)
+const annotationCardTarget = ref<ReadingAnnotation | null>(null)
+const annotationCardGroupId = ref('')
+const annotationCardQuestion = ref('')
+const annotationCardAnswer = ref('')
+const annotationCardSaving = ref(false)
 const structuredTerms = computed(() => run.value?.terms || [])
 const structuredContradictions = computed(() => run.value?.contradictions || [])
 const structuredConclusions = computed(() => (run.value?.conclusions || []).slice().reverse())
@@ -2542,6 +2692,172 @@ const flattenReviewGroups = (
     { label: `${'　'.repeat(depth)}${node.group.name}`, value: node.group.id },
     ...flattenReviewGroups(node.children || [], depth + 1),
   ])
+
+const activeFeynmanSectionId = computed(() => viewingSection.value?.id || currentSection.value?.id || '')
+
+const openFeynman = async () => {
+  if (!run.value || !activeFeynmanSectionId.value) return
+  feynmanSectionId.value = activeFeynmanSectionId.value
+  feynmanText.value = ''
+  feynmanVisible.value = true
+  feynmanHistoryLoading.value = true
+  try {
+    const response = await listReadingFeynman(run.value.id, feynmanSectionId.value)
+    feynmanAttempts.value = response.data || []
+  } catch {
+    feynmanAttempts.value = []
+  } finally {
+    feynmanHistoryLoading.value = false
+  }
+}
+
+const submitFeynman = async () => {
+  if (!run.value || !feynmanSectionId.value || feynmanSubmitting.value) return
+  const text = feynmanText.value.trim()
+  if (text.length < 20) {
+    MessagePlugin.warning(t('reading.feynmanTooShort'))
+    return
+  }
+  feynmanSubmitting.value = true
+  try {
+    const response = await submitReadingFeynman(run.value.id, {
+      section_id: feynmanSectionId.value,
+      text,
+    })
+    feynmanAttempts.value = [response.data, ...feynmanAttempts.value]
+    if (run.value) {
+      run.value.feynman_attempts = [response.data, ...(run.value.feynman_attempts || [])]
+    }
+    feynmanText.value = ''
+    MessagePlugin.success(t('reading.feynmanSubmitted'))
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('reading.feynmanFailed'))
+  } finally {
+    feynmanSubmitting.value = false
+  }
+}
+
+const capturePreviewSelection = () => {
+  const selection = window.getSelection()
+  if (!selection || selection.isCollapsed || !documentPaneRef.value) {
+    previewSelectionText.value = ''
+    return
+  }
+  const range = selection.getRangeAt(0)
+  if (!documentPaneRef.value.contains(range.commonAncestorContainer)) {
+    previewSelectionText.value = ''
+    return
+  }
+  const text = selection.toString().replace(/\s+/g, ' ').trim()
+  previewSelectionText.value = text.length >= 2 && text.length <= 1200 ? text : ''
+}
+
+const openAnnotationDialog = () => {
+  if (!previewSelectionText.value) return
+  annotationQuote.value = previewSelectionText.value
+  annotationComment.value = ''
+  annotationDialogVisible.value = true
+}
+
+const saveAnnotation = async () => {
+  if (!run.value || !annotationQuote.value || annotationSaving.value) return
+  annotationSaving.value = true
+  try {
+    const response = await createReadingAnnotation(run.value.id, {
+      section_id: previewSectionData.value?.id || run.value.current_section_id,
+      quote: annotationQuote.value,
+      comment: annotationComment.value.trim(),
+    })
+    run.value.annotations = [...(run.value.annotations || []), response.data]
+    annotationDialogVisible.value = false
+    annotationQuote.value = ''
+    annotationComment.value = ''
+    previewSelectionText.value = ''
+    window.getSelection()?.removeAllRanges()
+    MessagePlugin.success(t('reading.annotationSaved'))
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('reading.annotationFailed'))
+  } finally {
+    annotationSaving.value = false
+  }
+}
+
+const removeAnnotation = (annotation: ReadingAnnotation) => {
+  if (!run.value) return
+  const dialog = DialogPlugin.confirm({
+    header: t('reading.annotationDeleteTitle'),
+    body: t('reading.annotationDeleteBody'),
+    theme: 'danger',
+    confirmBtn: t('common.delete'),
+    cancelBtn: t('common.cancel'),
+    onConfirm: async () => {
+      try {
+        await deleteReadingAnnotation(run.value!.id, annotation.id)
+        run.value!.annotations = (run.value!.annotations || []).filter((item) => item.id !== annotation.id)
+        MessagePlugin.success(t('reading.annotationDeleted'))
+      } catch (err: any) {
+        MessagePlugin.error(err?.message || t('reading.annotationDeleteFailed'))
+      } finally {
+        dialog.destroy()
+      }
+    },
+  })
+}
+
+const openAnnotationSource = (annotation: ReadingAnnotation) => {
+  void openEvidence({
+    knowledge_id: annotation.knowledge_id,
+    chunk_id: annotation.chunk_id,
+    section_id: annotation.section_id,
+    quote: annotation.quote,
+  })
+}
+
+const ensureReviewGroups = async () => {
+  if (reviewGroupOptions.value.length) return
+  const response = await listReviewGroups()
+  const groups = (response as { data?: ReviewGroupNode[] })?.data || []
+  reviewGroupOptions.value = flattenReviewGroups(groups)
+  if (reviewGroupOptions.value.length && !selectedReviewGroupId.value) {
+    selectedReviewGroupId.value = reviewGroupOptions.value[0].value
+  }
+}
+
+const openAnnotationCard = async (annotation: ReadingAnnotation) => {
+  annotationCardTarget.value = annotation
+  annotationCardQuestion.value = annotation.comment || `${t('reading.annotationDefaultQuestion')}${annotation.quote.slice(0, 120)}`
+  annotationCardAnswer.value = annotation.quote
+  annotationCardGroupId.value = selectedReviewGroupId.value
+  annotationCardVisible.value = true
+  try {
+    await ensureReviewGroups()
+    if (!annotationCardGroupId.value) annotationCardGroupId.value = selectedReviewGroupId.value
+  } catch {
+    // Leave the group selector empty; the submit action will explain.
+  }
+}
+
+const submitAnnotationCard = async () => {
+  if (!run.value || !annotationCardTarget.value || !annotationCardGroupId.value || annotationCardSaving.value) {
+    if (!annotationCardGroupId.value) MessagePlugin.warning(t('reading.selfTestSelectGroup'))
+    return
+  }
+  annotationCardSaving.value = true
+  try {
+    const response = await createCardFromReadingAnnotation(run.value.id, annotationCardTarget.value.id, {
+      group_id: annotationCardGroupId.value,
+      question: annotationCardQuestion.value.trim(),
+      answer: annotationCardAnswer.value.trim(),
+    })
+    MessagePlugin.success(t('reading.annotationCardSaved', { count: response.data.imported }))
+    annotationCardVisible.value = false
+    annotationCardTarget.value = null
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('reading.annotationCardFailed'))
+  } finally {
+    annotationCardSaving.value = false
+  }
+}
 
 const loadSelfTests = async (runId: string) => {
   if (!runId) return
@@ -5503,6 +5819,158 @@ onBeforeUnmount(() => {
 :global(html[theme-mode="light"] .reading-page .rv-left),
 :global(html[theme-mode="light"] .reading-page .rv-right) {
   background: rgba(0, 0, 0, 0.02);
+}
+
+.rv-notes__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rv-annotations {
+  margin: 8px 0 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--rv-hair);
+}
+
+.rv-annotations__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--rv-text-2);
+}
+
+.rv-annotation {
+  margin-top: 8px;
+}
+
+.rv-annotation__quote {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--rv-hair);
+  border-radius: var(--rv-r);
+  background: var(--rv-side);
+  color: var(--rv-text);
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rv-annotation__comment {
+  margin: 6px 2px 0;
+  color: var(--rv-text-2);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.rv-annotation__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.rv-feynman {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rv-feynman__input {
+  min-height: 150px;
+}
+
+.rv-feynman__history {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.rv-feynman__result {
+  padding: 12px 14px;
+  border: 1px solid var(--rv-hair);
+  border-radius: var(--rv-r);
+  background: var(--rv-side);
+}
+
+.rv-feynman__score {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--rv-text-3);
+
+  strong {
+    font-size: 24px;
+    color: var(--rv-green);
+  }
+
+  em {
+    margin-left: auto;
+    max-width: 65%;
+    color: var(--rv-text-2);
+    font-size: 13px;
+    font-style: normal;
+    line-height: 1.5;
+  }
+}
+
+.rv-feynman__dims {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+  color: var(--rv-text-2);
+  font-size: 12px;
+}
+
+.rv-feynman__points {
+  margin-top: 8px;
+  color: var(--rv-text-2);
+  font-size: 13px;
+
+  b {
+    color: var(--rv-text);
+  }
+
+  p {
+    margin: 2px 0 0;
+    line-height: 1.6;
+  }
+
+  &.is-error b {
+    color: var(--rv-clay-d);
+  }
+}
+
+.rv-annotation-dialog,
+.rv-annotation-card-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rv-annotation-dialog__quote {
+  padding: 10px 12px;
+  border-left: 3px solid var(--rv-green);
+  background: var(--rv-side);
+  color: var(--rv-text-2);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.rv-field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--rv-text-2);
 }
 
 /* dark */

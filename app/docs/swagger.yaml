@@ -8732,6 +8732,70 @@ paths:
       summary: 添加精读文档
       tags:
       - 精读
+  /reading/runs/{id}/annotations:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 创建原文批注
+      tags:
+      - 精读
+  /reading/runs/{id}/annotations/{annotationId}:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: annotationId
+        in: path
+        name: annotationId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 删除原文批注
+      tags:
+      - 精读
+  /reading/runs/{id}/annotations/{annotationId}/card:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: annotationId
+        in: path
+        name: annotationId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 从原文批注生成复习卡
+      tags:
+      - 精读
   /reading/runs/{id}/conclusions/{conclusionId}:
     put:
       consumes:
@@ -8830,6 +8894,45 @@ paths:
       security:
       - Bearer: []
       summary: 提交精读回答
+      tags:
+      - 精读
+  /reading/runs/{id}/feynman:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 章节ID
+        in: query
+        name: section_id
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 列出费曼自述记录
+      tags:
+      - 精读
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - Bearer: []
+      summary: 提交费曼自述
       tags:
       - 精读
   /reading/runs/{id}/jump:

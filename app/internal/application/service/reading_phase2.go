@@ -420,5 +420,6 @@ func (s *readingRunService) structuredReportContent(
 		run, *plan, run.Questions, run.Conclusions, run.Terms, run.Contradictions,
 		final, docTitles, coverage, time.Now(),
 	)
+	content += buildReadingReaderLayerMarkdown(run, *plan)
 	return content, coverage, docTitles
 }

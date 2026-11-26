@@ -414,6 +414,7 @@ func (s *readingRunService) callReadingAgentRoundModel(
 func buildReadingAgentRoundPrompt(
 	run *types.ReadingRun, plan *types.ReadingPlan, section *types.ReadingSection,
 	memory *readingAgentMemoryState, quiet bool, round int,
+	annotations []*types.ReadingAnnotation, feynman *types.ReadingFeynmanAttempt,
 ) string {
 	var builder strings.Builder
 	builder.WriteString("阅读目标：" + readingGoal(run) + "\n")
@@ -444,6 +445,33 @@ func buildReadingAgentRoundPrompt(
 		userJSON, _ := json.Marshal(memory.User)
 		builder.WriteString("已蒸馏的知识记忆：\n" + string(knowledgeJSON) + "\n\n")
 		builder.WriteString("用户理解档案：\n" + string(userJSON) + "\n\n")
+	}
+	if len(annotations) > 0 {
+		builder.WriteString("用户在原文上的批注（必须纳入本轮理解，不得静默忽略）：\n")
+		for _, annotation := range annotations {
+			builder.WriteString(fmt.Sprintf("- 「%s」", readingTruncateRunes(annotation.Quote, 160)))
+			if strings.TrimSpace(annotation.Comment) != "" {
+				builder.WriteString(" → " + readingTruncateRunes(annotation.Comment, 200))
+			}
+			builder.WriteString("\n")
+		}
+		builder.WriteString("\n")
+	}
+	if feynman != nil {
+		builder.WriteString(fmt.Sprintf("用户最近一次费曼自述评分：%d/100（覆盖 %d、准确 %d、证据 %d）\n",
+			feynman.Score, feynman.Coverage, feynman.Accuracy, feynman.EvidenceScore))
+		if strings.TrimSpace(feynman.Summary) != "" {
+			builder.WriteString("评估摘要：" + readingTruncateRunes(feynman.Summary, 300) + "\n")
+		}
+		omissions := readingFeynmanPointTexts(feynman.Omissions)
+		errorsFound := readingFeynmanPointTexts(feynman.Errors)
+		if len(omissions) > 0 {
+			builder.WriteString("已知遗漏：" + strings.Join(omissions, "；") + "\n")
+		}
+		if len(errorsFound) > 0 {
+			builder.WriteString("已知错误：" + strings.Join(errorsFound, "；") + "\n")
+		}
+		builder.WriteString("下一轮请优先补齐遗漏、纠正错误。\n\n")
 	}
 	builder.WriteString(`返回严格 JSON（不要 Markdown、不要解释）：
 {
@@ -490,9 +518,21 @@ func (s *readingRunService) runReadingAgentRound(
 	roundStart := time.Now()
 	depth := readingRunDepth(run)
 	round := run.StepCount + 1
+	var annotations []*types.ReadingAnnotation
+	if all, listErr := s.repo.ListAnnotations(ctx, run.ID); listErr == nil {
+		for _, annotation := range all {
+			if annotation.SectionID == section.ID {
+				annotations = append(annotations, annotation)
+			}
+		}
+	}
+	var feynman *types.ReadingFeynmanAttempt
+	if attempts, listErr := s.repo.ListFeynmanAttempts(ctx, run.ID, section.ID); listErr == nil && len(attempts) > 0 {
+		feynman = attempts[0]
+	}
 	messages := []chat.Message{
 		{Role: "system", Content: s.readingInstructions(ctx, run) + "\n\n" + readingAgentRoundRules},
-		{Role: "user", Content: buildReadingAgentRoundPrompt(run, plan, section, memory, quiet, round)},
+		{Role: "user", Content: buildReadingAgentRoundPrompt(run, plan, section, memory, quiet, round, annotations, feynman)},
 	}
 	var merged readingRoundResponse
 	questionOrder := make([]readingLLMQuestion, 0, 1)

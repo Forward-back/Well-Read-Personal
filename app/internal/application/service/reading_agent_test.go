@@ -135,7 +135,7 @@ func TestReadingAgentQuietPromptMarksNoQuestions(t *testing.T) {
 	}
 	section := &types.ReadingSection{ID: "s1", Title: "文档", Heading: "第一章", Content: strings.Repeat("原文", 20)}
 	run := &types.ReadingRun{Plan: types.JSON(`{"goal":"目标","depth":"standard"}`)}
-	prompt := buildReadingAgentRoundPrompt(run, plan, section, &readingAgentMemoryState{}, true, 2)
+	prompt := buildReadingAgentRoundPrompt(run, plan, section, &readingAgentMemoryState{}, true, 2, nil, nil)
 	if !strings.Contains(prompt, "安静模式") {
 		t.Fatalf("quiet prompt must mention quiet mode: %s", prompt[:120])
 	}

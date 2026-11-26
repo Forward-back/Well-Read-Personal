@@ -180,30 +180,32 @@ func readingNoteString(value any) string {
 
 // ReadingRun is one interactive reading session.
 type ReadingRun struct {
-	ID                string                  `json:"id" gorm:"type:varchar(36);primaryKey"`
-	TenantID          uint64                  `json:"tenant_id" gorm:"not null;index"`
-	SessionID         string                  `json:"session_id" gorm:"type:varchar(36);not null;default:''"`
-	UserID            string                  `json:"user_id" gorm:"type:varchar(36);not null;default:''"`
-	MessageID         string                  `json:"message_id" gorm:"type:varchar(36);not null;default:''"`
-	DocumentIDs       JSON                    `json:"document_ids" gorm:"type:jsonb;not null"`
-	SkillID           string                  `json:"skill_id" gorm:"type:varchar(36);not null;default:''"`
-	ReadingModelID    string                  `json:"reading_model_id" gorm:"type:varchar(36);not null;default:''"`
-	ExtractionModelID string                  `json:"extraction_model_id" gorm:"type:varchar(36);not null;default:''"`
-	SynthesisModelID  string                  `json:"synthesis_model_id" gorm:"type:varchar(36);not null;default:''"`
-	Phase             string                  `json:"phase" gorm:"type:varchar(16);not null;default:''"`
-	Status            ReadingRunStatus        `json:"status" gorm:"type:varchar(16);not null;default:'planning'"`
-	Plan              JSON                    `json:"plan" gorm:"type:jsonb;not null"`
-	Notes             JSON                    `json:"notes" gorm:"type:jsonb;not null"`
-	Final             JSON                    `json:"final" gorm:"type:jsonb;not null"`
-	CurrentSectionID  string                  `json:"current_section_id" gorm:"type:varchar(64);not null;default:''"`
-	StepCount         int                     `json:"step_count" gorm:"not null;default:0"`
-	TokenUsage        int                     `json:"token_usage" gorm:"not null;default:0"`
-	Steps             []*ReadingRunStep       `json:"steps,omitempty" gorm:"-"`
-	Questions         []*ReadingQuestionNode  `json:"questions,omitempty" gorm:"-"`
-	Conclusions       []*ReadingConclusion    `json:"conclusions,omitempty" gorm:"-"`
-	Terms             []*ReadingTerm          `json:"terms,omitempty" gorm:"-"`
-	Contradictions    []*ReadingContradiction `json:"contradictions,omitempty" gorm:"-"`
-	Understandings    []*ReadingUnderstanding `json:"understandings,omitempty" gorm:"-"`
+	ID                string                   `json:"id" gorm:"type:varchar(36);primaryKey"`
+	TenantID          uint64                   `json:"tenant_id" gorm:"not null;index"`
+	SessionID         string                   `json:"session_id" gorm:"type:varchar(36);not null;default:''"`
+	UserID            string                   `json:"user_id" gorm:"type:varchar(36);not null;default:''"`
+	MessageID         string                   `json:"message_id" gorm:"type:varchar(36);not null;default:''"`
+	DocumentIDs       JSON                     `json:"document_ids" gorm:"type:jsonb;not null"`
+	SkillID           string                   `json:"skill_id" gorm:"type:varchar(36);not null;default:''"`
+	ReadingModelID    string                   `json:"reading_model_id" gorm:"type:varchar(36);not null;default:''"`
+	ExtractionModelID string                   `json:"extraction_model_id" gorm:"type:varchar(36);not null;default:''"`
+	SynthesisModelID  string                   `json:"synthesis_model_id" gorm:"type:varchar(36);not null;default:''"`
+	Phase             string                   `json:"phase" gorm:"type:varchar(16);not null;default:''"`
+	Status            ReadingRunStatus         `json:"status" gorm:"type:varchar(16);not null;default:'planning'"`
+	Plan              JSON                     `json:"plan" gorm:"type:jsonb;not null"`
+	Notes             JSON                     `json:"notes" gorm:"type:jsonb;not null"`
+	Final             JSON                     `json:"final" gorm:"type:jsonb;not null"`
+	CurrentSectionID  string                   `json:"current_section_id" gorm:"type:varchar(64);not null;default:''"`
+	StepCount         int                      `json:"step_count" gorm:"not null;default:0"`
+	TokenUsage        int                      `json:"token_usage" gorm:"not null;default:0"`
+	Steps             []*ReadingRunStep        `json:"steps,omitempty" gorm:"-"`
+	Questions         []*ReadingQuestionNode   `json:"questions,omitempty" gorm:"-"`
+	Conclusions       []*ReadingConclusion     `json:"conclusions,omitempty" gorm:"-"`
+	Terms             []*ReadingTerm           `json:"terms,omitempty" gorm:"-"`
+	Contradictions    []*ReadingContradiction  `json:"contradictions,omitempty" gorm:"-"`
+	Understandings    []*ReadingUnderstanding  `json:"understandings,omitempty" gorm:"-"`
+	Annotations       []*ReadingAnnotation     `json:"annotations,omitempty" gorm:"-"`
+	FeynmanAttempts   []*ReadingFeynmanAttempt `json:"feynman_attempts,omitempty" gorm:"-"`
 	// Quiet mirrors the distilled task memory for state_version=3 runs so the
 	// workbench can show the quiet badge without a second request.
 	Quiet     bool      `json:"quiet,omitempty" gorm:"-"`
@@ -542,6 +544,79 @@ type ReadingRunMemory struct {
 }
 
 func (ReadingRunMemory) TableName() string { return "reading_run_memories" }
+
+// ReadingFeynmanPoint is one omission or error found in a user's retelling.
+type ReadingFeynmanPoint struct {
+	Text     string            `json:"text"`
+	Evidence []ReadingEvidence `json:"evidence"`
+}
+
+// ReadingFeynmanAttempt is one saved per-section Feynman retelling and its
+// evidence-grounded evaluation.
+type ReadingFeynmanAttempt struct {
+	ID            string    `json:"id"             gorm:"type:varchar(36);primaryKey"`
+	RunID         string    `json:"run_id"         gorm:"type:varchar(36);not null;index"`
+	TenantID      uint64    `json:"tenant_id"      gorm:"not null"`
+	SectionID     string    `json:"section_id"     gorm:"type:varchar(64);not null;default:''"`
+	Text          string    `json:"text"           gorm:"type:text;not null;default:''"`
+	Score         int       `json:"score"          gorm:"not null;default:0"`
+	Coverage      int       `json:"coverage"       gorm:"not null;default:0"`
+	Accuracy      int       `json:"accuracy"       gorm:"not null;default:0"`
+	EvidenceScore int       `json:"evidence_score" gorm:"not null;default:0"`
+	Summary       string    `json:"summary"        gorm:"type:text;not null;default:''"`
+	Omissions     JSON      `json:"omissions"      gorm:"type:jsonb;not null"`
+	Errors        JSON      `json:"errors"         gorm:"type:jsonb;not null"`
+	Evidence      JSON      `json:"evidence"       gorm:"type:jsonb;not null"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+func (ReadingFeynmanAttempt) TableName() string { return "reading_feynman_attempts" }
+
+// SubmitReadingFeynmanRequest evaluates a free-form retelling of one section.
+type SubmitReadingFeynmanRequest struct {
+	SectionID string `json:"section_id" binding:"required"`
+	Text      string `json:"text" binding:"required"`
+}
+
+// ReadingAnnotation is a quoted passage plus the reader's annotation. The
+// quote is validated against the section's chunks when it is created.
+type ReadingAnnotation struct {
+	ID          string    `json:"id"           gorm:"type:varchar(36);primaryKey"`
+	RunID       string    `json:"run_id"       gorm:"type:varchar(36);not null;index"`
+	TenantID    uint64    `json:"tenant_id"    gorm:"not null"`
+	SectionID   string    `json:"section_id"   gorm:"type:varchar(64);not null;default:''"`
+	KnowledgeID string    `json:"knowledge_id" gorm:"type:varchar(36);not null;default:''"`
+	ChunkID     string    `json:"chunk_id"     gorm:"type:varchar(36);not null;default:''"`
+	Quote       string    `json:"quote"        gorm:"type:text;not null;default:''"`
+	Comment     string    `json:"comment"      gorm:"type:text;not null;default:''"`
+	Status      string    `json:"status"       gorm:"type:varchar(16);not null;default:'active'"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (ReadingAnnotation) TableName() string { return "reading_annotations" }
+
+// CreateReadingAnnotationRequest creates an annotation anchored to the
+// containing chunk of the selected section.
+type CreateReadingAnnotationRequest struct {
+	SectionID string `json:"section_id" binding:"required"`
+	Quote     string `json:"quote" binding:"required"`
+	Comment   string `json:"comment"`
+}
+
+// CreateReadingAnnotationCardRequest turns an annotation into one review card.
+// Empty Question/Answer fields fall back to the annotation comment and quote.
+type CreateReadingAnnotationCardRequest struct {
+	GroupID  string `json:"group_id" binding:"required"`
+	Question string `json:"question"`
+	Answer   string `json:"answer"`
+}
+
+// ReadingAnnotationCardResult reports whether the card was imported or
+// absorbed by an existing card.
+type ReadingAnnotationCardResult struct {
+	Imported int `json:"imported"`
+}
 
 const (
 	ReadingSelfTestCandidate = "candidate"

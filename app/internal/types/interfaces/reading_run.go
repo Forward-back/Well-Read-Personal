@@ -38,6 +38,12 @@ type ReadingRunRepository interface {
 	UpdateSelfTestStatus(
 		ctx context.Context, runID, selfTestID, status string,
 	) (bool, error)
+	CreateFeynmanAttempt(ctx context.Context, attempt *types.ReadingFeynmanAttempt) error
+	ListFeynmanAttempts(ctx context.Context, runID, sectionID string) ([]*types.ReadingFeynmanAttempt, error)
+	CreateAnnotation(ctx context.Context, annotation *types.ReadingAnnotation) error
+	ListAnnotations(ctx context.Context, runID string) ([]*types.ReadingAnnotation, error)
+	GetAnnotation(ctx context.Context, runID, annotationID string) (*types.ReadingAnnotation, error)
+	DeleteAnnotation(ctx context.Context, runID, annotationID string) error
 	ListDrafts(ctx context.Context, tenantID uint64, userID string) ([]*types.ReadingDraft, error)
 	GetDraft(ctx context.Context, tenantID uint64, userID, draftID string) (*types.ReadingDraft, error)
 	CreateDraft(ctx context.Context, draft *types.ReadingDraft) error
@@ -139,4 +145,18 @@ type ReadingRunService interface {
 	ImportSelfTests(
 		ctx context.Context, runID string, req *types.ImportReadingSelfTestsRequest,
 	) (*types.ReadingSelfTestImportResult, error)
+	SubmitFeynman(
+		ctx context.Context, runID string, req *types.SubmitReadingFeynmanRequest,
+	) (*types.ReadingFeynmanAttempt, error)
+	ListFeynman(
+		ctx context.Context, runID, sectionID string,
+	) ([]*types.ReadingFeynmanAttempt, error)
+	CreateAnnotation(
+		ctx context.Context, runID string, req *types.CreateReadingAnnotationRequest,
+	) (*types.ReadingAnnotation, error)
+	DeleteAnnotation(ctx context.Context, runID, annotationID string) error
+	CreateCardFromAnnotation(
+		ctx context.Context, runID, annotationID string,
+		req *types.CreateReadingAnnotationCardRequest,
+	) (*types.ReadingAnnotationCardResult, error)
 }

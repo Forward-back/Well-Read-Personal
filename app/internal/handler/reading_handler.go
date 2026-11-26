@@ -579,3 +579,105 @@ func (h *ReadingHandler) ImportSelfTests(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
 }
+
+// SubmitFeynman godoc
+// @Summary      提交费曼自述
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/feynman [post]
+func (h *ReadingHandler) SubmitFeynman(c *gin.Context) {
+	var req types.SubmitReadingFeynmanRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	attempt, err := h.service.SubmitFeynman(c.Request.Context(), c.Param("id"), &req)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": attempt})
+}
+
+// ListFeynman godoc
+// @Summary      列出费曼自述记录
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Param        section_id  query  string  false  "章节ID"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/feynman [get]
+func (h *ReadingHandler) ListFeynman(c *gin.Context) {
+	attempts, err := h.service.ListFeynman(c.Request.Context(), c.Param("id"), c.Query("section_id"))
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": attempts})
+}
+
+// CreateAnnotation godoc
+// @Summary      创建原文批注
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/annotations [post]
+func (h *ReadingHandler) CreateAnnotation(c *gin.Context) {
+	var req types.CreateReadingAnnotationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	annotation, err := h.service.CreateAnnotation(c.Request.Context(), c.Param("id"), &req)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": annotation})
+}
+
+// DeleteAnnotation godoc
+// @Summary      删除原文批注
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Param        annotationId  path  string  true  "annotationId"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/annotations/{annotationId} [delete]
+func (h *ReadingHandler) DeleteAnnotation(c *gin.Context) {
+	if err := h.service.DeleteAnnotation(c.Request.Context(), c.Param("id"), c.Param("annotationId")); err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// CreateCardFromAnnotation godoc
+// @Summary      从原文批注生成复习卡
+// @Tags         精读
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "id"
+// @Param        annotationId  path  string  true  "annotationId"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/annotations/{annotationId}/card [post]
+func (h *ReadingHandler) CreateCardFromAnnotation(c *gin.Context) {
+	var req types.CreateReadingAnnotationCardRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	result, err := h.service.CreateCardFromAnnotation(c.Request.Context(), c.Param("id"), c.Param("annotationId"), &req)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
+}

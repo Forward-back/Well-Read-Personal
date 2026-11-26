@@ -2230,11 +2230,21 @@ func (s *readingRunService) populateStructuredReading(
 	if err != nil {
 		return err
 	}
+	annotations, err := s.repo.ListAnnotations(ctx, run.ID)
+	if err != nil {
+		return err
+	}
+	feynmanAttempts, err := s.repo.ListFeynmanAttempts(ctx, run.ID, "")
+	if err != nil {
+		return err
+	}
 	run.Questions = questions
 	run.Conclusions = conclusions
 	run.Terms = terms
 	run.Contradictions = contradictions
 	run.Understandings = understandings
+	run.Annotations = annotations
+	run.FeynmanAttempts = feynmanAttempts
 	if plan.StateVersion >= readingAgentStateVersion {
 		if memory, memErr := s.repo.GetMemory(ctx, run.ID); memErr == nil && memory != nil {
 			var userMemory struct {
@@ -2322,6 +2332,7 @@ func (s *readingRunService) exportStructuredReading(
 			"documents": docTitles, "coverage": coverage,
 			"questions": run.Questions, "conclusions": conclusions,
 			"terms": terms, "contradictions": run.Contradictions,
+			"annotations": run.Annotations, "feynman_attempts": run.FeynmanAttempts,
 			"final": final, "state_version": plan.StateVersion,
 			"report_edited": edited, "generated_at": generatedAt,
 		}

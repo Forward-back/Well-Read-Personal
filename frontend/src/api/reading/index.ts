@@ -242,6 +242,42 @@ export interface ReadingRun {
   terms?: ReadingTerm[]
   contradictions?: ReadingContradiction[]
   understandings?: ReadingUnderstanding[]
+  annotations?: ReadingAnnotation[]
+  feynman_attempts?: ReadingFeynmanAttempt[]
+}
+
+export interface ReadingFeynmanPoint {
+  text: string
+  evidence: ReadingEvidence[]
+}
+
+export interface ReadingFeynmanAttempt {
+  id: string
+  run_id: string
+  section_id: string
+  text: string
+  score: number
+  coverage: number
+  accuracy: number
+  evidence_score: number
+  summary: string
+  omissions: ReadingFeynmanPoint[]
+  errors: ReadingFeynmanPoint[]
+  evidence: ReadingEvidence[]
+  created_at: string
+}
+
+export interface ReadingAnnotation {
+  id: string
+  run_id: string
+  section_id: string
+  knowledge_id: string
+  chunk_id: string
+  quote: string
+  comment: string
+  status: string
+  created_at: string
+  updated_at: string
 }
 
 export interface ReadingHistoryDocument {
@@ -468,4 +504,49 @@ export interface ReadingExport {
 
 export function exportReadingRun(id: string, format: 'markdown' | 'json') {
   return get<{ data: ReadingExport }>(`/api/v1/reading/runs/${encodeURIComponent(id)}/export?format=${format}`)
+}
+
+export function submitReadingFeynman(
+  id: string,
+  payload: { section_id: string; text: string },
+) {
+  return post<{ data: ReadingFeynmanAttempt }>(
+    `/api/v1/reading/runs/${encodeURIComponent(id)}/feynman`,
+    payload,
+    { timeout: 180_000 },
+  )
+}
+
+export function listReadingFeynman(id: string, sectionId = '') {
+  const query = sectionId ? `?section_id=${encodeURIComponent(sectionId)}` : ''
+  return get<{ data: ReadingFeynmanAttempt[] }>(
+    `/api/v1/reading/runs/${encodeURIComponent(id)}/feynman${query}`,
+  )
+}
+
+export function createReadingAnnotation(
+  id: string,
+  payload: { section_id: string; quote: string; comment: string },
+) {
+  return post<{ data: ReadingAnnotation }>(
+    `/api/v1/reading/runs/${encodeURIComponent(id)}/annotations`,
+    payload,
+  )
+}
+
+export function deleteReadingAnnotation(id: string, annotationId: string) {
+  return del<{ success: boolean }>(
+    `/api/v1/reading/runs/${encodeURIComponent(id)}/annotations/${encodeURIComponent(annotationId)}`,
+  )
+}
+
+export function createCardFromReadingAnnotation(
+  id: string,
+  annotationId: string,
+  payload: { group_id: string; question?: string; answer?: string },
+) {
+  return post<{ data: { imported: number } }>(
+    `/api/v1/reading/runs/${encodeURIComponent(id)}/annotations/${encodeURIComponent(annotationId)}/card`,
+    payload,
+  )
 }
