@@ -128,7 +128,7 @@ const handleKBEditorSuccess = (kbId: string) => {
     max-width: 960px;
     margin: 0 auto;
     padding-top: 24px;
-    padding-bottom: 160px;
+    padding-bottom: 100px;
     flex: 1;
     min-height: 0;
     gap: 48px;
