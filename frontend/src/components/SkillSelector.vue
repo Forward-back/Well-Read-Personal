@@ -243,7 +243,15 @@ onMounted(async () => {
   }
 }
 
-.skp-picker-options { padding: 8px 10px 10px; overflow-y: auto; overflow-x: hidden; }
+.skp-picker-options {
+  padding: 8px 0 10px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar { display: none; }
+}
 .skp-picker-opt {
   display: block;
   width: 100%;
