@@ -128,6 +128,7 @@ const handleKBEditorSuccess = (kbId: string) => {
     max-width: 960px;
     margin: 0 auto;
     padding-top: 24px;
+    padding-bottom: 160px;
     flex: 1;
     min-height: 0;
     gap: 48px;
@@ -135,7 +136,7 @@ const handleKBEditorSuccess = (kbId: string) => {
     :deep(.answers-input) {
         position: static;
         transform: translateX(0);
-        margin-top: 136px;
+        margin-top: auto;
     }
 }
 
