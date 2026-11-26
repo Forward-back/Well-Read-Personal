@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -161,13 +162,20 @@ func (h *ReviewHandler) MoveCard(c *gin.Context) {
 
 func (h *ReviewHandler) SetCardStatus(c *gin.Context) {
 	var req struct {
-		Status string `json:"status"`
+		Status         string     `json:"status"`
+		SuspendedUntil *time.Time `json:"suspended_until"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		_ = c.Error(errors.NewBadRequestError(err.Error()))
 		return
 	}
-	if err := h.service.SetCardStatus(c.Request.Context(), c.Param("id"), req.Status); err != nil {
+	var err error
+	if req.SuspendedUntil != nil {
+		err = h.service.SetCardStatusUntil(c.Request.Context(), c.Param("id"), req.Status, req.SuspendedUntil)
+	} else {
+		err = h.service.SetCardStatus(c.Request.Context(), c.Param("id"), req.Status)
+	}
+	if err != nil {
 		_ = c.Error(err)
 		return
 	}

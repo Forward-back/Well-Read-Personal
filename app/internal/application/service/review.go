@@ -389,6 +389,9 @@ func (s *reviewService) ListCards(
 	ctx context.Context, filter *types.ReviewCardFilter,
 ) ([]*types.ReviewCard, error) {
 	tenantID := types.MustTenantIDFromContext(ctx)
+	if err := s.resumeExpiredSuspensions(ctx, tenantID); err != nil {
+		return nil, err
+	}
 	if filter == nil {
 		filter = &types.ReviewCardFilter{}
 	}
@@ -522,6 +525,33 @@ func (s *reviewService) SetCardStatus(ctx context.Context, id, status string) er
 	return s.repo.SetCardStatus(ctx, tenantID, id, status)
 }
 
+func (s *reviewService) SetCardStatusUntil(
+	ctx context.Context, id, status string, until *time.Time,
+) error {
+	if status != types.ReviewStatusSuspended || until == nil {
+		return werrors.NewValidationError("暂停日期不能为空")
+	}
+	if !until.After(time.Now()) {
+		return werrors.NewValidationError("暂停日期需晚于当前时间")
+	}
+	tenantID := types.MustTenantIDFromContext(ctx)
+	card, err := s.repo.GetCard(ctx, tenantID, id)
+	if err != nil {
+		return err
+	}
+	if card == nil {
+		return werrors.NewNotFoundError("复习卡不存在")
+	}
+	if card.Status == types.ReviewStatusOrphaned {
+		return werrors.NewConflictError("孤儿卡请先重绑来源")
+	}
+	return s.repo.SuspendCardUntil(ctx, tenantID, id, until)
+}
+
+func (s *reviewService) resumeExpiredSuspensions(ctx context.Context, tenantID uint64) error {
+	return s.repo.ResumeExpiredSuspensions(ctx, tenantID)
+}
+
 func (s *reviewService) DeleteCard(ctx context.Context, id string) error {
 	tenantID := types.MustTenantIDFromContext(ctx)
 	return s.repo.SoftDeleteCard(ctx, tenantID, id)
@@ -546,6 +576,9 @@ func (s *reviewService) TodayQueue(
 	ctx context.Context, groupID string, limit int,
 ) (*types.ReviewQueue, error) {
 	tenantID := types.MustTenantIDFromContext(ctx)
+	if err := s.resumeExpiredSuspensions(ctx, tenantID); err != nil {
+		return nil, err
+	}
 	if limit <= 0 || limit > ReviewDailyTotalLimit {
 		limit = ReviewDailyTotalLimit
 	}

@@ -89,6 +89,10 @@ type ReviewCard struct {
 	QuestionHash   string     `json:"question_hash"   gorm:"type:varchar(64);not null"`
 	LastReviewedAt *time.Time `json:"last_reviewed_at"`
 	SourceUpdated  bool       `json:"source_updated"  gorm:"not null;default:false"`
+	// SuspendedUntil pauses a card until a date. While set the card stays out
+	// of queues; on expiry it auto-resumes with its due date shifted to the
+	// resume day. Nil means indefinite suspension.
+	SuspendedUntil *time.Time `json:"suspended_until,omitempty" gorm:"index"`
 	// Vulnerability is a computed single-card level for list and detail
 	// responses. It is never persisted.
 	Vulnerability string `json:"vulnerability,omitempty" gorm:"-"`

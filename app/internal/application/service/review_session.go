@@ -16,6 +16,9 @@ func (s *reviewService) StartSession(
 	ctx context.Context, req *types.StartReviewSessionRequest,
 ) (*types.ReviewSessionState, error) {
 	tenantID := types.MustTenantIDFromContext(ctx)
+	if err := s.resumeExpiredSuspensions(ctx, tenantID); err != nil {
+		return nil, err
+	}
 	if req == nil {
 		return nil, werrors.NewValidationError("缺少复习参数")
 	}

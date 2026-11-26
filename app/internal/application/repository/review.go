@@ -287,10 +287,44 @@ func (r *reviewRepository) SetCardStatus(
 		Where("tenant_id = ? AND id = ?", tenantID, cardID).
 		Updates(map[string]any{
 			"status": status,
+			// Manual status changes clear any timed suspension.
+			"suspended_until": nil,
 			// Resuming a paused card clears the streak but keeps the lifetime
 			// lapse count; a card with a history of forgetting stays vulnerable.
 			"forget_streak": gorm.Expr("CASE WHEN ? THEN 0 ELSE forget_streak END", status == types.ReviewStatusActive),
 			"updated_at":    time.Now(),
+		}).Error
+}
+
+func (r *reviewRepository) SuspendCardUntil(
+	ctx context.Context, tenantID uint64, cardID string, until *time.Time,
+) error {
+	return r.db.WithContext(ctx).
+		Model(&types.ReviewCard{}).
+		Where("tenant_id = ? AND id = ?", tenantID, cardID).
+		Updates(map[string]any{
+			"status":          types.ReviewStatusSuspended,
+			"suspended_until": until,
+			"updated_at":      time.Now(),
+		}).Error
+}
+
+func (r *reviewRepository) ResumeExpiredSuspensions(
+	ctx context.Context, tenantID uint64,
+) error {
+	now := time.Now()
+	return r.db.WithContext(ctx).
+		Model(&types.ReviewCard{}).
+		Where("tenant_id = ? AND status = ? AND suspended_until IS NOT NULL AND suspended_until <= ?",
+			tenantID, types.ReviewStatusSuspended, now).
+		Updates(map[string]any{
+			"status":          types.ReviewStatusActive,
+			"suspended_until": nil,
+			"forget_streak":   0,
+			// The paused period does not count as overdue: a card that was due
+			// before the pause becomes due on the resume day.
+			"due_at":     gorm.Expr("CASE WHEN due_at < suspended_until THEN suspended_until ELSE due_at END"),
+			"updated_at": now,
 		}).Error
 }
 

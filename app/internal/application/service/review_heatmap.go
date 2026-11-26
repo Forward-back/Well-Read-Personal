@@ -45,6 +45,9 @@ func (s *reviewService) Heatmap(
 	ctx context.Context, opts *types.ReviewHeatmapOptions,
 ) (*types.ReviewHeatmap, error) {
 	tenantID := types.MustTenantIDFromContext(ctx)
+	if err := s.resumeExpiredSuspensions(ctx, tenantID); err != nil {
+		return nil, err
+	}
 	if opts == nil {
 		opts = &types.ReviewHeatmapOptions{}
 	}
@@ -61,6 +64,9 @@ func (s *reviewService) ClusterDetail(
 	ctx context.Context, req *types.ReviewClusterDetailRequest,
 ) (*types.ReviewClusterDetail, error) {
 	tenantID := types.MustTenantIDFromContext(ctx)
+	if err := s.resumeExpiredSuspensions(ctx, tenantID); err != nil {
+		return nil, err
+	}
 	if req == nil || strings.TrimSpace(req.RowGroupID) == "" || strings.TrimSpace(req.ColumnKey) == "" {
 		return nil, werrors.NewValidationError("缺少漏洞簇参数")
 	}

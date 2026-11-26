@@ -71,6 +71,11 @@ const performanceCardId = ref('')
 const aiDialogVisible = ref(false)
 const aiDialogMode = ref<'split' | 'angles'>('split')
 
+const suspendVisible = ref(false)
+const suspendSaving = ref(false)
+const suspendTarget = ref<ReviewCard | null>(null)
+const suspendDate = ref('')
+
 const editVisible = ref(false)
 const editSaving = ref(false)
 const editForm = reactive({ id: '', question: '', answer: '', explanation: '', tags: [] as string[] })
@@ -541,6 +546,61 @@ async function toggleStatus(card: ReviewCard) {
   }
 }
 
+function toDateInput(date: Date) {
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+function openSuspend(card: ReviewCard) {
+  suspendTarget.value = card
+  const next = new Date()
+  next.setDate(next.getDate() + 7)
+  suspendDate.value = toDateInput(next)
+  suspendVisible.value = true
+}
+
+const suspendMinDate = computed(() => {
+  const next = new Date()
+  next.setDate(next.getDate() + 1)
+  return toDateInput(next)
+})
+
+async function confirmSuspend(indefinite = false) {
+  const card = suspendTarget.value
+  if (!card) return
+  let until: string | undefined
+  if (!indefinite) {
+    if (!suspendDate.value) return
+    // Pause until the start of the chosen day so the card is back in that
+    // day's queue.
+    until = new Date(`${suspendDate.value}T00:00:00`).toISOString()
+  }
+  suspendSaving.value = true
+  try {
+    await setReviewCardStatus(card.id, 'suspended', until)
+    MessagePlugin.success(t('review.cardUpdated'))
+    suspendVisible.value = false
+    suspendTarget.value = null
+    await loadCards()
+    await reloadPerformance()
+    emit('updated')
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('review.actionFailed'))
+  } finally {
+    suspendSaving.value = false
+  }
+}
+
+function suspendLabel(card: ReviewCard) {
+  if (!card.suspended_until) return t('review.status.suspended')
+  const date = new Date(card.suspended_until)
+  if (Number.isNaN(date.getTime())) return t('review.status.suspended')
+  return t('review.v3.cardsPage.suspendUntil', {
+    date: date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }),
+  })
+}
+
 function removeCard(card: ReviewCard) {
   confirmDelete({
     title: t('review.deleteCard'),
@@ -652,6 +712,8 @@ function onRowMenu(item: { value: string }, card: ReviewCard) {
       openEdit(card)
       break
     case 'suspend':
+      openSuspend(card)
+      break
     case 'resume':
       void toggleStatus(card)
       break
@@ -1212,7 +1274,7 @@ watch(
             <td>{{ groupName(card) }}</td>
             <td>
               <ReviewLevelTag v-if="showsLevel(card)" :level="levelOf(card)" />
-              <span v-if="card.status === 'suspended'" class="rv-tag rv-tag--gray">{{ t('review.status.suspended') }}</span>
+              <span v-if="card.status === 'suspended'" class="rv-tag rv-tag--gray">{{ suspendLabel(card) }}</span>
               <span v-else-if="card.status === 'orphaned'" class="rv-tag rv-tag--red">{{ t('review.status.orphaned') }}</span>
               <span v-else-if="card.status === 'deleted'" class="rv-tag rv-tag--gray">{{ t('review.status.deleted') }}</span>
               <span v-else-if="!showsLevel(card)" class="rv-tag rv-tag--gray">{{ t('review.v3.level.healthy') }}</span>
@@ -1298,6 +1360,34 @@ watch(
         <t-textarea v-model="rebindForm.excerpt" data-testid="review-v3-cards-rebind-excerpt" :label="t('review.excerpt')" :autosize="{ minRows: 3, maxRows: 6 }" />
       </div>
     </t-dialog>
+
+    <t-dialog
+      v-model:visible="suspendVisible"
+      :header="t('review.v3.cardsPage.suspendTitle')"
+      width="420px"
+      :footer="false"
+      data-testid="review-v3-cards-suspend-dialog"
+    >
+      <div class="suspend-dialog">
+        <p class="rv-note">{{ t('review.v3.cardsPage.suspendDesc') }}</p>
+        <label class="suspend-dialog__field">
+          <span>{{ t('review.v3.cardsPage.suspendDateLabel') }}</span>
+          <input v-model="suspendDate" type="date" class="suspend-dialog__date" :min="suspendMinDate" />
+        </label>
+        <div class="suspend-dialog__actions">
+          <button type="button" class="rv-btn rv-btn--ghost rv-btn--sm" :disabled="suspendSaving" @click="confirmSuspend(true)">
+            {{ t('review.v3.cardsPage.suspendIndefinite') }}
+          </button>
+          <span class="suspend-dialog__spacer" />
+          <button type="button" class="rv-btn rv-btn--ghost rv-btn--sm" :disabled="suspendSaving" @click="suspendVisible = false">
+            {{ t('review.cancel') }}
+          </button>
+          <button type="button" class="rv-btn rv-btn--primary rv-btn--sm" :disabled="suspendSaving" @click="confirmSuspend(false)">
+            {{ t('review.v3.cardsPage.suspendConfirm') }}
+          </button>
+        </div>
+      </div>
+    </t-dialog>
   </div>
 </template>
 
@@ -1312,6 +1402,42 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.suspend-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.suspend-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--rvn-ink-soft);
+  font-size: 14px;
+}
+
+.suspend-dialog__date {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--rvn-line);
+  border-radius: var(--rvn-radius-sm);
+  background: var(--rvn-paper);
+  color: var(--rvn-ink);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.suspend-dialog__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.suspend-dialog__spacer {
+  flex: 1;
 }
 
 .cards-panel {

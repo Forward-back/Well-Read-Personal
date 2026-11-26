@@ -25,6 +25,8 @@ type ReviewRepository interface {
 	UpdateCard(ctx context.Context, card *types.ReviewCard) error
 	MoveCard(ctx context.Context, tenantID uint64, cardID, groupID string) error
 	SetCardStatus(ctx context.Context, tenantID uint64, cardID, status string) error
+	SuspendCardUntil(ctx context.Context, tenantID uint64, cardID string, until *time.Time) error
+	ResumeExpiredSuspensions(ctx context.Context, tenantID uint64) error
 	SoftDeleteCard(ctx context.Context, tenantID uint64, cardID string) error
 	RestoreCard(ctx context.Context, tenantID uint64, cardID string) error
 	FindCardByQuestionHash(ctx context.Context, tenantID uint64, hash string) (*types.ReviewCard, error)
@@ -92,6 +94,7 @@ type ReviewService interface {
 	UpdateCard(ctx context.Context, id string, req *types.UpdateReviewCardRequest) (*types.ReviewCard, error)
 	MoveCard(ctx context.Context, id, groupID string) error
 	SetCardStatus(ctx context.Context, id, status string) error
+	SetCardStatusUntil(ctx context.Context, id, status string, until *time.Time) error
 	DeleteCard(ctx context.Context, id string) error
 	RestoreCard(ctx context.Context, id string) error
 	ResetCardSchedule(ctx context.Context, id string) (*types.ReviewCard, error)

@@ -59,6 +59,7 @@ export interface ReviewCard {
   review_count: number
   question_hash: string
   last_reviewed_at?: string | null
+  suspended_until?: string | null
   source_updated: boolean
   vulnerability?: ReviewVulnerability
   vulnerability_reason?: string
@@ -403,8 +404,15 @@ export function moveReviewCard(id: string, groupId: string) {
   return post<{ success: boolean }>(`/api/v1/review/cards/${encodeURIComponent(id)}/move`, { group_id: groupId })
 }
 
-export function setReviewCardStatus(id: string, status: 'active' | 'suspended') {
-  return post<{ success: boolean }>(`/api/v1/review/cards/${encodeURIComponent(id)}/status`, { status })
+export function setReviewCardStatus(
+  id: string,
+  status: 'active' | 'suspended',
+  suspendedUntil?: string | null,
+) {
+  return post<{ success: boolean }>(`/api/v1/review/cards/${encodeURIComponent(id)}/status`, {
+    status,
+    ...(suspendedUntil ? { suspended_until: suspendedUntil } : {}),
+  })
 }
 
 export function deleteReviewCard(id: string) {
