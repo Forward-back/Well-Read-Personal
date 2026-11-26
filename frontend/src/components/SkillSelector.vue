@@ -41,28 +41,39 @@
             <div class="skp-picker-desc">{{ $t('skillCatalog.noSkillDesc') }}</div>
           </button>
 
-          <button
+          <div
             v-for="skill in filteredEnabled"
             :key="skill.id"
-            type="button"
             class="skp-picker-opt"
-            :class="{ selected: modelValue === skill.id }"
-            @click="select(skill.id)"
+            :class="{ selected: modelValue === skill.id, 'is-expanded': expandedId === skill.id }"
+            role="button"
+            tabindex="0"
+            :aria-expanded="expandedId === skill.id"
+            @click="toggleExpand(skill.id)"
+            @keydown.enter.prevent="toggleExpand(skill.id)"
+            @keydown.space.prevent="toggleExpand(skill.id)"
           >
             <div class="skp-picker-r1">
               <span class="skp-picker-name">{{ skill.name }}</span>
               <span v-if="skill.version" class="skp-picker-tag ver">{{ skill.version }}</span>
               <span class="skp-picker-tag on"><span class="skp-picker-dot" />{{ $t('skillCatalog.enabled') }}</span>
+              <t-icon name="chevron-down" class="skp-picker-chevron" />
             </div>
             <div class="skp-picker-desc">{{ skill.description || '—' }}</div>
             <div class="skp-picker-scene">
-              <b>{{ $t('skillCatalog.scope', { scope: $t('skillCatalog.scopeQa') }) }}</b>
+              <span>{{ $t('skillCatalog.scope', { scope: $t('skillCatalog.scopeQa') }) }}</span>
             </div>
-            <div class="skp-picker-extra">
-              <b>{{ $t('skillCatalog.pickerWhen') }}</b>{{ skill.description || '—' }}<br />
-              <span class="skp-picker-faint">{{ $t('skillCatalog.pickerStats') }}</span>
+            <div v-if="expandedId === skill.id" class="skp-picker-extra">
+              <button
+                type="button"
+                class="skp-picker-use"
+                :disabled="modelValue === skill.id"
+                @click.stop="select(skill.id)"
+              >
+                {{ modelValue === skill.id ? $t('skillCatalog.pickerSelected') : $t('skillCatalog.pickerUse') }}
+              </button>
             </div>
-          </button>
+          </div>
 
           <button
             v-for="skill in filteredDisabled"
@@ -103,6 +114,7 @@ const open = ref(false)
 const keyword = ref('')
 const enabled = ref<SelectableSkill[]>([])
 const catalog = ref<SkillCatalogItem[]>([])
+const expandedId = ref<string | null>(null)
 
 const selected = computed(() => {
   const all = [...enabled.value, ...catalog.value]
@@ -120,9 +132,14 @@ const filteredDisabled = computed(() => {
     .filter((skill) => !q || `${skill.name} ${skill.description || ''}`.toLowerCase().includes(q))
 })
 
+const toggleExpand = (id: string) => {
+  expandedId.value = expandedId.value === id ? null : id
+}
+
 const select = (id: string) => {
   emit('update:modelValue', id)
   open.value = false
+  expandedId.value = null
   keyword.value = ''
 }
 
@@ -147,68 +164,206 @@ onMounted(async () => {
   gap: 6px;
   height: 28px;
   padding: 0 10px;
-  border: 1px solid #e3dcce;
-  border-radius: 8px;
-  background: #fff;
-  color: #7c7264;
-  font-size: 12px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: var(--w-control-radius, 8px);
+  background: var(--td-bg-color-container);
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
   cursor: pointer;
   font-family: inherit;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
 
-  &:hover { background: #f8f5ee; border-color: #d3c9b6; }
-  &.is-empty { color: #a79c8b; }
+  &:hover {
+    border-color: var(--w-page-accent, #07c05f);
+    background: var(--td-bg-color-container-hover);
+    color: var(--td-text-color-primary);
+  }
+
+  &.is-empty { color: var(--td-text-color-placeholder); }
 }
 .skp-picker-trigger-label { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.skp-picker-caret { font-size: 12px; color: var(--td-text-color-placeholder, #999); }
+.skp-picker-caret { font-size: 12px; color: var(--td-text-color-placeholder); }
 
 .skp-picker {
+  --skp-picker-accent: var(--w-accent-chat, var(--w-page-accent, #07c05f));
   width: 380px;
   max-height: 520px;
   display: flex;
   flex-direction: column;
-  background: #fff;
-  border: 1px solid #e3dcce;
-  border-radius: 14px 9px 16px 10px / 10px 15px 9px 13px;
-  box-shadow: 0 6px 20px rgba(75, 68, 59, 0.12);
+  background: var(--td-bg-color-container);
+  border: 1px solid var(--td-component-stroke);
+  border-radius: var(--w-card-radius, 12px);
+  box-shadow: var(--td-shadow-2);
+  color: var(--td-text-color-primary);
   overflow: hidden;
 }
-.skp-picker-head { padding: 12px 16px 8px; }
-.skp-picker-title { font-size: 12px; font-weight: 700; color: #5c6b51; letter-spacing: 0.5px; margin-bottom: 10px; }
+
+.skp-picker-head { padding: 14px 16px 10px; }
+.skp-picker-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+
+  &::before {
+    content: '';
+    width: 3px;
+    height: 13px;
+    border-radius: 2px;
+    background: var(--skp-picker-accent);
+  }
+}
 .skp-picker-search {
-  display: flex; align-items: center; gap: 8px;
-  background: #f8f5ee;
-  border: 1px solid #eee8dd;
-  border-radius: 10px 7px 11px 8px / 8px 11px 7px 10px; padding: 7px 12px;
-  color: var(--td-text-color-placeholder, #999);
-  input { border: 0; outline: 0; background: none; font-size: 13px; color: var(--td-text-color-primary, #1f2329); width: 100%; font-family: inherit; }
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--w-control-radius, 8px);
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-placeholder);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+
+  &:focus-within {
+    border-color: var(--skp-picker-accent);
+    background: var(--td-bg-color-container);
+  }
+
+  input {
+    width: 100%;
+    border: 0;
+    outline: 0;
+    background: none;
+    color: var(--td-text-color-primary);
+    font-size: 13px;
+    font-family: inherit;
+  }
 }
-.skp-picker-options { padding: 6px 10px 10px; overflow-y: auto; }
+
+.skp-picker-options { padding: 8px 10px 10px; overflow-y: auto; }
 .skp-picker-opt {
-  display: block; width: 100%; text-align: left; border: 1px solid transparent; background: none;
-  border-radius: 12px 8px 13px 9px / 9px 13px 8px 12px; padding: 11px 14px; cursor: pointer;
-  font-family: inherit; color: #4b443b;
+  display: block;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: none;
+  color: var(--td-text-color-primary);
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+
   & + .skp-picker-opt { margin-top: 4px; }
-  &:hover:not(.is-disabled) { background: #f8f5ee; border-color: #d3c9b6; }
-  &.selected { border-color: #5c6b51; background: #eef1ea; }
-  &.is-off, &.is-disabled { opacity: 0.6; cursor: default; }
+  &:hover:not(.is-disabled) { background: var(--td-bg-color-secondarycontainer); }
+  &:focus-visible {
+    outline: none;
+    border-color: var(--skp-picker-accent);
+  }
+  &.is-expanded { background: var(--td-bg-color-secondarycontainer); }
+  &.selected {
+    border-color: var(--skp-picker-accent);
+    background: color-mix(in srgb, var(--skp-picker-accent) 10%, var(--td-bg-color-container));
+  }
+  &.is-off, &.is-disabled { opacity: 0.55; cursor: default; }
 }
-.skp-picker-r1 { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
-.skp-picker-name { font-family: var(--td-font-family-mono, monospace); font-weight: 700; font-size: 13px; }
-.skp-picker-desc { margin-top: 3px; font-size: 12.5px; color: #7c7264; line-height: 1.7; }
-.skp-picker-scene { margin-top: 3px; font-size: 11.5px; color: #a79c8b; }
-.skp-picker-extra { display: none; margin-top: 8px; border-top: 1px dashed #e3dcce; padding-top: 8px; font-size: 12px; color: #7c7264; line-height: 1.7; }
-.skp-picker-opt:hover:not(.is-disabled) .skp-picker-extra { display: block; }
-.skp-picker-auto { font-size: 11px; color: #46523c; background: #eef1ea; border: 1px solid #d7ddd0; padding: 1px 8px; border-radius: 9px 7px 8px 10px / 10px 8px 7px 9px; }
-.skp-picker-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 1px 8px; border-radius: 9px 7px 8px 10px / 10px 8px 7px 9px; border: 1px solid transparent; }
-.skp-picker-tag.on { color: #46523c; background: #eef1ea; border-color: #d7ddd0; }
-.skp-picker-tag.off { color: #7c7264; background: #f8f5ee; border-color: #e3dcce; }
-.skp-picker-tag.ver { color: #96794b; background: #f6f0e5; border-color: #e2d3b8; }
-.skp-picker-dot { width: 6px; height: 6px; border-radius: 50%; background: #5c6b51; }
-.skp-picker-faint { color: #a79c8b; }
-.skp-picker-empty { padding: 18px 8px; font-size: 12.5px; color: var(--td-text-color-placeholder, #999); text-align: center; }
-.skp-picker-foot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 16px 12px; border-top: 1px dashed #e3dcce; font-size: 11.5px; color: #a79c8b; }
+.skp-picker-r1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.skp-picker-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+.skp-picker-chevron {
+  margin-left: auto;
+  font-size: 14px;
+  color: var(--td-text-color-placeholder);
+  transition: transform 0.15s ease;
+}
+.skp-picker-opt.is-expanded .skp-picker-chevron { transform: rotate(180deg); }
+.skp-picker-desc {
+  display: -webkit-box;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.skp-picker-opt.is-expanded .skp-picker-desc {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+}
+.skp-picker-scene { margin-top: 4px; font-size: 12px; color: var(--td-text-color-placeholder); }
+.skp-picker-extra {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--td-component-stroke);
+}
+.skp-picker-use {
+  height: 28px;
+  padding: 0 14px;
+  border: 1px solid var(--skp-picker-accent);
+  border-radius: var(--w-control-radius, 8px);
+  background: var(--skp-picker-accent);
+  color: #fff;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+
+  &:hover:not(:disabled) { filter: brightness(0.94); }
+  &:disabled {
+    border-color: var(--td-component-stroke);
+    background: transparent;
+    color: var(--td-text-color-secondary);
+    cursor: default;
+  }
+}
+.skp-picker-auto {
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--skp-picker-accent) 30%, var(--td-bg-color-container));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--skp-picker-accent) 10%, var(--td-bg-color-container));
+  color: var(--skp-picker-accent);
+  font-size: 12px;
+}
+.skp-picker-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.skp-picker-tag.on { color: var(--td-success-color); background: var(--td-success-color-light); }
+.skp-picker-tag.off { color: var(--td-text-color-secondary); background: var(--td-bg-color-secondarycontainer); border-color: var(--td-component-stroke); }
+.skp-picker-tag.ver { color: var(--td-warning-color); background: var(--td-warning-color-light); }
+.skp-picker-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--td-success-color); }
+.skp-picker-empty { padding: 18px 8px; font-size: 13px; color: var(--td-text-color-placeholder); text-align: center; }
+.skp-picker-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--td-component-stroke);
+  color: var(--td-text-color-placeholder);
+  font-size: 12px;
+}
 </style>
 
 <style lang="less">
-.skp-picker-popover .t-popup__content { padding: 0; background: transparent; box-shadow: none; }
+.skp-picker-popover .t-popup__content {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: var(--w-card-radius, 12px);
+}
 </style>

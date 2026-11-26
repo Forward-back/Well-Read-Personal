@@ -6034,7 +6034,9 @@ export default {
     pickerWhen: '何时使用：',
     pickerStats: '近 30 天被调用 — 次 · 生效范围：问答',
     pickerDisabledHint: '已禁用的技能不参与匹配，不可手动选中。',
-    pickerFootLeft: '已启用技能可直接选择 · 已禁用技能灰显展示',
+    pickerUse: '使用此技能',
+    pickerSelected: '已选择',
+    pickerFootLeft: '点击技能展开详情并选择 · 已禁用技能灰显展示',
     pickerFootRight: '自动匹配可随时切回「不使用技能」',
     pickerEmpty: '没有匹配的技能。',
     pickerNoSkills: '暂无已启用技能。'
