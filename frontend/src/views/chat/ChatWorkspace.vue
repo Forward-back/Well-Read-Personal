@@ -4,7 +4,7 @@
       <SessionDrawer :visible="true" mode="rail" @update:visible="handleRailVisible" />
     </aside>
 
-    <div class="chat-workspace__main">
+    <div class="chat-workspace__main" :class="{ 'is-search-open': layout.searchOpen }">
       <button
         v-if="!narrow && !referencesStore.visible"
         type="button"
@@ -87,9 +87,14 @@ onUnmounted(() => {
   padding-left: 0;
 }
 
-.chat-workspace__main :deep(.chat-header) {
-  left: 52px;
-  max-width: min(280px, calc(100% - 64px));
+.chat-workspace__main.is-search-open :deep(.input-container) {
+  visibility: hidden;
+}
+
+@media (min-width: 901px) {
+  .chat-workspace__main :deep(.page-topbar) {
+    padding-left: 56px;
+  }
 }
 
 .chat-workspace__main :deep(.dialogue-wrap) {

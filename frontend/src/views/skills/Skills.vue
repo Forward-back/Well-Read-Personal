@@ -180,6 +180,8 @@ onMounted(load)
 }
 
 .skp-view { max-width: none; margin: 0; }
+.skp-view > .skp-editor-card,
+.skp-view > .skp-detail-actions { margin-top: 24px; }
 
 html[theme-mode="light"] .skills-page {
   --skp-ink: var(--w-detail-text-primary, #4b443b);

@@ -96,7 +96,8 @@ async function load() {
   try {
     const res: any = await getSessionsList(1, 50, keyword.value.trim() || undefined)
     if (seq !== requestSeq) return
-    rows.value = (res?.data || []).map(mapRow)
+    const raw = Array.isArray(res?.data) ? res.data : []
+    rows.value = raw.filter((item: any) => !item.reading_run_id).map(mapRow)
   } catch {
     if (seq !== requestSeq) return
     rows.value = []
@@ -126,7 +127,7 @@ onMounted(() => {
 .chat-search {
   position: absolute;
   inset: 0;
-  z-index: 20;
+  z-index: 120;
   overflow-y: auto;
   padding: 32px 40px 48px;
   background: var(--td-bg-color-container);
