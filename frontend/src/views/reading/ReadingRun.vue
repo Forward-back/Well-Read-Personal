@@ -5484,6 +5484,26 @@ onBeforeUnmount(() => {
   display: none;
 }
 
+/* Light mode follows the shared detail appearance: the configured canvas
+   colour and transparency show through the workbench surfaces, and the three
+   text levels use the settings overrides. Dark mode keeps its own tokens. */
+:global(html[theme-mode="light"] .reading-page) {
+  --rv-text: var(--w-detail-text-primary, #37352f);
+  --rv-text-2: var(--w-detail-text-secondary, #787774);
+  --rv-text-3: var(--w-detail-text-placeholder, #9b9a97);
+}
+
+:global(html[theme-mode="light"] .reading-page .rv-topbar),
+:global(html[theme-mode="light"] .reading-page .rv-main),
+:global(html[theme-mode="light"] .reading-page .rv-config) {
+  background: transparent;
+}
+
+:global(html[theme-mode="light"] .reading-page .rv-left),
+:global(html[theme-mode="light"] .reading-page .rv-right) {
+  background: rgba(0, 0, 0, 0.02);
+}
+
 /* dark */
 :global(html[theme-mode="dark"] .reading-page) {
   --rv-text: #f1f0ea;
