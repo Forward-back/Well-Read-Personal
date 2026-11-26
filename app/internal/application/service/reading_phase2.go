@@ -421,5 +421,8 @@ func (s *readingRunService) structuredReportContent(
 		final, docTitles, coverage, time.Now(),
 	)
 	content += buildReadingReaderLayerMarkdown(run, *plan)
+	if strings.TrimSpace(run.ArgumentChainMermaid) != "" {
+		content += "\n\n## 论证链\n\n```mermaid\n" + run.ArgumentChainMermaid + "```\n"
+	}
 	return content, coverage, docTitles
 }

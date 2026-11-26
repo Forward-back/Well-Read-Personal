@@ -32,3 +32,34 @@ func TestStrictReadingFeynmanPointsDropsInvalidEvidence(t *testing.T) {
 	require.Equal(t, "漏掉时限", points[0].Text)
 	require.Len(t, evidence, 1)
 }
+
+func TestBuildReadingArgumentChainMermaid(t *testing.T) {
+	evidenceA := mustJSON(t, []types.ReadingEvidence{{
+		KnowledgeID: "doc1", ChunkID: "c1", Quote: "退款需在30天内发起",
+	}})
+	evidenceB := mustJSON(t, []types.ReadingEvidence{{
+		KnowledgeID: "doc1", ChunkID: "c2", Quote: "退款可随时发起",
+	}})
+	run := &types.ReadingRun{
+		Final: mustJSON(t, map[string]any{
+			"argument_chain": []map[string]any{{
+				"claim": "退款有明确时限",
+				"evidence": []map[string]any{{
+					"chunk_id": "c1", "quote": "退款需在30天内发起",
+				}},
+			}},
+		}),
+		Contradictions: []*types.ReadingContradiction{{
+			Description: "两处退款时限冲突",
+			EvidenceA:   evidenceA,
+			EvidenceB:   evidenceB,
+			Status:      "open",
+		}},
+	}
+	graph, nodes := buildReadingArgumentChainMermaid(run)
+	require.Contains(t, graph, "flowchart LR")
+	require.Contains(t, graph, "C1[\"退款有明确时限\"]:::claim")
+	require.Contains(t, graph, "R1{\"两处退款时限冲突\"}:::rebuttal")
+	require.Contains(t, graph, ":::evidence")
+	require.NotEmpty(t, nodes)
+}

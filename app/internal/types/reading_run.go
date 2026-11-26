@@ -206,6 +206,11 @@ type ReadingRun struct {
 	Understandings    []*ReadingUnderstanding  `json:"understandings,omitempty" gorm:"-"`
 	Annotations       []*ReadingAnnotation     `json:"annotations,omitempty" gorm:"-"`
 	FeynmanAttempts   []*ReadingFeynmanAttempt `json:"feynman_attempts,omitempty" gorm:"-"`
+	// ArgumentChainMermaid is derived on read from the synthesis argument
+	// chain and contradiction evidence; it is never persisted.
+	ArgumentChainMermaid string `json:"argument_chain_mermaid,omitempty" gorm:"-"`
+	// ArgumentChainEvidence maps graph node IDs (E1, E2…) to clickable evidence.
+	ArgumentChainEvidence []*ReadingArgumentChainNode `json:"argument_chain_evidence,omitempty" gorm:"-"`
 	// Quiet mirrors the distilled task memory for state_version=3 runs so the
 	// workbench can show the quiet badge without a second request.
 	Quiet     bool      `json:"quiet,omitempty" gorm:"-"`
@@ -571,6 +576,13 @@ type ReadingFeynmanAttempt struct {
 }
 
 func (ReadingFeynmanAttempt) TableName() string { return "reading_feynman_attempts" }
+
+// ReadingArgumentChainNode connects a derived Mermaid evidence node to the
+// source evidence so the report graph can open the original passage.
+type ReadingArgumentChainNode struct {
+	ID       string          `json:"id"`
+	Evidence ReadingEvidence `json:"evidence"`
+}
 
 // SubmitReadingFeynmanRequest evaluates a free-form retelling of one section.
 type SubmitReadingFeynmanRequest struct {

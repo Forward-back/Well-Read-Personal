@@ -411,6 +411,123 @@ func parseReadingFeynmanResponse(content string) (*readingFeynmanResponse, error
 	return &parsed, nil
 }
 
+type readingFinalArgumentChain struct {
+	ArgumentChain []readingAgentArgument `json:"argument_chain"`
+}
+
+func readingMermaidLabel(value string, limit int) string {
+	text := readingTruncateRunes(strings.TrimSpace(value), limit)
+	replacer := strings.NewReplacer(
+		"\"", "'", "\n", " ", "\r", " ",
+		"[", "［", "]", "］", "{", "（", "}", "）",
+	)
+	return replacer.Replace(text)
+}
+
+// buildReadingArgumentChainMermaid derives a read-only graph from the
+// synthesis argument chain plus contradiction evidence. No new storage: the
+// graph follows the current structured data on every read.
+func buildReadingArgumentChainMermaid(run *types.ReadingRun) (string, []*types.ReadingArgumentChainNode) {
+	if run == nil {
+		return "", nil
+	}
+	var final readingFinalArgumentChain
+	_ = json.Unmarshal(run.Final, &final)
+	if len(final.ArgumentChain) == 0 && len(run.Contradictions) == 0 {
+		return "", nil
+	}
+	type chunkMeta struct {
+		KnowledgeID   string
+		DocumentTitle string
+		SectionID     string
+		Heading       string
+	}
+	metaByChunk := map[string]chunkMeta{}
+	var plan types.ReadingPlan
+	if json.Unmarshal(run.Plan, &plan) == nil {
+		for _, section := range plan.Sections {
+			for _, id := range readingSectionChunkIDs(&section) {
+				metaByChunk[id] = chunkMeta{
+					KnowledgeID: section.KnowledgeID, DocumentTitle: section.Title,
+					SectionID: section.ID, Heading: section.Heading,
+				}
+			}
+		}
+	}
+	var builder strings.Builder
+	builder.WriteString("flowchart LR\n")
+	builder.WriteString("  classDef claim fill:#DFE7EA,stroke:#47677A,color:#24323A;\n")
+	builder.WriteString("  classDef evidence fill:#FBF9F5,stroke:#C9D4DB,color:#3F3A34;\n")
+	builder.WriteString("  classDef rebuttal fill:#EBDCD7,stroke:#8A4E47,color:#5A3531;\n")
+	builder.WriteString("  classDef resolved fill:#EDE7DD,stroke:#857C70,color:#6E675E;\n")
+	evidenceNodes := map[string]string{}
+	evidenceList := make([]*types.ReadingArgumentChainNode, 0)
+	nextEvidence := 1
+	evidenceNode := func(evidence types.ReadingEvidence) string {
+		key := strings.TrimSpace(evidence.ChunkID) + "|" + readingTruncateRunes(strings.TrimSpace(evidence.Quote), 160)
+		if id, ok := evidenceNodes[key]; ok {
+			return id
+		}
+		id := fmt.Sprintf("E%d", nextEvidence)
+		nextEvidence++
+		evidenceNodes[key] = id
+		builder.WriteString(fmt.Sprintf("  %s[\"%s\"]:::evidence\n", id, readingMermaidLabel(evidence.Quote, 90)))
+		evidenceList = append(evidenceList, &types.ReadingArgumentChainNode{ID: id, Evidence: evidence})
+		return id
+	}
+	claims := 0
+	for _, argument := range final.ArgumentChain {
+		claim := strings.TrimSpace(argument.Claim)
+		if claim == "" || len(argument.Evidence) == 0 {
+			continue
+		}
+		claims++
+		if claims > 12 {
+			break
+		}
+		claimID := fmt.Sprintf("C%d", claims)
+		builder.WriteString(fmt.Sprintf("  %s[\"%s\"]:::claim\n", claimID, readingMermaidLabel(claim, 100)))
+		for _, reference := range argument.Evidence {
+			meta := metaByChunk[reference.ChunkID]
+			node := evidenceNode(types.ReadingEvidence{
+				KnowledgeID: meta.KnowledgeID, DocumentTitle: meta.DocumentTitle,
+				ChunkID: reference.ChunkID, SectionID: meta.SectionID,
+				Heading: meta.Heading, Quote: reference.Quote,
+			})
+			builder.WriteString(fmt.Sprintf("  %s --> %s\n", claimID, node))
+		}
+	}
+	rebuttals := 0
+	for _, contradiction := range run.Contradictions {
+		rebuttals++
+		if rebuttals > 8 {
+			break
+		}
+		rebuttalID := fmt.Sprintf("R%d", rebuttals)
+		label := readingMermaidLabel(contradiction.Description, 100)
+		if strings.TrimSpace(contradiction.Resolution) != "" {
+			label += "<br/>处理：" + readingMermaidLabel(contradiction.Resolution, 60)
+		}
+		class := "rebuttal"
+		if contradiction.Status == "resolved" {
+			class = "resolved"
+		}
+		builder.WriteString(fmt.Sprintf("  %s{\"%s\"}:::%s\n", rebuttalID, label, class))
+		for _, evidence := range evidenceFromJSON(contradiction.EvidenceA) {
+			node := evidenceNode(evidence)
+			builder.WriteString(fmt.Sprintf("  %s --> %s\n", node, rebuttalID))
+		}
+		for _, evidence := range evidenceFromJSON(contradiction.EvidenceB) {
+			node := evidenceNode(evidence)
+			builder.WriteString(fmt.Sprintf("  %s --> %s\n", node, rebuttalID))
+		}
+	}
+	if claims == 0 && rebuttals == 0 {
+		return "", nil
+	}
+	return builder.String(), evidenceList
+}
+
 func buildReadingReaderLayerMarkdown(run *types.ReadingRun, plan types.ReadingPlan) string {
 	if len(run.Annotations) == 0 && len(run.FeynmanAttempts) == 0 {
 		return ""

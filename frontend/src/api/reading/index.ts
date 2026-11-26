@@ -244,6 +244,8 @@ export interface ReadingRun {
   understandings?: ReadingUnderstanding[]
   annotations?: ReadingAnnotation[]
   feynman_attempts?: ReadingFeynmanAttempt[]
+  argument_chain_mermaid?: string
+  argument_chain_evidence?: Array<{ id: string; evidence: ReadingEvidence }>
 }
 
 export interface ReadingFeynmanPoint {

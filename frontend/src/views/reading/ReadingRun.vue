@@ -341,6 +341,21 @@
               <span>{{ $t('reading.openCount', { count: openQuestions.length }) }}</span>
               <span>{{ $t('reading.contradictionCount', { count: structuredContradictions.length }) }}</span>
             </div>
+            <section v-if="run.argument_chain_mermaid" class="rv-argument">
+              <div class="rv-argument__head">
+                <span class="rv-block-label">{{ $t('reading.argumentChain') }}</span>
+                <button type="button" class="rv-text-btn" @click="openArgumentFullscreen">
+                  {{ $t('reading.mermaidFullscreen') }}
+                </button>
+              </div>
+              <div
+                v-if="argumentChainSvg"
+                class="rv-argument__canvas"
+                @click="handleArgumentClick"
+                v-html="argumentChainSvg"
+              />
+              <p v-else class="rv-hint">{{ $t('reading.argumentChainRendering') }}</p>
+            </section>
             <div v-for="group in finalGroups" :key="group.key" class="rv-final__group">
               <h4>{{ group.label }}</h4>
               <p v-if="!group.items.length" class="rv-empty">—</p>
@@ -848,8 +863,45 @@
 
     <t-dialog v-model:visible="reportDialogVisible" :header="$t('reading.editReport')" width="900px" :footer="false">
       <div class="reading-report-editor">
-        <p class="rv-hint">{{ $t('reading.editReportHint') }}</p>
-        <t-textarea v-model="reportDraft" :autosize="{ minRows: 20, maxRows: 32 }" />
+        <div class="reading-report-editor__tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="reportMode === 'edit'"
+            :class="{ on: reportMode === 'edit' }"
+            @click="reportMode = 'edit'"
+          >
+            {{ $t('reading.reportEditTab') }}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="reportMode === 'preview'"
+            :class="{ on: reportMode === 'preview' }"
+            @click="reportMode = 'preview'"
+          >
+            {{ $t('reading.reportPreviewTab') }}
+          </button>
+        </div>
+        <p v-if="reportMode === 'edit'" class="rv-hint">{{ $t('reading.editReportHint') }}</p>
+        <t-textarea
+          v-if="reportMode === 'edit'"
+          v-model="reportDraft"
+          class="reading-report-editor__input"
+          :autosize="{ minRows: 20, maxRows: 32 }"
+        />
+        <div v-else class="reading-report-preview">
+          <section v-if="run?.argument_chain_mermaid && argumentChainSvg" class="rv-argument">
+            <div class="rv-argument__head">
+              <span class="rv-block-label">{{ $t('reading.argumentChain') }}</span>
+              <button type="button" class="rv-text-btn" @click="openArgumentFullscreen">
+                {{ $t('reading.mermaidFullscreen') }}
+              </button>
+            </div>
+            <div class="rv-argument__canvas" @click="handleArgumentClick" v-html="argumentChainSvg" />
+          </section>
+          <div class="reading-report-preview__markdown" v-html="reportPreviewHtml" />
+        </div>
         <div class="rv-dialog-actions">
           <button type="button" class="rv-text-btn" :disabled="reportSaving" @click="resetReportDraft">
             {{ $t('reading.resetReport') }}
@@ -1016,7 +1068,10 @@ import ReadingThoughtChain from '@/components/ReadingThoughtChain.vue'
 import ReadingHistoryDrawer from './ReadingHistoryDrawer.vue'
 import DocumentPreview from '@/components/document-preview.vue'
 import { useShellUiStore } from '@/stores/shellUi'
-import { hydrateProtectedFileImages } from '@/utils/security'
+import { openMermaidFullscreen } from '@/utils/mermaidViewer'
+import { renderMermaidToSvg } from '@/utils/mermaidShared'
+import { renderDocumentPreviewMarkdown } from '@/utils/documentPreviewMarkdown'
+import { hydrateProtectedFileImages, sanitizeMarkdownHTML } from '@/utils/security'
 
 type ReadingDocOption = {
   value: string
@@ -2246,6 +2301,62 @@ const reportSaving = ref(false)
 const reportDraft = ref('')
 const reportEdited = ref(false)
 const reportVersion = ref(0)
+const reportMode = ref<'edit' | 'preview'>('edit')
+const argumentChainSvg = ref('')
+let argumentChainRenderSeq = 0
+
+const reportPreviewHtml = computed(() =>
+  renderDocumentPreviewMarkdown(
+    reportDraft.value.replace(/```mermaid[\s\S]*?```/g, '').trim(),
+  ),
+)
+
+async function renderArgumentChain() {
+  const source = run.value?.argument_chain_mermaid?.trim() || ''
+  const seq = ++argumentChainRenderSeq
+  if (!source) {
+    argumentChainSvg.value = ''
+    return
+  }
+  try {
+    const svg = await renderMermaidToSvg(source, `reading-argument-${Date.now()}`)
+    if (seq !== argumentChainRenderSeq) return
+    argumentChainSvg.value = svg ? sanitizeMarkdownHTML(svg) : ''
+  } catch {
+    if (seq === argumentChainRenderSeq) argumentChainSvg.value = ''
+  }
+}
+
+function openArgumentFullscreen() {
+  if (argumentChainSvg.value) openMermaidFullscreen(argumentChainSvg.value)
+}
+
+const argumentEvidenceNodes = computed(() => {
+  const map: Record<string, ReadingEvidence> = {}
+  for (const node of run.value?.argument_chain_evidence || []) {
+    map[node.id] = node.evidence
+  }
+  return map
+})
+
+function handleArgumentClick(event: MouseEvent) {
+  const target = event.target as Element | null
+  const node = target?.closest('[id^="flowchart-E"]') as Element | null
+  const match = node?.id?.match(/flowchart-(E\d+)-\d+/)
+  const evidence = match ? argumentEvidenceNodes.value[match[1]] : null
+  if (evidence) {
+    void openEvidence(evidence)
+    return
+  }
+  openArgumentFullscreen()
+}
+
+watch(
+  () => run.value?.argument_chain_mermaid,
+  () => { void renderArgumentChain() },
+  { immediate: true },
+)
+
 const resolvingId = ref('')
 const customResolutionId = ref('')
 const customResolution = ref('')
@@ -2388,6 +2499,7 @@ const openReportEditor = async () => {
     reportDraft.value = response.data.content
     reportEdited.value = response.data.edited
     reportVersion.value = response.data.version || 0
+    reportMode.value = 'edit'
     reportDialogVisible.value = true
   } catch (err: any) {
     MessagePlugin.error(err?.message || t('reading.reportLoadFailed'))
@@ -5722,6 +5834,147 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.reading-report-editor__tabs {
+  display: flex;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 3px;
+  border: 1px solid var(--rv-hair);
+  border-radius: var(--rv-r);
+
+  button {
+    padding: 5px 14px;
+    border: 0;
+    border-radius: calc(var(--rv-r) - 2px);
+    background: transparent;
+    color: var(--rv-text-2);
+    font-size: 13px;
+    cursor: pointer;
+
+    &.on {
+      background: var(--rv-green-bg);
+      color: var(--rv-green-deep);
+      font-weight: 600;
+    }
+  }
+}
+
+.reading-report-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: min(62vh, 640px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.reading-report-preview__markdown {
+  color: var(--rv-text);
+  font-size: 14px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    margin: 18px 0 8px;
+    line-height: 1.4;
+  }
+
+  h1 { font-size: 22px; }
+  h2 { font-size: 18px; }
+  h3 { font-size: 16px; }
+
+  p,
+  ul,
+  ol,
+  blockquote,
+  pre,
+  table {
+    margin: 8px 0;
+  }
+
+  ul,
+  ol {
+    padding-left: 22px;
+  }
+
+  code {
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--rv-hover);
+    font-family: var(--app-font-family-mono);
+    font-size: 12.5px;
+  }
+
+  pre {
+    overflow: auto;
+    padding: 12px 14px;
+    border: 1px solid var(--rv-hair);
+    border-radius: var(--rv-r);
+    background: var(--rv-side);
+
+    code {
+      padding: 0;
+      background: none;
+    }
+  }
+
+  table {
+    border-collapse: collapse;
+
+    th,
+    td {
+      padding: 6px 10px;
+      border: 1px solid var(--rv-hair);
+    }
+  }
+
+  blockquote {
+    margin-left: 0;
+    padding-left: 12px;
+    border-left: 3px solid var(--rv-hair);
+    color: var(--rv-text-2);
+  }
+}
+
+.rv-argument {
+  margin: 18px 0;
+}
+
+.rv-argument__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.rv-argument__canvas {
+  overflow-x: auto;
+  padding: 12px;
+  border: 1px solid var(--rv-hair);
+  border-radius: var(--rv-r);
+  background: var(--rv-side);
+  cursor: zoom-in;
+
+  :deep(svg) {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto;
+  }
+
+  :deep(g.node) {
+    cursor: pointer;
+  }
+
+  :deep(g.node:hover) {
+    filter: brightness(0.97);
+  }
 }
 
 .rv-dialog-actions {
