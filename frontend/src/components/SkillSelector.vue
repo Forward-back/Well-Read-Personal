@@ -186,7 +186,7 @@ onMounted(async () => {
 
 .skp-picker {
   --skp-picker-accent: var(--w-accent-chat, var(--w-page-accent, #07c05f));
-  width: 380px;
+  width: min(460px, calc(100vw - 24px));
   max-height: 520px;
   display: flex;
   flex-direction: column;
@@ -243,18 +243,19 @@ onMounted(async () => {
   }
 }
 
-.skp-picker-options { padding: 8px 10px 10px; overflow-y: auto; }
+.skp-picker-options { padding: 8px 10px 10px; overflow-y: auto; overflow-x: hidden; }
 .skp-picker-opt {
   display: block;
   width: 100%;
   padding: 12px 14px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 0;
   background: none;
   color: var(--td-text-color-primary);
   text-align: left;
   cursor: pointer;
   font-family: inherit;
+  overflow-wrap: anywhere;
   transition: border-color 0.15s ease, background-color 0.15s ease;
 
   & + .skp-picker-opt { margin-top: 4px; }
@@ -275,6 +276,7 @@ onMounted(async () => {
   font-size: 14px;
   font-weight: 600;
   color: var(--td-text-color-primary);
+  overflow-wrap: anywhere;
 }
 .skp-picker-chevron {
   margin-left: auto;
@@ -290,6 +292,7 @@ onMounted(async () => {
   color: var(--td-text-color-secondary);
   font-size: 13px;
   line-height: 1.6;
+  overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
