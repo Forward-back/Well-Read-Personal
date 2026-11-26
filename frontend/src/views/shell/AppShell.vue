@@ -5,6 +5,7 @@
     :class="{
       'app-shell--detail': isDetailRoute,
       'app-shell--reading': isReadingRoute,
+      'app-shell--agent': isAgentRoute,
       'app-shell--fullscreen': fullscreenEligible && fullscreen,
       'app-shell--window-hidden': windowHidden,
     }"
@@ -142,6 +143,7 @@ import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch, type C
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import { MessagePlugin } from 'tdesign-vue-next'
 import {
+  AiTerminalIcon,
   ArrowUpIcon,
   BookOpenIcon,
   ChartIcon,
@@ -181,6 +183,7 @@ const route = useRoute()
 const router = useRouter()
 const isDetailRoute = computed(() => route.path.startsWith('/platform'))
 const isReadingRoute = computed(() => route.path.startsWith('/platform/reading'))
+const isAgentRoute = computed(() => route.path.startsWith('/platform/agent'))
 const featureKey = computed(() => {
   const path = route.path
   if (path.startsWith('/platform/chat/') || path === '/platform/creatChat' || path.endsWith('/creatChat')) return 'chat'
@@ -188,6 +191,7 @@ const featureKey = computed(() => {
   if (path.startsWith('/platform/reading')) return 'reading'
   if (path.startsWith('/platform/review')) return 'review'
   if (path.startsWith('/platform/skills')) return 'skills'
+  if (path.startsWith('/platform/agent')) return 'agent'
   return ''
 })
 const fullscreenEligible = computed(() => isDetailRoute.value || route.path === '/')
@@ -243,6 +247,7 @@ const primaryNav = computed<PrimaryNavItem[]>(() => [
   { key: 'reading', label: t('menu.reading'), icon: BookOpenIcon, path: '/platform/reading' },
   { key: 'review', label: t('menu.review'), icon: ChartIcon, path: '/platform/review' },
   { key: 'skills', label: t('menu.skills'), icon: StarIcon, path: '/platform/skills' },
+  { key: 'agent', label: t('menu.agent'), icon: AiTerminalIcon, path: '/platform/agent' },
 ])
 
 const rightRail = computed(() => [
@@ -386,6 +391,7 @@ function isPrimaryActive(item: PrimaryNavItem) {
   if (item.key === 'reading') return route.path.startsWith('/platform/reading')
   if (item.key === 'review') return route.path.startsWith('/platform/review')
   if (item.key === 'skills') return route.path.startsWith('/platform/skills')
+  if (item.key === 'agent') return route.path.startsWith('/platform/agent')
   return false
 }
 
@@ -713,6 +719,7 @@ html[theme-mode="dark"] .app-shell {
 .app-shell[data-feature="reading"] { --w-page-accent-source: var(--w-accent-reading, #07c05f); }
 .app-shell[data-feature="review"] { --w-page-accent-source: var(--w-accent-review, #07c05f); }
 .app-shell[data-feature="skills"] { --w-page-accent-source: var(--w-accent-skills, #07c05f); }
+.app-shell[data-feature="agent"] { --w-page-accent-source: var(--w-accent-agent, #07c05f); }
 
 .app-shell[data-feature="chat"],
 .app-shell[data-feature="knowledge"] {
@@ -1045,7 +1052,7 @@ html[theme-mode="dark"] .app-window {
 }
 
 /* 页面版心：最大 1200px 居中，左右留白 max(24px, 5%)；精读保留自身工作台版心。 */
-.app-shell:not(.app-shell--reading) .app-window__content > * {
+.app-shell:not(.app-shell--reading):not(.app-shell--agent) .app-window__content > * {
   width: 100%;
   max-width: 1200px;
   margin-left: auto;

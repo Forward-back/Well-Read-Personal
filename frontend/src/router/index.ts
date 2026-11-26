@@ -98,6 +98,12 @@ const router = createRouter({
           meta: { requiresAuth: true },
         },
         {
+          path: 'platform/agent',
+          name: 'agent',
+          component: () => import('../views/agent/AgentWorkspace.vue'),
+          meta: { requiresAuth: true },
+        },
+        {
           path: 'platform/settings',
           name: 'settings',
           component: () => import('../views/settings/Settings.vue'),
