@@ -29,6 +29,10 @@ const PREFERENCE_SUFFIXES = [
   'accent_reading',
   'accent_review',
   'accent_skills',
+  'accent_agent',
+  'agent_surface',
+  'agent_raised',
+  'agent_border',
 ] as const
 
 export function readUserId(): string {

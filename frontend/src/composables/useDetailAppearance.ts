@@ -33,12 +33,28 @@ export const DEFAULT_TEXT_COLORS = {
 
 export type DetailTextLevel = keyof typeof DEFAULT_TEXT_COLORS
 
-// Primary action colour per feature page. Unset means the shared bright green
-// default; the UI settings page writes an override for the pages the owner
-// wants to tint differently.
-export const FEATURE_ACCENT_KEYS = ['chat', 'knowledge', 'reading', 'review', 'skills'] as const
+// Primary action colour per feature page. Unset means the shared default;
+// the UI settings page writes an override for the pages the owner wants to
+// tint differently. Agent defaults to VS Code High Contrast blue.
+export const FEATURE_ACCENT_KEYS = ['chat', 'knowledge', 'reading', 'review', 'skills', 'agent'] as const
 export type FeatureAccentKey = (typeof FEATURE_ACCENT_KEYS)[number]
 export const DEFAULT_FEATURE_ACCENT = '#07c05f'
+export const DEFAULT_FEATURE_ACCENTS: Record<FeatureAccentKey, string> = {
+  chat: DEFAULT_FEATURE_ACCENT,
+  knowledge: DEFAULT_FEATURE_ACCENT,
+  reading: DEFAULT_FEATURE_ACCENT,
+  review: DEFAULT_FEATURE_ACCENT,
+  skills: DEFAULT_FEATURE_ACCENT,
+  agent: '#0f4a85',
+}
+
+export const AGENT_APPEARANCE_KEYS = ['surface', 'raised', 'border'] as const
+export type AgentAppearanceKey = (typeof AGENT_APPEARANCE_KEYS)[number]
+export const DEFAULT_AGENT_APPEARANCE: Record<AgentAppearanceKey, string> = {
+  surface: '#ffffff',
+  raised: '#ffffff',
+  border: '#0f4a85',
+}
 
 const COLOR_KEY = 'detail_color'
 const TRANSPARENCY_KEY = 'detail_transparency'
@@ -53,6 +69,12 @@ const FEATURE_ACCENT_SUFFIXES: Record<FeatureAccentKey, string> = {
   reading: 'accent_reading',
   review: 'accent_review',
   skills: 'accent_skills',
+  agent: 'accent_agent',
+}
+const AGENT_APPEARANCE_SUFFIXES: Record<AgentAppearanceKey, string> = {
+  surface: 'agent_surface',
+  raised: 'agent_raised',
+  border: 'agent_border',
 }
 const HEX_PATTERN = /^#[0-9a-f]{6}$/i
 
@@ -83,6 +105,12 @@ const featureAccents = reactive<Record<FeatureAccentKey, string | null>>({
   reading: loadHexPreference(FEATURE_ACCENT_SUFFIXES.reading),
   review: loadHexPreference(FEATURE_ACCENT_SUFFIXES.review),
   skills: loadHexPreference(FEATURE_ACCENT_SUFFIXES.skills),
+  agent: loadHexPreference(FEATURE_ACCENT_SUFFIXES.agent),
+})
+const agentAppearance = reactive<Record<AgentAppearanceKey, string | null>>({
+  surface: loadHexPreference(AGENT_APPEARANCE_SUFFIXES.surface),
+  raised: loadHexPreference(AGENT_APPEARANCE_SUFFIXES.raised),
+  border: loadHexPreference(AGENT_APPEARANCE_SUFFIXES.border),
 })
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -122,6 +150,10 @@ function applyDetailAppearance() {
     } else {
       root.removeProperty(`--w-accent-${key}`)
     }
+  }
+
+  for (const key of AGENT_APPEARANCE_KEYS) {
+    root.setProperty(`--w-agent-${key}`, agentAppearance[key] || DEFAULT_AGENT_APPEARANCE[key])
   }
 }
 
@@ -168,6 +200,20 @@ export function useDetailAppearance() {
     applyDetailAppearance()
   }
 
+  function setAgentAppearance(key: AgentAppearanceKey, value: string): boolean {
+    if (!HEX_PATTERN.test(value)) return false
+    agentAppearance[key] = value.toLowerCase()
+    savePreference(AGENT_APPEARANCE_SUFFIXES[key], agentAppearance[key] as string)
+    applyDetailAppearance()
+    return true
+  }
+
+  function resetAgentAppearance(key: AgentAppearanceKey) {
+    agentAppearance[key] = null
+    safeRemoveItem(userKey(AGENT_APPEARANCE_SUFFIXES[key]))
+    applyDetailAppearance()
+  }
+
   function resetDetailAppearance() {
     currentColor.value = DEFAULT_DETAIL_COLOR
     currentTransparency.value = DEFAULT_DETAIL_TRANSPARENCY
@@ -181,6 +227,10 @@ export function useDetailAppearance() {
       featureAccents[key] = null
       safeRemoveItem(userKey(FEATURE_ACCENT_SUFFIXES[key]))
     }
+    for (const key of AGENT_APPEARANCE_KEYS) {
+      agentAppearance[key] = null
+      safeRemoveItem(userKey(AGENT_APPEARANCE_SUFFIXES[key]))
+    }
     applyDetailAppearance()
   }
 
@@ -191,11 +241,14 @@ export function useDetailAppearance() {
     textSecondary,
     textPlaceholder,
     featureAccents,
+    agentAppearance,
     setDetailColor,
     setDetailTransparency,
     setDetailTextColor,
     setFeatureAccent,
     resetFeatureAccent,
+    setAgentAppearance,
+    resetAgentAppearance,
     resetDetailAppearance,
   }
 }
@@ -205,6 +258,7 @@ export function initDetailAppearance() {
   currentColor.value = loadColor()
   currentTransparency.value = loadTransparency()
   loadFeatureAccents()
+  loadAgentAppearance()
   applyDetailAppearance()
 }
 
@@ -214,11 +268,18 @@ export function reloadDetailAppearanceFromStorage() {
   currentColor.value = loadColor()
   currentTransparency.value = loadTransparency()
   loadFeatureAccents()
+  loadAgentAppearance()
   applyDetailAppearance()
 }
 
 function loadFeatureAccents() {
   for (const key of FEATURE_ACCENT_KEYS) {
     featureAccents[key] = loadHexPreference(FEATURE_ACCENT_SUFFIXES[key])
+  }
+}
+
+function loadAgentAppearance() {
+  for (const key of AGENT_APPEARANCE_KEYS) {
+    agentAppearance[key] = loadHexPreference(AGENT_APPEARANCE_SUFFIXES[key])
   }
 }

@@ -719,7 +719,7 @@ html[theme-mode="dark"] .app-shell {
 .app-shell[data-feature="reading"] { --w-page-accent-source: var(--w-accent-reading, #07c05f); }
 .app-shell[data-feature="review"] { --w-page-accent-source: var(--w-accent-review, #07c05f); }
 .app-shell[data-feature="skills"] { --w-page-accent-source: var(--w-accent-skills, #07c05f); }
-.app-shell[data-feature="agent"] { --w-page-accent-source: var(--w-accent-agent, #07c05f); }
+.app-shell[data-feature="agent"] { --w-page-accent-source: var(--w-accent-agent, #0f4a85); }
 
 .app-shell[data-feature="chat"],
 .app-shell[data-feature="knowledge"] {
