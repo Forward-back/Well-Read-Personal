@@ -121,6 +121,7 @@ const MERMAID_CONFIG = {
   startOnLoad: false,
   theme: 'base' as const,
   securityLevel: 'strict' as const,
+  suppressErrorRendering: true,
   fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
   flowchart: {
     useMaxWidth: true,
@@ -217,7 +218,7 @@ export const renderMermaidToSvg = async (code: string, id?: string): Promise<str
     const mermaid = await getMermaid()
     ensureMermaidInitialized()
     await initPromise
-    await mermaid.parse(code)
+    await mermaid.parse(code, { suppressErrors: true })
     // Mermaid reuses the render id as the SVG root id. Always mint a fresh
     // one so a later render cannot collide with an SVG already in the DOM.
     const renderId = `${id || 'mermaid'}-${++mermaidCount}`
@@ -268,7 +269,7 @@ export const renderMermaidInContainer = async (
       }
       const code = mermaidSourceFromElement(el)
       if (!code) continue
-      await mermaid.parse(code)
+      await mermaid.parse(code, { suppressErrors: true })
       const renderId = `mermaid-render-${++mermaidCount}`
       const { svg } = await mermaid.render(renderId, code)
       el.classList.add('mermaid')

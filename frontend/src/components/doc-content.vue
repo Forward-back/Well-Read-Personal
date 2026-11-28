@@ -212,6 +212,7 @@ mermaid.initialize({
   startOnLoad: false,
   theme: 'default',
   securityLevel: 'strict',
+  suppressErrorRendering: true,
   fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
   flowchart: {
     useMaxWidth: true,
@@ -1193,7 +1194,8 @@ const renderMermaidDiagrams = async () => {
     console.log('[Mermaid] Found mermaid elements:', mermaidElements?.length);
     if (mermaidElements && mermaidElements.length > 0) {
       await mermaid.run({
-        nodes: mermaidElements
+        nodes: mermaidElements,
+        suppressErrors: true
       });
       console.log('[Mermaid] Rendering complete');
       // 渲染完成后绑定点击事件

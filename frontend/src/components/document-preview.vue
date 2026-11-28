@@ -8,7 +8,7 @@ import hljs from 'highlight.js';
 import 'highlight.js/styles/github.css';
 import 'katex/dist/katex.min.css';
 import { useI18n } from 'vue-i18n';
-import { sanitizeHTML, sanitizeMarkdownHTML } from '@/utils/security';
+import { sanitizeHTML } from '@/utils/security';
 import { renderDocumentPreviewMarkdown } from '@/utils/documentPreviewMarkdown';
 import { openMermaidFullscreen } from '@/utils/mermaidViewer';
 import { renderMermaidToSvg } from '@/utils/mermaidShared';
@@ -345,7 +345,9 @@ async function renderMermaid(blob: Blob) {
   const text = await blob.text();
   const svg = await renderMermaidToSvg(text, `file-preview-mermaid-${Date.now()}`);
   if (svg) {
-    mermaidSvg.value = sanitizeMarkdownHTML(svg);
+    // Mermaid already sanitizes labels under securityLevel: 'strict'; a
+    // markdown HTML sanitize pass would strip <foreignObject> labels.
+    mermaidSvg.value = svg;
     return;
   }
   previewType.value = 'text';
