@@ -138,3 +138,41 @@ export function streamAgentWorkspaceMessage(
     },
   }
 }
+
+export interface AgentPendingView {
+  id: string
+  session_id?: string
+  message_id?: string
+  tool_name: string
+  risk_level: 'L2' | 'L3' | string
+  status: string
+  expires_at: string
+  dry_run?: { tool?: string; plan?: Record<string, unknown>; diff?: string }
+  error?: string
+  applied_version_ids?: string[]
+}
+
+export interface AgentPendingExecuteResult {
+  pending_id: string
+  status: string
+  applied_version_ids: string[]
+  message: string
+}
+
+export function getAgentPending(id: string) {
+  return get<{ data: AgentPendingView }>(`/api/v1/agent-workspace/pending/${encodeURIComponent(id)}`)
+}
+
+export function confirmAgentPending(id: string, comment = '') {
+  return post<{ data: AgentPendingExecuteResult }>(
+    `/api/v1/agent-workspace/pending/${encodeURIComponent(id)}/confirm`,
+    { comment },
+  )
+}
+
+export function rejectAgentPending(id: string, comment = '') {
+  return post<{ data: AgentPendingView }>(
+    `/api/v1/agent-workspace/pending/${encodeURIComponent(id)}/reject`,
+    { comment },
+  )
+}

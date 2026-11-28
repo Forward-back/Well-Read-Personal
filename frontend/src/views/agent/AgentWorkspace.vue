@@ -281,13 +281,39 @@
               </div>
             </section>
 
-            <section class="agent-turn">
-              <span class="agent-node is-warning" aria-hidden="true" />
+            <section v-for="pending in pendingCards" :key="pending.id" class="agent-turn">
+              <span
+                class="agent-node"
+                :class="pending.status === 'pending' ? 'is-warning' : pending.status === 'applied' ? 'is-success' : 'is-agent'"
+                aria-hidden="true"
+              />
               <div class="agent-turn__content">
-                <article class="agent-pending-box">
-                  <header>{{ $t('agentWorkspace.pendingTitle') }}</header>
+                <article class="agent-pending-box" :class="{ 'is-confirmed': pending.status === 'applied' }">
+                  <header>
+                    <strong>{{ toolLabel(pending.tool_name) }}</strong>
+                    <span class="agent-risk-badge" :class="`is-${pending.risk_level.toLowerCase()}`">{{ pending.risk_level }}</span>
+                    <span class="agent-state" :class="pendingStateClass(pending.status)">
+                      {{ pendingStatusLabel(pending.status) }}
+                    </span>
+                  </header>
+                  <p class="agent-pending__diff">{{ pending.diff }}</p>
                   <div class="agent-pending__meta">
-                    <p>{{ $t('agentWorkspace.l2Placeholder') }}</p>
+                    <p><code>pending_task_id</code> {{ pending.id }}</p>
+                    <p>{{ pendingExpiresLabel(pending.expires_at) }}</p>
+                  </div>
+                  <p v-if="pending.error" class="agent-tool-error">{{ pending.error }}</p>
+                  <div v-if="pending.status === 'pending'" class="agent-pending__actions">
+                    <button
+                      type="button"
+                      class="agent-btn"
+                      :class="pending.risk_level === 'L3' ? 'is-danger' : 'is-primary'"
+                      @click="confirmPending(pending)"
+                    >
+                      {{ $t('agentWorkspace.confirmExecute') }}
+                    </button>
+                    <button type="button" class="agent-btn" @click="rejectPending(pending)">
+                      {{ $t('agentWorkspace.reject') }}
+                    </button>
                   </div>
                 </article>
               </div>
@@ -490,6 +516,10 @@ import {
   loadAgentWorkspaceMessages,
   streamAgentWorkspaceMessage,
   updateAgentWorkspaceSession,
+  getAgentPending,
+  confirmAgentPending,
+  rejectAgentPending,
+  type AgentPendingView,
   type AgentWorkspaceMessage,
   type AgentWorkspaceSession,
   type AgentWorkspaceStreamEvent,
@@ -576,6 +606,7 @@ const compareFrom = ref('')
 const compareTo = ref('')
 const compareData = ref<DocVersionCompare | null>(null)
 const comparing = ref(false)
+const pendingMap = ref<Record<string, AgentPendingView>>({})
 
 const knowledgeBaseName = computed(() => {
   const map: Record<string, string> = {}
@@ -949,6 +980,115 @@ function undoEdit(documentId: string, previousVersionId: string) {
   void doRollback(previousVersionId)
 }
 
+async function syncPendingStatuses(ids: string[]) {
+  const unique = Array.from(new Set(ids.filter(Boolean)))
+  if (!unique.length) return
+  const results = await Promise.allSettled(unique.map((id) => getAgentPending(id)))
+  const next = { ...pendingMap.value }
+  results.forEach((result, index) => {
+    if (result.status === 'fulfilled' && result.value.data) {
+      next[unique[index]] = result.value.data
+    }
+  })
+  pendingMap.value = next
+}
+
+function syncPendingStatusesFromMessages(messages: AgentWorkspaceMessage[]) {
+  const ids: string[] = []
+  for (const message of messages) {
+    if (message.role !== 'assistant') continue
+    for (const event of eventsFromAgentSteps(message.agent_steps)) {
+      if (event.type !== 'tool_call') continue
+      const pendingId = String((event.tool_data || {}).pending_task_id || '')
+      if (pendingId) ids.push(pendingId)
+    }
+  }
+  void syncPendingStatuses(ids)
+}
+
+function pendingStatusLabel(status: string): string {
+  const map: Record<string, string> = {
+    pending: t('agentWorkspace.pendingStatusPending'),
+    applied: t('agentWorkspace.pendingStatusApplied'),
+    rejected: t('agentWorkspace.pendingStatusRejected'),
+    expired: t('agentWorkspace.pendingStatusExpired'),
+    failed: t('agentWorkspace.pendingStatusFailed'),
+  }
+  return map[status] || status
+}
+
+function pendingStateClass(status: string): string {
+  if (status === 'applied') return 'is-done'
+  if (status === 'failed' || status === 'expired' || status === 'rejected') return 'is-warn'
+  return ''
+}
+
+function pendingExpiresLabel(expiresAt: string): string {
+  if (!expiresAt) return ''
+  const expires = new Date(expiresAt)
+  if (Number.isNaN(expires.getTime())) return ''
+  const remaining = expires.getTime() - Date.now()
+  if (remaining <= 0) return t('agentWorkspace.pendingExpired')
+  const hours = Math.floor(remaining / 3600000)
+  const minutes = Math.max(1, Math.floor((remaining % 3600000) / 60000))
+  const label = hours > 0 ? `${hours} 小时 ${minutes} 分` : `${minutes} 分`
+  return t('agentWorkspace.pendingExpiresIn', { time: label })
+}
+
+async function refreshAfterPendingChange() {
+  documentChangedInTurn = true
+  await loadDocuments()
+  if (currentDocId.value) await loadDocContent()
+  await loadVersions()
+}
+
+function confirmPending(card: { id: string; tool_name: string; risk_level: string; diff: string }) {
+  const dialog = DialogPlugin.confirm({
+    header: t('agentWorkspace.confirmExecute'),
+    body: t('agentWorkspace.confirmExecuteBody', { risk: card.risk_level, diff: card.diff }),
+    theme: card.risk_level === 'L3' ? 'danger' : 'warning',
+    confirmBtn: t('agentWorkspace.confirmExecute'),
+    cancelBtn: t('common.cancel'),
+    onConfirm: async () => {
+      dialog.hide()
+      try {
+        await confirmAgentPending(card.id)
+        MessagePlugin.success(t('agentWorkspace.confirmDone'))
+        await syncPendingStatuses([card.id])
+        await refreshAfterPendingChange()
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (message.includes('已被修改') || message.includes('409')) {
+          MessagePlugin.warning(t('agentWorkspace.pendingConflictHint'))
+        } else {
+          MessagePlugin.error(message)
+        }
+        await syncPendingStatuses([card.id])
+      }
+    },
+  })
+}
+
+function rejectPending(card: { id: string }) {
+  const dialog = DialogPlugin.confirm({
+    header: t('agentWorkspace.reject'),
+    body: t('agentWorkspace.rejectConfirmBody'),
+    theme: 'default',
+    confirmBtn: t('agentWorkspace.reject'),
+    cancelBtn: t('common.cancel'),
+    onConfirm: async () => {
+      dialog.hide()
+      try {
+        await rejectAgentPending(card.id)
+        MessagePlugin.success(t('agentWorkspace.rejectDone'))
+        await syncPendingStatuses([card.id])
+      } catch (error: unknown) {
+        MessagePlugin.error(error instanceof Error ? error.message : String(error))
+      }
+    },
+  })
+}
+
 // ---- chat turn ------------------------------------------------------------
 function cancelStream() {
   streamHandle?.close()
@@ -1041,6 +1181,33 @@ function assistantEvents(message: AgentWorkspaceMessage): WorkspaceStreamItem[] 
   return messageEvents.value.get(message.id) || []
 }
 
+const pendingCards = computed(() => {
+  const cards: Array<{ id: string; tool_name: string; risk_level: string; status: string; diff: string; expires_at: string; error?: string }> = []
+  const seen = new Set<string>()
+  const pushFromEvents = (events: WorkspaceStreamItem[]) => {
+    for (const event of events) {
+      if (event.type !== 'tool_call' || event.success === false) continue
+      const data = event.tool_data || {}
+      const pendingId = String(data.pending_task_id || '')
+      if (!pendingId || seen.has(pendingId)) continue
+      seen.add(pendingId)
+      const live = pendingMap.value[pendingId]
+      cards.push({
+        id: pendingId,
+        tool_name: String(data.tool_name || event.tool_name || ''),
+        risk_level: String(data.risk_level || live?.risk_level || 'L2'),
+        status: live?.status || String(data.status || 'pending'),
+        diff: String((live?.dry_run?.diff) || data.diff || event.output || ''),
+        expires_at: String(live?.expires_at || data.expires_at || ''),
+        error: live?.error,
+      })
+    }
+  }
+  for (const message of historyMessages.value) pushFromEvents(assistantEvents(message))
+  if (liveTurn.value) pushFromEvents(liveTurn.value.events)
+  return cards
+})
+
 function assistantEdits(message: AgentWorkspaceMessage) {
   return editResultsFromEvents(assistantEvents(message))
 }
@@ -1057,6 +1224,12 @@ function toolLabel(name: string): string {
     extract_knowledge_points: t('agentWorkspace.toolExtractPoints'),
     edit_document_section: t('agentWorkspace.toolEditSection'),
     create_document: t('agentWorkspace.toolCreateDocument'),
+    split_document: t('agentWorkspace.toolSplitDocument'),
+    merge_documents: t('agentWorkspace.toolMergeDocuments'),
+    delete_document: t('agentWorkspace.toolDeleteDocument'),
+    restore_document: t('agentWorkspace.toolRestoreDocument'),
+    overwrite_document: t('agentWorkspace.toolOverwriteDocument'),
+    revert_document: t('agentWorkspace.toolRevertDocument'),
   }
   return map[name] || name
 }

@@ -48,6 +48,7 @@ import {
   triggerEngineSync,
   type KnowledgeFolderTree,
 } from "@/api/knowledge-base/index";
+import { listKnowledgeTrash, restoreKnowledgeTrash, purgeKnowledgeTrash, type KnowledgeTrashItem } from '@/api/knowledge-base/trash';
 import { waitForKnowledgeDeletion } from '@/utils/knowledgeDeletion';
 import { knowledgeSpansPayloadHasTrace } from '@/utils/knowledgeTrace';
 import DocumentListView from './components/DocumentListView.vue';
@@ -89,6 +90,12 @@ const { t } = useI18n();
 const kbId = computed(() => (route.params as any).kbId as string || '');
 const kbInfo = ref<any>(null);
 const codeSourceVisible = ref(false);
+const trashVisible = ref(false);
+const trashLoading = ref(false);
+const trashItems = ref<KnowledgeTrashItem[]>([]);
+const trashTotal = ref(0);
+const trashPage = ref(1);
+const TRASH_PAGE_SIZE = 10;
 const engineSyncing = ref(false);
 const uploadSourceRef = ref<InstanceType<typeof KbUploadSourceDropdown> | null>(null);
 const uploading = ref(false);
@@ -818,6 +825,66 @@ const getTagName = (tagId?: string | number) => {
   if (!tagId && tagId !== 0) return '';
   const key = String(tagId);
   return tagMap.value[key]?.name || '';
+};
+
+const openTrashDialog = () => {
+  trashVisible.value = true;
+  trashPage.value = 1;
+  void loadTrash();
+};
+
+const loadTrash = async () => {
+  if (!kbId.value) return;
+  trashLoading.value = true;
+  try {
+    const response = await listKnowledgeTrash({ kb_id: kbId.value, page: trashPage.value, page_size: TRASH_PAGE_SIZE });
+    trashItems.value = response.data?.items || [];
+    trashTotal.value = response.data?.total || 0;
+  } catch (error) {
+    MessagePlugin.error(error instanceof Error ? error.message : String(error));
+  } finally {
+    trashLoading.value = false;
+  }
+};
+
+const trashPageCount = computed(() => Math.max(1, Math.ceil(trashTotal.value / TRASH_PAGE_SIZE)));
+
+const shiftTrashPage = (delta: number) => {
+  const next = Math.min(trashPageCount.value, Math.max(1, trashPage.value + delta));
+  if (next === trashPage.value) return;
+  trashPage.value = next;
+  void loadTrash();
+};
+
+const handleRestoreTrash = async (item: KnowledgeTrashItem) => {
+  try {
+    await restoreKnowledgeTrash(item.id);
+    MessagePlugin.success(t('knowledgeBase.trash.restored'));
+    await loadTrash();
+    await loadKnowledgeFiles(kbId.value);
+  } catch (error) {
+    MessagePlugin.error(error instanceof Error ? error.message : String(error));
+  }
+};
+
+const handlePurgeTrash = (item: KnowledgeTrashItem) => {
+  const dialog = DialogPlugin.confirm({
+    header: t('knowledgeBase.trash.purgeTitle'),
+    body: t('knowledgeBase.trash.purgeConfirm', { title: item.title }),
+    theme: 'danger',
+    confirmBtn: t('knowledgeBase.trash.purge'),
+    cancelBtn: t('common.cancel'),
+    onConfirm: async () => {
+      dialog.hide();
+      try {
+        await purgeKnowledgeTrash(item.id);
+        MessagePlugin.success(t('knowledgeBase.trash.purged'));
+        await loadTrash();
+      } catch (error) {
+        MessagePlugin.error(error instanceof Error ? error.message : String(error));
+      }
+    },
+  });
 };
 
 const loadKnowledgeFiles = (kbIdValue: string): Promise<void> => {
@@ -2844,6 +2911,11 @@ async function createNewSession(value: string): Promise<void> {
                   <t-icon name="setting" size="16px" />
                 </button>
               </t-tooltip>
+              <t-tooltip v-if="canManage && kbId" :content="$t('knowledgeBase.trash.title')" placement="top">
+                <button type="button" class="kb-settings-button" :aria-label="$t('knowledgeBase.trash.title')" @click="openTrashDialog">
+                  <t-icon name="delete" size="16px" />
+                </button>
+              </t-tooltip>
             </div>
           </template>
         </PageTopbar>
@@ -3253,6 +3325,42 @@ async function createNewSession(value: string): Promise<void> {
     @update:visible="(val) => val ? null : uiStore.closeKBEditor()" @success="handleKBEditorSuccess" />
 
   <CodeSourceDialog v-model:visible="codeSourceVisible" :kb-id="kbId" @synced="handleCodeSourceSynced" />
+
+  <t-dialog
+    v-model:visible="trashVisible"
+    :header="$t('knowledgeBase.trash.title')"
+    width="720px"
+    :footer="false"
+    :attach="attachToDetail"
+  >
+    <div class="kb-trash-dialog">
+      <p class="kb-trash-dialog__hint">{{ $t('knowledgeBase.trash.hint') }}</p>
+      <p v-if="trashLoading" class="kb-trash-dialog__empty">{{ $t('knowledgeBase.trash.loading') }}</p>
+      <p v-else-if="!trashItems.length" class="kb-trash-dialog__empty">{{ $t('knowledgeBase.trash.empty') }}</p>
+      <div v-else class="kb-trash-list">
+        <div v-for="item in trashItems" :key="item.id" class="kb-trash-row">
+          <div class="kb-trash-row__main">
+            <strong>{{ item.title || item.file_name || item.id }}</strong>
+            <span>
+              {{ $t('knowledgeBase.trash.deletedAt', { date: new Date(item.deleted_at).toLocaleString() }) }}
+              · {{ $t('knowledgeBase.trash.purgeAfter', { date: new Date(item.purge_after).toLocaleDateString() }) }}
+            </span>
+          </div>
+          <button type="button" class="kb-trash-action" @click="handleRestoreTrash(item)">
+            {{ $t('knowledgeBase.trash.restore') }}
+          </button>
+          <button type="button" class="kb-trash-action is-danger" @click="handlePurgeTrash(item)">
+            {{ $t('knowledgeBase.trash.purge') }}
+          </button>
+        </div>
+      </div>
+      <div v-if="trashTotal > TRASH_PAGE_SIZE" class="kb-trash-pager">
+        <button type="button" :disabled="trashPage <= 1" @click="shiftTrashPage(-1)">‹</button>
+        <span>{{ trashPage }} / {{ trashPageCount }}</span>
+        <button type="button" :disabled="trashPage >= trashPageCount" @click="shiftTrashPage(1)">›</button>
+      </div>
+    </div>
+  </t-dialog>
 
   <t-dialog
     v-model:visible="folderCreateVisible"
