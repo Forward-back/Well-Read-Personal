@@ -157,12 +157,19 @@ Diff 卡使用行级增删、上下文折叠与统计；点击行可定位编辑
 5. 写后索引：每次 L1 提交全文重切分、单事务替换 chunk 集与快照，`PublishKnowledgeChange` 等待 ≤5s 转后台，入库状态在工具卡与编辑器可见。
 6. 前端：任务新建/历史/删除、知识库文档树、编辑器真实内容、消息与工具卡回放、编辑结果条、版本对话框、会话级模型选择均接真实接口。
 
-**未落地（下一批）：**
+**L2/L3 与回收站（2026-11-28）：**
 
-1. L2/L3：dry_run、pending_task、confirm_token（签发/消费/过期/409 复核）、拆分/合并/删除/恢复工具与待确认卡真实数据。
-2. 行级 diff/patch 存储与 fingerprint 增量重切（当前为 chunk 级 diff 与全文重切）。
-3. live-run/stop 与中途刷新续流；标题自动生成。
-4. 快照仅 text chunk，回滚不恢复 parent-text 展开元数据；应用侧向量索引不重建（文档问答真值走 YLSW）。
+1. 确认链：`agent_pending_tasks`（迁移 12）+ dry-run 预览；confirm 时服务端签发一次性 token（10 分钟、只存哈希）并立即消费，pending 24h 过期；执行前复核 base_version，不一致返回 409。
+2. 工具：split/merge/revert（L2）、delete/restore/overwrite（L3）共六个 dry-run 工具；拆分/合并生成新文档、源文档进入回收站，`doc_lineage` 记录 split_from/merged_from。
+3. 回收站：人工单删/批删与 Agent 删除统一进入回收站，保留 30 天；知识库页提供回收站列表、恢复与彻底删除；每日 housekeeping 自动清理过期任务与到期文档。
+4. 流式：回答与思考沿用引擎 ChatStream → SSE 全流式输出（真实轮次验证 402 个 answer 帧 / 490 个 thinking 帧）。
+
+**未落地：**
+
+1. 行级 diff/patch 存储与 fingerprint 增量重切（当前为 chunk 级 diff 与全文重切）；待确认卡展示 diff 摘要而非行级高亮。
+2. live-run/stop 与中途刷新续流；标题自动生成；pending 过期主动推送（当前由确认/轮询发现）。
+3. 「清空知识库」仍走旧的异步销毁流程；回收站彻底删除保留 `doc_versions` 审计链。
+4. 快照仅 text chunk，回滚不恢复 parent-text 展开元数据；应用侧向量索引在回收站删除时清理、恢复后依赖重新解析重建。
 
 详见[Agent 后端 MVP 阶段记录](../../03-进度与交接/阶段记录/2026-11-28-Agent后端MVP.md)。签名状态：owner 于 2026-11-28 通过真实链路验收（建任务 → L0 列文档 → L1 编辑 → 撤销回滚）。
 
