@@ -33,8 +33,10 @@ type agentWorkspaceService struct {
 	kbService     interfaces.KnowledgeBaseService
 	knowledgeRepo interfaces.KnowledgeRepository
 	agentDocs     interfaces.AgentDocumentService
+	pending       interfaces.AgentPendingService
 	modelService  interfaces.ModelService
 	ragEngine     engine.RAGEngine
+	docVersions   interfaces.DocumentVersionService
 }
 
 // NewAgentWorkspaceService creates the Agent-workspace session and run service.
@@ -45,8 +47,10 @@ func NewAgentWorkspaceService(
 	kbService interfaces.KnowledgeBaseService,
 	knowledgeRepo interfaces.KnowledgeRepository,
 	agentDocs interfaces.AgentDocumentService,
+	pending interfaces.AgentPendingService,
 	modelService interfaces.ModelService,
 	ragEngine engine.RAGEngine,
+	docVersions interfaces.DocumentVersionService,
 ) interfaces.AgentWorkspaceService {
 	return &agentWorkspaceService{
 		cfg:           cfg,
@@ -55,8 +59,10 @@ func NewAgentWorkspaceService(
 		kbService:     kbService,
 		knowledgeRepo: knowledgeRepo,
 		agentDocs:     agentDocs,
+		pending:       pending,
 		modelService:  modelService,
 		ragEngine:     ragEngine,
+		docVersions:   docVersions,
 	}
 }
 
@@ -282,15 +288,16 @@ func (s *agentWorkspaceService) RunTurn(
 		MessageID:   assistantMessageID,
 		ChatModelID: modelID,
 	}
-	backend := &workspaceTurnBackend{svc: s, scope: types.AgentWorkspaceScope{
+	scope := types.AgentWorkspaceScope{
 		TenantID:         session.TenantID,
 		UserID:           session.UserID,
 		KnowledgeBaseIDs: state.KnowledgeBaseIDs,
 		KnowledgeIDs:     state.KnowledgeIDs,
-	}, turn: turn, chatModel: chatModel}
+	}
+	backend := &workspaceTurnBackend{svc: s, scope: scope, turn: turn, chatModel: chatModel}
 	registry := agenttools.NewToolRegistry()
 	registry.SetMaxToolOutputSize(agentWorkspaceToolOutputChars)
-	agenttools.RegisterWorkspaceTools(registry, agenttools.NewWorkspaceTools(backend))
+	agenttools.RegisterWorkspaceTools(registry, agenttools.NewWorkspaceTools(backend, scope, turn))
 
 	engineInstance := agent.NewAgentEngine(
 		agentCfg, chatModel, registry, bus, kbInfos, nil, session.ID, workspaceAgentSystemPrompt,

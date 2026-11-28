@@ -63,6 +63,8 @@ var baselineSQLiteTables = []string{
 	"knowledge_tag_relations",
 	"lite_embeddings",
 	"doc_versions",
+	"agent_pending_tasks",
+	"doc_lineage",
 	"doc_version_chunks",
 	"chunk_citation_daily",
 	"knowledge_folders",
@@ -98,7 +100,7 @@ var baselineSQLiteColumns = map[string][]string{
 	"mcp_oauth_tokens":      {"principal_type", "principal_id"},
 	"mcp_tool_approvals":    {"enabled"},
 	"sessions":              {"reading_run_id", "surface"},
-	"doc_versions":          {"session_id", "message_id", "tool_name"},
+	"doc_versions":          {"session_id", "message_id", "tool_name", "pending_task_id"},
 	"reading_report_drafts": {"version"},
 	"reading_questions":     {"kind", "gap_type", "options", "judgment", "judgment_reason", "judged_at"},
 	"reading_terms":         {"round"},
@@ -119,7 +121,7 @@ func TestSQLiteMigrationsCreateBaselineSchema(t *testing.T) {
 
 	db := openSQLiteDB(t, dbPath)
 	version, dirty := sqliteMigrationState(t, db)
-	require.Equal(t, 11, version, "the personal-edition schema includes review V3, reading workbench/agent contracts, Feynman structure and agent workspace sessions")
+	require.Equal(t, 12, version, "the personal-edition schema includes review V3, reading workbench/agent contracts, Feynman structure and agent workspace sessions")
 	require.False(t, dirty)
 
 	for _, table := range baselineSQLiteTables {

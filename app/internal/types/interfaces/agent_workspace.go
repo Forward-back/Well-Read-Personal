@@ -8,11 +8,18 @@ import (
 )
 
 // AgentDocumentService renders document content and commits agent L1 edits
-// (full-document re-chunk + version snapshot + engine sync trigger).
+// (full-document re-chunk + version snapshot + engine sync trigger), plus the
+// L2/L3 building blocks (markdown commits, trash, restore, purge, trash list).
 type AgentDocumentService interface {
 	GetDocumentContent(ctx context.Context, knowledgeID, versionID string) (*types.DocumentContentView, error)
 	CommitAgentEdit(ctx context.Context, req *types.AgentDocumentEditRequest) (*types.AgentDocumentEditResult, error)
 	CreateAgentDocument(ctx context.Context, req *types.AgentDocumentCreateRequest) (*types.AgentDocumentCreateResult, error)
+	CommitAgentMarkdown(ctx context.Context, req *types.AgentMarkdownCommitRequest) (*types.DocVersion, error)
+	TrashDocuments(ctx context.Context, knowledgeIDs []string) ([]string, error)
+	RestoreDocuments(ctx context.Context, knowledgeIDs []string) ([]string, error)
+	PurgeDocuments(ctx context.Context, knowledgeIDs []string) (int, error)
+	ListTrash(ctx context.Context, kbID, keyword string, page *types.Pagination) (*types.KnowledgeTrashList, error)
+	PurgeTrashExpired(ctx context.Context, keepDays int) (int, error)
 }
 
 // AgentWorkspaceService owns Agent-workspace sessions (surface="agent") and

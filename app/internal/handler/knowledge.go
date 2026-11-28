@@ -1471,21 +1471,16 @@ func (h *KnowledgeHandler) DeleteKnowledge(c *gin.Context) {
 		return
 	}
 
-	logger.Infof(ctx, "Enqueuing knowledge delete, ID: %s", secutils.SanitizeForLog(id))
-	taskID, err := h.enqueueKnowledgeListDelete(effCtx, effectiveTenantID, knowledge.KnowledgeBaseID, []string{id})
-	if err != nil {
-		logger.Errorf(ctx, "Failed to enqueue knowledge delete task: %v", err)
-		c.Error(errors.NewInternalServerError("Failed to enqueue delete task"))
+	ctx = types.WithExecutionTenant(ctx, effectiveTenantID)
+	if _, err := h.agentDocs.TrashDocuments(ctx, []string{knowledge.ID}); err != nil {
+		c.Error(err)
 		return
 	}
-
-	logger.Infof(ctx, "Knowledge delete task enqueued: %s, knowledge_id: %s", taskID, secutils.SanitizeForLog(id))
+	logger.Infof(ctx, "Knowledge moved to trash: %s", secutils.SanitizeForLog(id))
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Delete task submitted",
-		"data": gin.H{
-			"task_id": taskID,
-		},
+		"success":  true,
+		"message":  "Moved to recycle bin",
+		"data":     gin.H{"trashed_ids": []string{knowledge.ID}},
 	})
 }
 
@@ -1561,21 +1556,15 @@ func (h *KnowledgeHandler) BatchDeleteKnowledge(c *gin.Context) {
 		}
 	}
 
-	taskID, err := h.enqueueKnowledgeListDelete(ctx, effectiveTenantID, kbID, ids)
-	if err != nil {
-		logger.Errorf(ctx, "Failed to enqueue batch knowledge delete task: %v", err)
-		c.Error(errors.NewInternalServerError("Failed to enqueue batch delete task"))
+	if _, err := h.agentDocs.TrashDocuments(ctx, ids); err != nil {
+		c.Error(err)
 		return
 	}
-
-	logger.Infof(ctx, "Batch knowledge delete task enqueued: %s, kb_id: %s, count: %d",
-		taskID, secutils.SanitizeForLog(kbID), len(ids))
-
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "Batch delete task submitted",
+		"message": "Moved to recycle bin",
 		"data": gin.H{
-			"task_id":       taskID,
+			"trashed_ids":   ids,
 			"deleted_count": len(ids),
 		},
 	})

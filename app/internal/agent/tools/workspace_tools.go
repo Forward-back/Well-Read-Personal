@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"gaze/internal/types"
 )
@@ -17,6 +18,9 @@ type WorkspaceToolBackend interface {
 	ExtractWorkspaceKnowledgePoints(ctx context.Context, req types.ExtractKnowledgePointsRequest) (*types.WorkspaceKnowledgePoints, error)
 	EditWorkspaceDocumentSection(ctx context.Context, req types.AgentDocumentEditRequest) (*types.AgentDocumentEditResult, error)
 	CreateWorkspaceDocument(ctx context.Context, req types.AgentDocumentCreateRequest) (*types.AgentDocumentCreateResult, error)
+	// CreateWorkspacePending stores a dry-run L2/L3 plan and returns its pending
+	// task; nothing is written to documents until the owner confirms.
+	CreateWorkspacePending(ctx context.Context, req *types.AgentPendingPlanRequest) (*types.AgentPendingTask, error)
 }
 
 // WorkspaceTools is the registry-facing bundle of workspace tools.
@@ -27,10 +31,22 @@ type WorkspaceTools struct {
 	ExtractKnowledgePoints *ExtractKnowledgePointsTool
 	EditDocumentSection    *EditDocumentSectionTool
 	CreateDocument         *CreateDocumentTool
+	SplitDocument          *SplitDocumentTool
+	MergeDocuments         *MergeDocumentsTool
+	DeleteDocument         *DeleteDocumentTool
+	RestoreDocument        *RestoreDocumentTool
+	OverwriteDocument      *OverwriteDocumentTool
+	RevertDocument         *RevertDocumentTool
+	scope                  types.AgentWorkspaceScope
+	turn                   *types.AgentWorkspaceTurnContext
 }
 
-// NewWorkspaceTools builds the six workspace tools bound to one backend.
-func NewWorkspaceTools(backend WorkspaceToolBackend) *WorkspaceTools {
+// NewWorkspaceTools builds the workspace tools bound to one backend and scope.
+func NewWorkspaceTools(
+	backend WorkspaceToolBackend,
+	scope types.AgentWorkspaceScope,
+	turn *types.AgentWorkspaceTurnContext,
+) *WorkspaceTools {
 	return &WorkspaceTools{
 		ListDocuments:          &ListDocumentsTool{BaseTool: newListDocumentsBase(), backend: backend},
 		GetDocument:            &GetDocumentTool{BaseTool: newGetDocumentBase(), backend: backend},
@@ -38,10 +54,18 @@ func NewWorkspaceTools(backend WorkspaceToolBackend) *WorkspaceTools {
 		ExtractKnowledgePoints: &ExtractKnowledgePointsTool{BaseTool: newExtractKnowledgePointsBase(), backend: backend},
 		EditDocumentSection:    &EditDocumentSectionTool{BaseTool: newEditDocumentSectionBase(), backend: backend},
 		CreateDocument:         &CreateDocumentTool{BaseTool: newCreateDocumentBase(), backend: backend},
+		SplitDocument:          &SplitDocumentTool{BaseTool: newSplitDocumentBase(), backend: backend, bundleScope: scope, bundleTurn: turn},
+		MergeDocuments:         &MergeDocumentsTool{BaseTool: newMergeDocumentsBase(), backend: backend, bundleScope: scope, bundleTurn: turn},
+		DeleteDocument:         &DeleteDocumentTool{BaseTool: newDeleteDocumentBase(), backend: backend, bundleScope: scope, bundleTurn: turn},
+		RestoreDocument:        &RestoreDocumentTool{BaseTool: newRestoreDocumentBase(), backend: backend, bundleScope: scope, bundleTurn: turn},
+		OverwriteDocument:      &OverwriteDocumentTool{BaseTool: newOverwriteDocumentBase(), backend: backend, bundleScope: scope, bundleTurn: turn},
+		RevertDocument:         &RevertDocumentTool{BaseTool: newRevertDocumentBase(), backend: backend, bundleScope: scope, bundleTurn: turn},
+		scope:                  scope,
+		turn:                   turn,
 	}
 }
 
-// RegisterWorkspaceTools registers all six tools on a registry.
+// RegisterWorkspaceTools registers every workspace tool on a registry.
 func RegisterWorkspaceTools(registry *ToolRegistry, bundle *WorkspaceTools) {
 	registry.RegisterTool(bundle.ListDocuments)
 	registry.RegisterTool(bundle.GetDocument)
@@ -49,6 +73,12 @@ func RegisterWorkspaceTools(registry *ToolRegistry, bundle *WorkspaceTools) {
 	registry.RegisterTool(bundle.ExtractKnowledgePoints)
 	registry.RegisterTool(bundle.EditDocumentSection)
 	registry.RegisterTool(bundle.CreateDocument)
+	registry.RegisterTool(bundle.SplitDocument)
+	registry.RegisterTool(bundle.MergeDocuments)
+	registry.RegisterTool(bundle.DeleteDocument)
+	registry.RegisterTool(bundle.RestoreDocument)
+	registry.RegisterTool(bundle.OverwriteDocument)
+	registry.RegisterTool(bundle.RevertDocument)
 }
 
 func failedToolResult(err error) *types.ToolResult {
@@ -144,6 +174,7 @@ func (t *GetDocumentTool) Execute(ctx context.Context, args json.RawMessage) (*t
 			"chunk_count":        result.ChunkCount,
 			"char_count":         result.CharCount,
 			"truncated":          result.Truncated,
+			"versions":           result.Versions,
 		},
 	}, nil
 }
@@ -365,4 +396,242 @@ func joinLines(lines []string) string {
 		out += line
 	}
 	return out
+}
+
+// ---- L2/L3 dry-run tools --------------------------------------------------
+
+func pendingToolResult(task *types.AgentPendingTask) *types.ToolResult {
+	diff := ""
+	var wrapper map[string]interface{}
+	if err := json.Unmarshal(task.DryRun, &wrapper); err == nil {
+		if value, ok := wrapper["diff"].(string); ok {
+			diff = value
+		}
+	}
+	data := map[string]interface{}{
+		"pending_task_id": task.ID,
+		"risk_level":      task.RiskLevel,
+		"tool_name":       task.ToolName,
+		"status":          task.Status,
+		"expires_at":      task.ExpiresAt.Format(time.RFC3339),
+		"diff":            diff,
+		"dry_run":         wrapper,
+	}
+	output := fmt.Sprintf("%s（%s）已生成预览：%s 请在待确认卡中确认或驳回，确认前不会写入任何文档。", task.ToolName, task.RiskLevel, diff)
+	return &types.ToolResult{Success: true, Output: output, Data: data}
+}
+
+func submitPending(
+	ctx context.Context,
+	backend WorkspaceToolBackend,
+	scope types.AgentWorkspaceScope,
+	turn *types.AgentWorkspaceTurnContext,
+	toolName, riskLevel string,
+	fill func(*types.AgentPendingPlanRequest),
+) (*types.ToolResult, error) {
+	req := &types.AgentPendingPlanRequest{ToolName: toolName, RiskLevel: riskLevel, Scope: scope}
+	if turn != nil {
+		req.Turn = *turn
+	}
+	fill(req)
+	task, err := backend.CreateWorkspacePending(ctx, req)
+	if err != nil {
+		return failedToolResult(err), nil
+	}
+	return pendingToolResult(task), nil
+}
+
+type SplitDocumentTool struct {
+	BaseTool
+	backend     WorkspaceToolBackend
+	bundleScope types.AgentWorkspaceScope
+	bundleTurn  *types.AgentWorkspaceTurnContext
+}
+
+func newSplitDocumentBase() BaseTool {
+	return NewBaseTool(types.AgentToolSplitDocument,
+		"按标题把文档拆成两篇新文档，原文档移入回收站（30 天内可恢复）。L2：先返回预览与 pending_task_id，用户确认后才执行。",
+		json.RawMessage(`{
+			"type":"object",
+			"required":["knowledge_id","heading","new_title"],
+			"properties":{
+				"knowledge_id":{"type":"string"},
+				"heading":{"type":"string","description":"从哪个标题开始拆出（含该章节及其子章节）"},
+				"heading_level":{"type":"integer","minimum":1,"maximum":6},
+				"new_title":{"type":"string","description":"拆出的新文档标题"},
+				"expected_version_id":{"type":"string","description":"读取时的版本 ID，用于冲突检测"},
+				"tool_summary":{"type":"string"}
+			}
+		}`))
+}
+
+func (t *SplitDocumentTool) Execute(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+	var payload types.SplitDocumentArgs
+	if err := json.Unmarshal(args, &payload); err != nil {
+		return failedToolResult(fmt.Errorf("参数解析失败：%w", err)), nil
+	}
+	return submitPending(ctx, t.backend, t.bundleScope, t.bundleTurn,
+		types.AgentToolSplitDocument, types.AgentRiskL2, func(req *types.AgentPendingPlanRequest) {
+			req.Split = &payload
+		})
+}
+
+type MergeDocumentsTool struct {
+	BaseTool
+	backend     WorkspaceToolBackend
+	bundleScope types.AgentWorkspaceScope
+	bundleTurn  *types.AgentWorkspaceTurnContext
+}
+
+func newMergeDocumentsBase() BaseTool {
+	return NewBaseTool(types.AgentToolMergeDocuments,
+		"把同一知识库内的多篇文档合并为一篇新文档，源文档移入回收站（30 天内可恢复）。L2：先返回预览与 pending_task_id，用户确认后才执行。",
+		json.RawMessage(`{
+			"type":"object",
+			"required":["knowledge_ids"],
+			"properties":{
+				"knowledge_ids":{"type":"array","items":{"type":"string"},"minItems":2},
+				"title":{"type":"string","description":"合并后的文档标题，缺省用第一篇标题（合并）"},
+				"expected_version_id":{"type":"string"},
+				"tool_summary":{"type":"string"}
+			}
+		}`))
+}
+
+func (t *MergeDocumentsTool) Execute(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+	var payload types.MergeDocumentsArgs
+	if err := json.Unmarshal(args, &payload); err != nil {
+		return failedToolResult(fmt.Errorf("参数解析失败：%w", err)), nil
+	}
+	return submitPending(ctx, t.backend, t.bundleScope, t.bundleTurn,
+		types.AgentToolMergeDocuments, types.AgentRiskL2, func(req *types.AgentPendingPlanRequest) {
+			req.Merge = &payload
+		})
+}
+
+type DeleteDocumentTool struct {
+	BaseTool
+	backend     WorkspaceToolBackend
+	bundleScope types.AgentWorkspaceScope
+	bundleTurn  *types.AgentWorkspaceTurnContext
+}
+
+func newDeleteDocumentBase() BaseTool {
+	return NewBaseTool(types.AgentToolDeleteDocument,
+		"把文档移入回收站（30 天内可在回收站恢复或彻底删除）。L3：先返回预览与 pending_task_id，用户二次确认后才执行。",
+		json.RawMessage(`{
+			"type":"object",
+			"required":["knowledge_ids"],
+			"properties":{
+				"knowledge_ids":{"type":"array","items":{"type":"string"},"minItems":1},
+				"tool_summary":{"type":"string"}
+			}
+		}`))
+}
+
+func (t *DeleteDocumentTool) Execute(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+	var payload types.DeleteDocumentsArgs
+	if err := json.Unmarshal(args, &payload); err != nil {
+		return failedToolResult(fmt.Errorf("参数解析失败：%w", err)), nil
+	}
+	return submitPending(ctx, t.backend, t.bundleScope, t.bundleTurn,
+		types.AgentToolDeleteDocument, types.AgentRiskL3, func(req *types.AgentPendingPlanRequest) {
+			req.Delete = &payload
+		})
+}
+
+type RestoreDocumentTool struct {
+	BaseTool
+	backend     WorkspaceToolBackend
+	bundleScope types.AgentWorkspaceScope
+	bundleTurn  *types.AgentWorkspaceTurnContext
+}
+
+func newRestoreDocumentBase() BaseTool {
+	return NewBaseTool(types.AgentToolRestoreDocument,
+		"从回收站恢复文档。L3：先返回预览与 pending_task_id，用户二次确认后才执行。",
+		json.RawMessage(`{
+			"type":"object",
+			"required":["knowledge_ids"],
+			"properties":{
+				"knowledge_ids":{"type":"array","items":{"type":"string"},"minItems":1},
+				"tool_summary":{"type":"string"}
+			}
+		}`))
+}
+
+func (t *RestoreDocumentTool) Execute(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+	var payload types.RestoreDocumentsArgs
+	if err := json.Unmarshal(args, &payload); err != nil {
+		return failedToolResult(fmt.Errorf("参数解析失败：%w", err)), nil
+	}
+	return submitPending(ctx, t.backend, t.bundleScope, t.bundleTurn,
+		types.AgentToolRestoreDocument, types.AgentRiskL3, func(req *types.AgentPendingPlanRequest) {
+			req.Restore = &payload
+		})
+}
+
+type OverwriteDocumentTool struct {
+	BaseTool
+	backend     WorkspaceToolBackend
+	bundleScope types.AgentWorkspaceScope
+	bundleTurn  *types.AgentWorkspaceTurnContext
+}
+
+func newOverwriteDocumentBase() BaseTool {
+	return NewBaseTool(types.AgentToolOverwriteDocument,
+		"用给定 Markdown 全文覆盖文档。L3：先返回行级变更预览与 pending_task_id，用户二次确认后才执行。",
+		json.RawMessage(`{
+			"type":"object",
+			"required":["knowledge_id","content"],
+			"properties":{
+				"knowledge_id":{"type":"string"},
+				"content":{"type":"string","description":"完整新正文"},
+				"expected_version_id":{"type":"string"},
+				"tool_summary":{"type":"string"}
+			}
+		}`))
+}
+
+func (t *OverwriteDocumentTool) Execute(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+	var payload types.OverwriteDocumentArgs
+	if err := json.Unmarshal(args, &payload); err != nil {
+		return failedToolResult(fmt.Errorf("参数解析失败：%w", err)), nil
+	}
+	return submitPending(ctx, t.backend, t.bundleScope, t.bundleTurn,
+		types.AgentToolOverwriteDocument, types.AgentRiskL3, func(req *types.AgentPendingPlanRequest) {
+			req.Overwrite = &payload
+		})
+}
+
+type RevertDocumentTool struct {
+	BaseTool
+	backend     WorkspaceToolBackend
+	bundleScope types.AgentWorkspaceScope
+	bundleTurn  *types.AgentWorkspaceTurnContext
+}
+
+func newRevertDocumentBase() BaseTool {
+	return NewBaseTool(types.AgentToolRevertDocument,
+		"把文档前向回滚到指定历史版本（生成新的回滚版本，不移动指针）。L2：先返回预览与 pending_task_id，用户确认后才执行。",
+		json.RawMessage(`{
+			"type":"object",
+			"required":["knowledge_id","target_version_id"],
+			"properties":{
+				"knowledge_id":{"type":"string"},
+				"target_version_id":{"type":"string"},
+				"tool_summary":{"type":"string"}
+			}
+		}`))
+}
+
+func (t *RevertDocumentTool) Execute(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+	var payload types.RevertDocumentArgs
+	if err := json.Unmarshal(args, &payload); err != nil {
+		return failedToolResult(fmt.Errorf("参数解析失败：%w", err)), nil
+	}
+	return submitPending(ctx, t.backend, t.bundleScope, t.bundleTurn,
+		types.AgentToolRevertDocument, types.AgentRiskL2, func(req *types.AgentPendingPlanRequest) {
+			req.Revert = &payload
+		})
 }

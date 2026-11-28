@@ -66,11 +66,23 @@ func (s *stubWorkspaceBackend) CreateWorkspaceDocument(
 	return &types.AgentDocumentCreateResult{DocumentID: "doc-9", Title: "新文档", VersionLabel: "V1.0"}, nil
 }
 
+func (s *stubWorkspaceBackend) CreateWorkspacePending(
+	_ context.Context, req *types.AgentPendingPlanRequest,
+) (*types.AgentPendingTask, error) {
+	return &types.AgentPendingTask{
+		ID: "pending-1", ToolName: req.ToolName, RiskLevel: req.RiskLevel,
+		Status: types.AgentPendingStatusPending,
+		DryRun: types.EncodePlan(req.ToolName, map[string]string{"title": "计划"}, "预览摘要"),
+	}, nil
+}
+
 func TestWorkspaceToolSchemasAreValidJSON(t *testing.T) {
-	bundle := NewWorkspaceTools(&stubWorkspaceBackend{})
+	bundle := NewWorkspaceTools(&stubWorkspaceBackend{}, types.AgentWorkspaceScope{}, &types.AgentWorkspaceTurnContext{})
 	for _, tool := range []types.Tool{
 		bundle.ListDocuments, bundle.GetDocument, bundle.SearchDocuments,
 		bundle.ExtractKnowledgePoints, bundle.EditDocumentSection, bundle.CreateDocument,
+		bundle.SplitDocument, bundle.MergeDocuments, bundle.DeleteDocument,
+		bundle.RestoreDocument, bundle.OverwriteDocument, bundle.RevertDocument,
 	} {
 		require.NotEmpty(t, tool.Name())
 		require.True(t, json.Valid(tool.Parameters()), "%s schema must be valid JSON", tool.Name())
@@ -79,7 +91,7 @@ func TestWorkspaceToolSchemasAreValidJSON(t *testing.T) {
 
 func TestEditDocumentSectionToolPassesArgsAndData(t *testing.T) {
 	backend := &stubWorkspaceBackend{}
-	tool := NewWorkspaceTools(backend).EditDocumentSection
+	tool := NewWorkspaceTools(backend, types.AgentWorkspaceScope{}, &types.AgentWorkspaceTurnContext{}).EditDocumentSection
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{
 		"knowledge_id":"doc-1","heading":"背景","action":"replace",
 		"content":"新正文","expected_version_id":"ver-1","tool_summary":"改写背景"
@@ -95,13 +107,13 @@ func TestEditDocumentSectionToolPassesArgsAndData(t *testing.T) {
 
 func TestWorkspaceToolsReturnFailureResultInsteadOfError(t *testing.T) {
 	backend := &stubWorkspaceBackend{failSearch: true}
-	tool := NewWorkspaceTools(backend).SearchDocuments
+	tool := NewWorkspaceTools(backend, types.AgentWorkspaceScope{}, &types.AgentWorkspaceTurnContext{}).SearchDocuments
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"query":"缓存"}`))
 	require.NoError(t, err)
 	require.False(t, result.Success)
 	require.Contains(t, result.Error, "检索不可用")
 
-	invalid := NewWorkspaceTools(backend).GetDocument
+	invalid := NewWorkspaceTools(backend, types.AgentWorkspaceScope{}, &types.AgentWorkspaceTurnContext{}).GetDocument
 	result, err = invalid.Execute(context.Background(), json.RawMessage(`not-json`))
 	require.NoError(t, err)
 	require.False(t, result.Success)

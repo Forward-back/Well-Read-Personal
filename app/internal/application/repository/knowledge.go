@@ -355,6 +355,62 @@ func (r *knowledgeRepository) DeleteKnowledgeList(ctx context.Context, tenantID 
 	return r.db.WithContext(ctx).Where("tenant_id = ? AND id in ?", tenantID, ids).Delete(&types.Knowledge{}).Error
 }
 
+// ListTrashedKnowledge lists soft-deleted rows for the recycle bin, newest first.
+func (r *knowledgeRepository) ListTrashedKnowledge(
+	ctx context.Context, tenantID uint64, kbID, keyword string, page *types.Pagination,
+) ([]*types.Knowledge, int64, error) {
+	query := r.db.Unscoped().WithContext(ctx).Model(&types.Knowledge{}).
+		Where("tenant_id = ? AND deleted_at IS NOT NULL", tenantID)
+	if kbID != "" {
+		query = query.Where("knowledge_base_id = ?", kbID)
+	}
+	if kw := strings.TrimSpace(keyword); kw != "" {
+		like := "%" + escapeLikeForTrash(kw) + "%"
+		query = query.Where("(title LIKE ? OR file_name LIKE ?)", like, like)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var rows []*types.Knowledge
+	err := query.Order("deleted_at DESC").
+		Offset(page.Offset()).Limit(page.Limit()).
+		Find(&rows).Error
+	return rows, total, err
+}
+
+func escapeLikeForTrash(value string) string {
+	replacer := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_")
+	return replacer.Replace(value)
+}
+
+// GetKnowledgeUnscoped loads a knowledge row including soft-deleted ones.
+func (r *knowledgeRepository) GetKnowledgeUnscoped(
+	ctx context.Context, tenantID uint64, id string,
+) (*types.Knowledge, error) {
+	var knowledge types.Knowledge
+	err := r.db.Unscoped().WithContext(ctx).
+		Where("tenant_id = ? AND id = ?", tenantID, id).
+		First(&knowledge).Error
+	if err != nil {
+		return nil, err
+	}
+	return &knowledge, nil
+}
+
+// RestoreKnowledge clears deleted_at and marks the row for reprocessing.
+func (r *knowledgeRepository) RestoreKnowledge(ctx context.Context, tenantID uint64, id string) error {
+	return r.db.Unscoped().WithContext(ctx).
+		Model(&types.Knowledge{}).
+		Where("tenant_id = ? AND id = ?", tenantID, id).
+		Updates(map[string]interface{}{
+			"deleted_at":         nil,
+			"parse_status":       types.ParseStatusPending,
+			"engine_sync_status": types.EngineSyncStatusPending,
+			"updated_at":         time.Now(),
+		}).Error
+}
+
 // GetKnowledgeBatch gets knowledge in batch
 func (r *knowledgeRepository) GetKnowledgeBatch(
 	ctx context.Context, tenantID uint64, ids []string,

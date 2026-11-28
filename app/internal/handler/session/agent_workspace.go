@@ -201,3 +201,54 @@ func (h *Handler) AgentWorkspaceChat(c *gin.Context) {
 	h.handleAgentEventsForSSE(c.Request.Context(), c, sessionID, assistantMessage.ID, requestID, eventBus, false, nil)
 	h.completeAssistantMessage(context.WithoutCancel(ctx), assistantMessage, "", "")
 }
+
+// GetAgentPending returns one L2/L3 dry-run task with its preview.
+// @Summary      待确认任务详情
+// @Tags         智能体工作区
+// @Produce      json
+// @Security     Bearer
+// @Router       /agent-workspace/pending/{id} [get]
+func (h *Handler) GetAgentPending(c *gin.Context) {
+	view, err := h.agentPendingService.Get(c.Request.Context(), secutils.SanitizeForLog(c.Param("id")))
+	if err != nil {
+		c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": view})
+}
+
+// ConfirmAgentPending applies a pending L2/L3 change after owner confirmation.
+// @Summary      确认并执行待确认任务
+// @Tags         智能体工作区
+// @Accept       json
+// @Produce      json
+// @Security     Bearer
+// @Router       /agent-workspace/pending/{id}/confirm [post]
+func (h *Handler) ConfirmAgentPending(c *gin.Context) {
+	var req types.AgentConfirmRequest
+	_ = c.ShouldBindJSON(&req)
+	result, err := h.agentPendingService.Confirm(c.Request.Context(), secutils.SanitizeForLog(c.Param("id")), &req)
+	if err != nil {
+		c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
+}
+
+// RejectAgentPending discards a pending L2/L3 change without writing anything.
+// @Summary      驳回待确认任务
+// @Tags         智能体工作区
+// @Accept       json
+// @Produce      json
+// @Security     Bearer
+// @Router       /agent-workspace/pending/{id}/reject [post]
+func (h *Handler) RejectAgentPending(c *gin.Context) {
+	var req types.AgentConfirmRequest
+	_ = c.ShouldBindJSON(&req)
+	view, err := h.agentPendingService.Reject(c.Request.Context(), secutils.SanitizeForLog(c.Param("id")), &req)
+	if err != nil {
+		c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": view})
+}

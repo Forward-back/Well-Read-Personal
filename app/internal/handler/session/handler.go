@@ -51,6 +51,8 @@ type Handler struct {
 	docVersions interfaces.DocumentVersionService
 	// agentWorkspaceService owns Agent-workspace sessions and runs.
 	agentWorkspaceService interfaces.AgentWorkspaceService
+	// agentPendingService owns L2/L3 dry-run confirmation tasks.
+	agentPendingService interfaces.AgentPendingService
 }
 
 // NewHandler creates a new instance of Handler with all necessary dependencies
@@ -77,6 +79,7 @@ func NewHandler(
 	ragEngine engine.RAGEngine,
 	docVersions interfaces.DocumentVersionService,
 	agentWorkspaceService interfaces.AgentWorkspaceService,
+	agentPendingService interfaces.AgentPendingService,
 ) *Handler {
 	return &Handler{
 		sessionService:       sessionService,
@@ -99,6 +102,7 @@ func NewHandler(
 		ragEngine:            ragEngine,
 		docVersions:          docVersions,
 		agentWorkspaceService: agentWorkspaceService,
+		agentPendingService:  agentPendingService,
 		attachmentProcessor: NewAttachmentProcessor(
 			fileService,
 			documentReader,

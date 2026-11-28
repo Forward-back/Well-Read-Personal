@@ -41,9 +41,11 @@ type DocVersion struct {
 	IsCurrent       bool      `json:"is_current"       gorm:"-"`
 
 	// Agent workspace audit trail: which session/message/tool produced it.
-	SessionID *string `json:"session_id,omitempty" gorm:"type:varchar(36)"`
-	MessageID *string `json:"message_id,omitempty" gorm:"type:varchar(36)"`
-	ToolName  *string `json:"tool_name,omitempty"  gorm:"type:varchar(64)"`
+	SessionID     *string `json:"session_id,omitempty"     gorm:"type:varchar(36)"`
+	MessageID     *string `json:"message_id,omitempty"     gorm:"type:varchar(36)"`
+	ToolName      *string `json:"tool_name,omitempty"      gorm:"type:varchar(64)"`
+	// PendingTaskID links versions produced by an L2/L3 confirmed change.
+	PendingTaskID *string `json:"pending_task_id,omitempty" gorm:"type:varchar(36)"`
 
 	CreatedByName string `json:"created_by_name,omitempty" gorm:"-"`
 }

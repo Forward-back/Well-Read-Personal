@@ -103,6 +103,7 @@ func (s *documentVersionService) createVersionInternal(
 	version.SessionID = audit.SessionID
 	version.MessageID = audit.MessageID
 	version.ToolName = audit.ToolName
+	version.PendingTaskID = audit.PendingTaskID
 	chunks, err := s.chunkRepo.ListChunksByKnowledgeID(ctx, tenantID, knowledgeID)
 	if err != nil {
 		return nil, err
@@ -142,6 +143,7 @@ func (s *documentVersionService) CommitAgentContent(
 	version.SessionID = req.Audit.SessionID
 	version.MessageID = req.Audit.MessageID
 	version.ToolName = req.Audit.ToolName
+	version.PendingTaskID = req.Audit.PendingTaskID
 	now := time.Now()
 	payload := &types.DocContentReplaceTx{
 		Version:               version,

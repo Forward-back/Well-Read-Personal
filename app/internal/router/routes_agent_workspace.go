@@ -21,5 +21,8 @@ func RegisterAgentWorkspaceRoutes(r *gin.RouterGroup, h *session.Handler) {
 		workspace.DELETE("/sessions/:id", h.DeleteAgentWorkspaceSession)
 		workspace.GET("/sessions/:id/messages", h.ListAgentWorkspaceMessages)
 		workspace.POST("/sessions/:id/messages", h.AgentWorkspaceChat)
+		workspace.GET("/pending/:id", h.GetAgentPending)
+		workspace.POST("/pending/:id/confirm", h.ConfirmAgentPending)
+		workspace.POST("/pending/:id/reject", h.RejectAgentPending)
 	}
 }

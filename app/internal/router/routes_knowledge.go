@@ -54,6 +54,7 @@ func RegisterKnowledgeRoutes(r *gin.RouterGroup, handler *handler.KnowledgeHandl
 	kRead := k.With(apiKeyRetrieve(apiKeyFullAccess()))
 	{
 		kRead.GET("/batch", handler.GetKnowledgeBatch)
+		kRead.GET("/trash", handler.ListKnowledgeTrash)
 		kRead.GET("/:id", handler.GetKnowledge)
 		kRead.GET("/:id/stages", handler.GetKnowledgeSpans)
 		kRead.GET("/:id/spans", handler.GetKnowledgeSpans)
@@ -62,6 +63,8 @@ func RegisterKnowledgeRoutes(r *gin.RouterGroup, handler *handler.KnowledgeHandl
 		kRead.GET("/:id/versions/compare", handler.CompareDocVersions)
 		kRead.GET("/:id/versions/:version_id", handler.GetDocVersion)
 		k.POST("/:id/versions/:version_id/rollback", handler.RollbackDocVersion)
+		k.POST("/:id/restore", handler.RestoreKnowledgeTrash)
+		k.DELETE("/trash/:id", handler.PurgeKnowledgeTrash)
 		k.DELETE("/:id", handler.DeleteKnowledge)
 		k.PUT("/:id", handler.UpdateKnowledge)
 		k.POST("/:id/regenerate-summary", handler.RegenerateKnowledgeSummary)

@@ -208,6 +208,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(func(svc interfaces.KnowledgeService) interfaces.AgentDocumentService {
 		return svc.(interfaces.AgentDocumentService)
 	}))
+	must(container.Provide(repository.NewAgentPendingRepository))
+	must(container.Provide(service.NewAgentPendingService))
 	must(container.Provide(service.NewAgentWorkspaceService))
 	must(container.Provide(service.NewGazeIngestService, dig.Name("gazeIngest")))
 	// Web search service (needed by AgentService)
@@ -344,6 +346,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(startYLSWReconcileService))
 	logger.Debugf(ctx, "[Container] YLSW reconcile runner registered")
 	must(container.Invoke(startEngineSyncService))
+	must(container.Invoke(startRetentionService))
 	logger.Debugf(ctx, "[Container] Engine sync runner registered")
 
 	// TenantSkillService is provided next to SessionService (handlers need

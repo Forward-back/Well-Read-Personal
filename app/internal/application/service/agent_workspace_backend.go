@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"gaze/internal/models/chat"
 	"gaze/internal/types"
@@ -110,6 +111,19 @@ func (b *workspaceTurnBackend) GetWorkspaceDocument(
 	if view.Version != nil {
 		result.VersionID = view.Version.ID
 		result.VersionLabel = view.Version.VersionLabel
+	}
+	if b.svc.docVersions != nil {
+		if versions, err := b.svc.docVersions.ListVersions(ctx, b.scope.TenantID, view.KnowledgeBaseID, view.KnowledgeID); err == nil {
+			for index, version := range versions {
+				if version == nil || index >= 10 {
+					break
+				}
+				result.Versions = append(result.Versions, types.DocVersionSummary{
+					ID: version.ID, Label: version.VersionLabel,
+					SourceType: version.SourceType, CreatedAt: version.CreatedAt.Format(time.RFC3339),
+				})
+			}
+		}
 	}
 	return result, nil
 }
@@ -267,6 +281,21 @@ func (b *workspaceTurnBackend) CreateWorkspaceDocument(
 		req.ActorID, _ = types.UserIDFromContext(ctx)
 	}
 	return b.svc.agentDocs.CreateAgentDocument(ctx, &req)
+}
+
+// CreateWorkspacePending stores the dry-run plan of an L2/L3 tool. Nothing is
+// written to documents until the owner confirms the returned pending task.
+func (b *workspaceTurnBackend) CreateWorkspacePending(
+	ctx context.Context, req *types.AgentPendingPlanRequest,
+) (*types.AgentPendingTask, error) {
+	if b.svc.pending == nil {
+		return nil, fmt.Errorf("确认链未配置")
+	}
+	req.Scope = b.scope
+	if b.turn != nil {
+		req.Turn = *b.turn
+	}
+	return b.svc.pending.Plan(ctx, req)
 }
 
 func (b *workspaceTurnBackend) reserveEdit() error {

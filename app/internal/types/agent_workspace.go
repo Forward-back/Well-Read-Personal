@@ -14,6 +14,12 @@ const (
 	AgentToolExtractKnowledgePoints = "extract_knowledge_points" // L0
 	AgentToolEditDocumentSection    = "edit_document_section"    // L1
 	AgentToolCreateDocument         = "create_document"          // L1
+	AgentToolSplitDocument          = "split_document"           // L2 (dry-run)
+	AgentToolMergeDocuments         = "merge_documents"          // L2 (dry-run)
+	AgentToolRevertDocument         = "revert_document"          // L2 (dry-run)
+	AgentToolDeleteDocument         = "delete_document"          // L3 (dry-run)
+	AgentToolRestoreDocument        = "restore_document"         // L3 (dry-run)
+	AgentToolOverwriteDocument      = "overwrite_document"       // L3 (dry-run)
 )
 
 // AgentWorkspaceToolNames is the whitelist registered for workspace runs.
@@ -24,6 +30,12 @@ var AgentWorkspaceToolNames = []string{
 	AgentToolExtractKnowledgePoints,
 	AgentToolEditDocumentSection,
 	AgentToolCreateDocument,
+	AgentToolSplitDocument,
+	AgentToolMergeDocuments,
+	AgentToolRevertDocument,
+	AgentToolDeleteDocument,
+	AgentToolRestoreDocument,
+	AgentToolOverwriteDocument,
 }
 
 // AgentWorkspaceScope is the authoritative KB/document scope of a session.
@@ -95,9 +107,10 @@ type DocumentContentView struct {
 
 // DocVersionAudit is the agent audit trail attached to a commit.
 type DocVersionAudit struct {
-	SessionID *string
-	MessageID *string
-	ToolName  *string
+	SessionID     *string
+	MessageID     *string
+	ToolName      *string
+	PendingTaskID *string
 }
 
 // AgentDocumentEditRequest applies one heading-scoped section edit.
@@ -220,6 +233,14 @@ type WorkspaceDocumentList struct {
 	Documents []WorkspaceDocumentSummary `json:"documents"`
 }
 
+// DocVersionSummary is a compact version entry exposed to the agent.
+type DocVersionSummary struct {
+	ID         string `json:"id"`
+	Label      string `json:"label"`
+	SourceType string `json:"source_type"`
+	CreatedAt  string `json:"created_at"`
+}
+
 // WorkspaceDocumentContentResult is the get_document result.
 type WorkspaceDocumentContentResult struct {
 	DocumentID       string `json:"document_id"`
@@ -231,6 +252,7 @@ type WorkspaceDocumentContentResult struct {
 	CharCount        int    `json:"char_count"`
 	Truncated        bool   `json:"truncated"`
 	Markdown         string `json:"markdown"`
+	Versions         []DocVersionSummary `json:"versions,omitempty"`
 }
 
 // WorkspaceSearchHit is one search_documents result row.

@@ -272,6 +272,12 @@ type KnowledgeRepository interface {
 	UpdateKnowledgeBatch(ctx context.Context, knowledgeList []*types.Knowledge) error
 	DeleteKnowledge(ctx context.Context, tenantID uint64, id string) error
 	DeleteKnowledgeList(ctx context.Context, tenantID uint64, ids []string) error
+	// ListTrashedKnowledge lists soft-deleted rows for the recycle bin.
+	ListTrashedKnowledge(ctx context.Context, tenantID uint64, kbID, keyword string, page *types.Pagination) ([]*types.Knowledge, int64, error)
+	// GetKnowledgeUnscoped loads a knowledge row including soft-deleted ones.
+	GetKnowledgeUnscoped(ctx context.Context, tenantID uint64, id string) (*types.Knowledge, error)
+	// RestoreKnowledge clears deleted_at and marks the row for reprocessing.
+	RestoreKnowledge(ctx context.Context, tenantID uint64, id string) error
 	GetKnowledgeBatch(ctx context.Context, tenantID uint64, ids []string) ([]*types.Knowledge, error)
 	// ListKnowledgeIDs returns the id/tenant/kb columns of every active
 	// knowledge across all tenants (YLSW dual-write reconciliation).
