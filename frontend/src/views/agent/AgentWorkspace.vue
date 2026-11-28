@@ -182,7 +182,7 @@
 
       <aside v-show="!chatCollapsed" class="agent-pane agent-chat" :aria-label="$t('agentWorkspace.chatAria')">
         <header class="agent-chat__head">
-          <div class="agent-avatar">W</div>
+          <TraceSourceIcon class="agent-chat__icon" name="robot" :size="26" />
           <div class="agent-chat__identity">
             <strong>{{ $t('agentWorkspace.chatTitle') }}</strong>
             <span>{{ $t('agentWorkspace.chatSub') }}</span>
@@ -368,6 +368,7 @@ import {
   LayoutIcon,
 } from 'tdesign-icons-vue-next'
 import PageTopbar from '@/components/layout/PageTopbar.vue'
+import TraceSourceIcon from '@/views/chat/components/TraceSourceIcon.vue'
 import { loadPreference, savePreference } from '@/composables/preferenceStorage'
 
 type LineKind = 'normal' | 'is-add' | 'is-del' | 'is-h1' | 'is-h2' | 'is-quote'
@@ -382,16 +383,14 @@ const draft = ref('')
 
 const workbenchRef = ref<HTMLElement | null>(null)
 const resizing = ref(false)
-const MIN_CHAT_WIDTH = 320
+const MIN_CHAT_WIDTH = 280
 const DEFAULT_CHAT_WIDTH = 392
-const MIN_EDITOR_WIDTH = 420
-const TREE_WIDTH = 250
 const DIVIDER_WIDTH = 7
 
+const workbenchWidth = ref(0)
 const chatWidth = ref(loadChatWidth())
 const maxChatWidth = computed(() => {
-  const total = workbenchRef.value?.clientWidth ?? 0
-  return Math.max(MIN_CHAT_WIDTH, total - TREE_WIDTH - DIVIDER_WIDTH - MIN_EDITOR_WIDTH)
+  return Math.max(MIN_CHAT_WIDTH, Math.round(workbenchWidth.value / 2) - DIVIDER_WIDTH)
 })
 const workbenchStyle = computed(() => ({ '--agent-chat-width': `${Math.round(chatWidth.value)}px` }))
 
@@ -444,6 +443,7 @@ function persistChatWidth() {
 
 let dragStartX = 0
 let dragStartWidth = 0
+let workbenchObserver: ResizeObserver | null = null
 
 function startDrag(event: PointerEvent) {
   if (event.button !== 0) return
@@ -482,7 +482,8 @@ function resetChatWidth() {
   persistChatWidth()
 }
 
-function handleWindowResize() {
+function syncWorkbenchWidth() {
+  workbenchWidth.value = workbenchRef.value?.clientWidth ?? 0
   chatWidth.value = clampChatWidth(chatWidth.value)
 }
 
@@ -500,13 +501,19 @@ function undoEdit() {
 }
 
 onMounted(() => {
-  chatWidth.value = clampChatWidth(chatWidth.value)
-  window.addEventListener('resize', handleWindowResize)
+  syncWorkbenchWidth()
+  window.addEventListener('resize', syncWorkbenchWidth)
+  if (workbenchRef.value && typeof ResizeObserver !== 'undefined') {
+    workbenchObserver = new ResizeObserver(syncWorkbenchWidth)
+    workbenchObserver.observe(workbenchRef.value)
+  }
 })
 
 onUnmounted(() => {
   window.removeEventListener('pointermove', onDragMove)
-  window.removeEventListener('resize', handleWindowResize)
+  window.removeEventListener('resize', syncWorkbenchWidth)
+  workbenchObserver?.disconnect()
+  workbenchObserver = null
 })
 </script>
 
@@ -520,6 +527,7 @@ onUnmounted(() => {
   --ag-body: var(--w-detail-text-secondary, #515151);
   --ag-muted: var(--w-detail-text-placeholder, #7f7f7f);
   --ag-accent: var(--w-page-accent, #0f4a85);
+  --ag-accent-emphasis: var(--ag-accent);
   --ag-accent-ink: var(--w-page-accent-ink, #ffffff);
   --ag-selection: color-mix(in srgb, var(--ag-accent) 10%, var(--ag-paper));
   --ag-hover: color-mix(in srgb, var(--ag-accent) 6%, var(--ag-paper));
@@ -545,20 +553,28 @@ onUnmounted(() => {
 }
 
 html[theme-mode="dark"] .agent-page {
-  --ag-paper: #191714;
-  --ag-raised: #211e1a;
-  --ag-border: #3a342c;
-  --ag-ink: #f3efe8;
-  --ag-body: #c8c1b5;
-  --ag-muted: #978e80;
-  --ag-focus: var(--ag-accent);
-  --ag-warning: #dcc08c;
-  --ag-warning-soft: #332b1f;
-  --ag-danger: #e2a39a;
-  --ag-danger-soft: #342421;
-  --ag-add: #9ed3b2;
-  --ag-add-soft: #1e3a2b;
-  --ag-code-bg: #2a2621;
+  /* GitHub Primer dark-high-contrast: canvas #010409, muted #151b23,
+     border #b7bdc8, fg #ffffff / #d1d7e0, accent #74b9ff / #194fb1. */
+  --ag-paper: #010409;
+  --ag-raised: #151b23;
+  --ag-border: #b7bdc8;
+  --ag-border-soft: color-mix(in srgb, #b7bdc8 55%, transparent);
+  --ag-ink: #ffffff;
+  --ag-body: #d1d7e0;
+  --ag-muted: #b7bdc8;
+  --ag-accent: #74b9ff;
+  --ag-accent-emphasis: #194fb1;
+  --ag-accent-ink: #ffffff;
+  --ag-selection: #5cacff1a;
+  --ag-hover: #212830;
+  --ag-focus: #409eff;
+  --ag-warning: #f0b72f;
+  --ag-warning-soft: #edaa2726;
+  --ag-danger: #ff9492;
+  --ag-danger-soft: #ff80801a;
+  --ag-add: #2bd853;
+  --ag-add-soft: #0ac74026;
+  --ag-code-bg: #151b23;
 }
 
 .agent-page.is-resizing {
@@ -595,14 +611,14 @@ html[theme-mode="dark"] .agent-page {
 }
 
 .agent-bar-btn.is-primary {
-  border-color: var(--ag-accent);
-  background: var(--ag-accent);
+  border-color: var(--ag-accent-emphasis);
+  background: var(--ag-accent-emphasis);
   color: var(--ag-accent-ink);
 }
 
 .agent-bar-btn.is-primary:hover {
-  border-color: var(--ag-accent);
-  background: color-mix(in srgb, var(--ag-accent) 88%, var(--ag-ink));
+  border-color: var(--ag-accent-emphasis);
+  background: color-mix(in srgb, var(--ag-accent-emphasis) 88%, var(--ag-ink));
   color: var(--ag-accent-ink);
 }
 
@@ -617,7 +633,7 @@ html[theme-mode="dark"] .agent-page {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr) 7px clamp(280px, 30vw, var(--agent-chat-width, 392px));
+  grid-template-columns: 250px minmax(0, 1fr) 7px var(--agent-chat-width, 392px);
   overflow: hidden;
   background: var(--ag-paper);
 }
@@ -994,16 +1010,17 @@ html[theme-mode="dark"] .agent-page {
   border-bottom: 1px solid var(--ag-border);
 }
 
-.agent-avatar {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border-radius: 3px;
-  background: var(--ag-accent);
-  color: var(--ag-accent-ink);
-  font-size: 14px;
-  font-weight: 700;
+.agent-chat__icon {
+  flex: none;
+}
+
+.agent-chat__icon :deep(.trace-source-icon__dark) {
+  fill: var(--ag-accent);
+}
+
+.agent-chat__icon :deep(.trace-source-icon__light) {
+  fill: var(--ag-accent);
+  opacity: 0.55;
 }
 
 .agent-chat__identity {
@@ -1014,13 +1031,13 @@ html[theme-mode="dark"] .agent-page {
 
 .agent-chat__identity strong {
   color: var(--ag-ink);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .agent-chat__identity span {
   overflow: hidden;
   color: var(--ag-body);
-  font-size: 11px;
+  font-size: 12.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1341,14 +1358,14 @@ html[theme-mode="dark"] .agent-page {
 }
 
 .agent-btn.is-primary {
-  border-color: var(--ag-accent);
-  background: var(--ag-accent);
+  border-color: var(--ag-accent-emphasis);
+  background: var(--ag-accent-emphasis);
   color: var(--ag-accent-ink);
   font-weight: 600;
 }
 
 .agent-btn.is-primary:hover {
-  background: color-mix(in srgb, var(--ag-accent) 88%, var(--ag-ink));
+  background: color-mix(in srgb, var(--ag-accent-emphasis) 88%, var(--ag-ink));
 }
 
 .agent-btn.is-danger {
@@ -1427,9 +1444,9 @@ html[theme-mode="dark"] .agent-page {
 .agent-send {
   height: 28px;
   padding: 0 12px;
-  border: 1px solid var(--ag-accent);
+  border: 1px solid var(--ag-accent-emphasis);
   border-radius: 3px;
-  background: var(--ag-accent);
+  background: var(--ag-accent-emphasis);
   color: var(--ag-accent-ink);
   font-size: 12px;
   font-weight: 600;
@@ -1437,7 +1454,7 @@ html[theme-mode="dark"] .agent-page {
 }
 
 .agent-send:hover {
-  background: color-mix(in srgb, var(--ag-accent) 88%, var(--ag-ink));
+  background: color-mix(in srgb, var(--ag-accent-emphasis) 88%, var(--ag-ink));
 }
 
 .agent-restore {
@@ -1470,7 +1487,7 @@ html[theme-mode="dark"] .agent-page {
 
 @media (max-width: 1100px) {
   .agent-workbench {
-    grid-template-columns: 220px minmax(0, 1fr) 7px clamp(280px, 30vw, var(--agent-chat-width, 392px));
+    grid-template-columns: 220px minmax(0, 1fr) 7px var(--agent-chat-width, 392px);
   }
 
   .agent-page.is-single-pane .agent-workbench {
@@ -1490,7 +1507,7 @@ html[theme-mode="dark"] .agent-page {
   }
 
   .agent-workbench {
-    grid-template-columns: minmax(0, 1fr) 7px clamp(280px, 30vw, var(--agent-chat-width, 392px));
+    grid-template-columns: minmax(0, 1fr) 7px var(--agent-chat-width, 392px);
   }
 
   .agent-page.is-single-pane .agent-workbench {

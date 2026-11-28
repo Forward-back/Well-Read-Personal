@@ -169,7 +169,7 @@ const detailFor = (id) => {
             id: 'src-1',
             knowledge_id: 'k-1',
             chunk_id: 'chunk-1',
-            excerpt: '中断驱动方式在设备准备数据期间让 CPU 继续执行其他程序。',
+            excerpt: '### 1.2 几次中断的开关\n\n- **第一次开中断**：只放行处理优先级更高的请求。\n- **第二次关中断**：恢复现场与屏蔽字。',
             status: 'active',
             is_primary: true,
             source_type: 'knowledge_chunk',
@@ -309,6 +309,10 @@ async function main() {
       json({ success: true, data: clusterFixture })
       return
     }
+    if (path.startsWith('/api/v1/chunks/by-id/') && req.method() === 'GET') {
+      json({ success: true, data: { id: path.split('/').pop(), content: '', image_info: null } })
+      return
+    }
     if (path === '/api/v1/knowledge/k-1' && req.method() === 'GET') {
       json({ success: true, data: { id: 'k-1', knowledge_base_id: 'kb-1' } })
       return
@@ -347,6 +351,10 @@ async function main() {
     if (!answer.strong || !answer.pre) throw new Error('markdown bold/code block missing')
     if (!answer.source) throw new Error('source bar missing')
     if (answer.ratings !== 4) throw new Error(`expected 4 rating buttons, got ${answer.ratings}`)
+    const sourceText = await page.$eval('[data-testid="review-v3-source"]', el => el.innerText)
+    if (sourceText.includes('###') || sourceText.includes('**')) {
+      throw new Error('source excerpt rendered as raw markdown')
+    }
     await waitText(page, '来源摘录')
     record('mode-answer', 'markdown, source bar and 4 rating buttons visible')
     await page.screenshot({ path: path.join(OUT, 'review_v3_mode_answer.png'), fullPage: true })

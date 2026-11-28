@@ -201,6 +201,15 @@ select:-webkit-autofill {
     box-shadow: none;
 }
 
+/* TDesign 的输入/选择/文本域由外层控件画焦点边框；内层原生控件不再画
+   outline，避免页面级 focus-visible 叠加成框中框。 */
+.t-input__inner:focus,
+.t-input__inner:focus-visible,
+.t-textarea__inner:focus,
+.t-textarea__inner:focus-visible {
+    outline: none;
+}
+
 /* WellRead neutral warm-charcoal dark foundation.
    AppShell adds page-specific accents; this block keeps TDesign popups and
    teleported overlays on the same surfaces as the shell. */

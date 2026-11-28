@@ -1,4 +1,5 @@
 import { del, get, post, put } from '@/utils/request'
+import { fetchEventSource } from '@microsoft/fetch-event-source'
 
 export interface ReadingChunkSegment {
   id: string
@@ -253,6 +254,21 @@ export interface ReadingFeynmanPoint {
   evidence: ReadingEvidence[]
 }
 
+export interface ReadingFeynmanAnswer {
+  angle_id: string
+  label: string
+  prompt: string
+  text: string
+}
+
+export interface ReadingFeynmanAngleFeedback {
+  angle_id: string
+  status: 'strong' | 'partial' | 'missing' | 'skipped'
+  summary: string
+  omissions: ReadingFeynmanPoint[]
+  errors: ReadingFeynmanPoint[]
+}
+
 export interface ReadingFeynmanAttempt {
   id: string
   run_id: string
@@ -266,6 +282,9 @@ export interface ReadingFeynmanAttempt {
   omissions: ReadingFeynmanPoint[]
   errors: ReadingFeynmanPoint[]
   evidence: ReadingEvidence[]
+  answers?: ReadingFeynmanAnswer[]
+  angle_feedback?: ReadingFeynmanAngleFeedback[]
+  prompt_version?: number
   created_at: string
 }
 
@@ -326,6 +345,84 @@ export function stepReadingRun(id: string) {
   return post<{ data: ReadingRun }>(`/api/v1/reading/runs/${encodeURIComponent(id)}/step`, {}, {
     timeout: 360_000,
   })
+}
+
+export interface ReadingProgressEvent {
+  type: 'phase' | 'reasoning' | 'search' | 'heartbeat' | 'complete' | 'error'
+  phase?: string
+  status?: string
+  section_id?: string
+  section_title?: string
+  section_heading?: string
+  round?: number
+  query?: string
+  hit_count?: number
+  content?: string
+  elapsed_ms?: number
+  run?: ReadingRun
+}
+
+export interface ReadingStepStreamHandlers {
+  onEvent: (event: ReadingProgressEvent) => void
+  onError: (error: Error) => void
+  onClose?: () => void
+}
+
+/** Stream one reading step. Returns an abort handle for route changes/unmounts. */
+export function streamReadingStep(id: string, handlers: ReadingStepStreamHandlers) {
+  const controller = new AbortController()
+  let settled = false
+  const fail = (error: Error) => {
+    if (settled) return
+    settled = true
+    handlers.onError(error)
+  }
+  const token = localStorage.getItem('gaze_token') || ''
+  fetchEventSource(`/api/v1/reading/runs/${encodeURIComponent(id)}/step/stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: '{}',
+    signal: controller.signal,
+    openWhenHidden: true,
+    onopen: async (response) => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    },
+    onmessage: (message) => {
+      if (!message.data) return
+      try {
+        const event = JSON.parse(message.data) as ReadingProgressEvent
+        if (event.type === 'error') {
+          settled = true
+          handlers.onError(new Error(event.content || '精读步骤失败'))
+          return
+        }
+        if (event.type === 'complete') settled = true
+        handlers.onEvent(event)
+      } catch (error) {
+        fail(error instanceof Error ? error : new Error(String(error)))
+      }
+    },
+    onerror: (error) => {
+      fail(error instanceof Error ? error : new Error(String(error)))
+      throw error
+    },
+    onclose: () => {
+      if (!settled) fail(new Error('精读步骤连接已关闭'))
+      handlers.onClose?.()
+    },
+  }).catch((error) => {
+    fail(error instanceof Error ? error : new Error(String(error)))
+  })
+  return {
+    close: () => {
+      settled = true
+      controller.abort()
+    },
+  }
 }
 
 export function feedbackReadingRun(
@@ -510,7 +607,12 @@ export function exportReadingRun(id: string, format: 'markdown' | 'json') {
 
 export function submitReadingFeynman(
   id: string,
-  payload: { section_id: string; text: string },
+  payload: {
+    section_id: string
+    text?: string
+    answers?: Array<{ angle_id: string; label: string; prompt: string; text: string }>
+    freeform?: string
+  },
 ) {
   return post<{ data: ReadingFeynmanAttempt }>(
     `/api/v1/reading/runs/${encodeURIComponent(id)}/feynman`,

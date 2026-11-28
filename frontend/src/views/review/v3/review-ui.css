@@ -282,6 +282,25 @@
   outline-offset: 2px;
 }
 
+/* TDesign 控件外层已有焦点边框，内层 input/textarea 与自绘输入壳不要再
+   叠加 outline；否则出现框中框。 */
+.review-v3 .t-input__inner:focus,
+.review-v3 .t-input__inner:focus-visible,
+.review-v3 .t-textarea__inner:focus,
+.review-v3 .t-textarea__inner:focus-visible,
+.review-mode .t-input__inner:focus,
+.review-mode .t-input__inner:focus-visible,
+.review-mode .t-textarea__inner:focus,
+.review-mode .t-textarea__inner:focus-visible,
+.review-v3 .rv-input:focus-visible,
+.review-v3 .rv-textarea:focus-visible,
+.review-v3 .rv-select:focus-visible,
+.review-mode .rv-input:focus-visible,
+.review-mode .rv-textarea:focus-visible,
+.review-mode .rv-select:focus-visible {
+  outline: none;
+}
+
 .rv-kpi {
   padding: 16px 18px;
   background: var(--rvn-paper, #fbf9f5);

@@ -91,6 +91,7 @@ const primarySource = computed(() =>
   sources.value.find(source => source.is_primary) || sources.value[0] || null,
 )
 const sourceExcerpt = computed(() => primarySource.value?.excerpt?.trim() || '')
+const sourceExcerptHTML = computed(() => renderMarkdown(sourceExcerpt.value))
 const sourceImages = ref<Array<{ url: string; source: ReviewCardSource }>>([])
 const sourceImagesRef = ref<HTMLElement | null>(null)
 let sourceImageSeq = 0
@@ -300,8 +301,6 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 <template>
   <div class="review-mode rv-vuln-scope" data-testid="review-v3-mode">
     <div class="review-mode__inner">
-      <div class="rv-crumb">正在复习：<b>{{ queueLabel }}</b></div>
-
       <header class="review-mode__head">
         <span class="review-mode__progress" data-testid="review-v3-mode-progress">
           {{ t('review.v3.modeProgress', { current: progressCurrent, total }) }}
@@ -380,12 +379,6 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
               <strong>{{ intervals.interval ? t('review.v3.daysValue', { count: intervals.interval }) : '—' }}</strong>
             </div>
           </div>
-          <div class="qcard__meta">
-            <span v-if="primarySource" class="rv-note">
-              {{ t('review.v3.sourceExcerpt') }}
-              <b class="qcard__source">{{ primarySource.path || t('review.v3.openSource') }}</b>
-            </span>
-          </div>
         </article>
 
         <div v-if="!showingAnswer" class="show-answer-wrap">
@@ -405,7 +398,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
         <template v-else>
           <div class="answer-zone rv-wob" data-testid="review-v3-answer">
-            <div class="answer-zone__label">Answer · {{ t('review.v3.answer') }}</div>
+            <div class="answer-zone__label">{{ t('review.v3.answer') }}</div>
             <div class="answer-zone__text review-mode__markdown" v-html="answerHTML"></div>
             <div v-if="currentCard.explanation" class="rv-callout rv-callout--gray answer-zone__explain">
               <ReviewIcon name="lightbulb" :size="18" :tilt="1" />
@@ -427,7 +420,12 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
               <p v-if="primarySource?.path" class="answer-zone__source-path" :title="primarySource.path">
                 {{ primarySource.path }}
               </p>
-              <p>{{ sourceExcerpt || t('review.v3.sourceNoExcerpt') }}</p>
+              <div
+                v-if="sourceExcerpt"
+                class="answer-zone__source-text review-mode__markdown"
+                v-html="sourceExcerptHTML"
+              />
+              <p v-else class="answer-zone__source-empty">{{ t('review.v3.sourceNoExcerpt') }}</p>
               <div v-if="sourceImages.length" ref="sourceImagesRef" class="answer-zone__source-images">
                 <button
                   v-for="image in sourceImages"
@@ -1031,20 +1029,6 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   }
 }
 
-.qcard__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  margin-top: 14px;
-}
-
-.qcard__source {
-  font-weight: 500;
-  color: var(--rvn-accent-deep);
-  cursor: pointer;
-}
-
 .show-answer-wrap {
   display: flex;
   flex-direction: column;
@@ -1067,8 +1051,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 .answer-zone__label {
   margin-bottom: 10px;
   font-size: 14px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: 600;
   color: var(--rvn-muted);
 }
 
@@ -1112,6 +1095,43 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   text-overflow: ellipsis;
   font-size: 14px !important;
   color: var(--rvn-muted) !important;
+}
+
+.answer-zone__source-text {
+  margin-top: 6px;
+  color: var(--rvn-ink-soft);
+
+  :deep(h1),
+  :deep(h2),
+  :deep(h3),
+  :deep(h4),
+  :deep(h5),
+  :deep(h6) {
+    margin: 0 0 6px;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.6;
+    color: var(--rvn-ink);
+  }
+
+  :deep(p) {
+    margin: 0 0 6px;
+    color: inherit;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  :deep(ul),
+  :deep(ol) {
+    color: inherit;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+}
+
+.answer-zone__source-empty {
+  margin-top: 6px;
+  color: var(--rvn-ink-soft);
 }
 
 .answer-zone__source-images {
