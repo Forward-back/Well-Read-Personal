@@ -20,6 +20,7 @@ func RegisterReadingRoutes(r *gin.RouterGroup, h *handler.ReadingHandler, g *api
 		reading.GET("/runs/history", h.ListHistory)
 		reading.GET("/runs/:id", h.Get)
 		reading.POST("/runs/:id/step", h.Step)
+		reading.POST("/runs/:id/step/stream", h.StepStream)
 		reading.POST("/runs/:id/feedback", h.Feedback)
 		reading.POST("/runs/:id/questions/:questionId/judge", h.JudgeQuestion)
 		reading.POST("/runs/:id/contradictions/:contradictionId/resolve", h.ResolveContradiction)

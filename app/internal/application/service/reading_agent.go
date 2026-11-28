@@ -385,7 +385,7 @@ func (s *readingRunService) callReadingAgentRoundModel(
 	var lastErr error
 	reasoningParts := make([]string, 0, 2)
 	for attempt := 0; attempt < 2; attempt++ {
-		resp, err := model.Chat(ctx, messages, readingAgentExtractionOptions(readingAgentRoundMaxTokens(depth)))
+		resp, err := s.readingModelChat(ctx, model, messages, readingAgentExtractionOptions(readingAgentRoundMaxTokens(depth)))
 		if err != nil {
 			return nil, "", strings.Join(reasoningParts, "\n\n"), totalUsage, fmt.Errorf("精读模型调用失败: %w", err)
 		}
@@ -470,6 +470,9 @@ func buildReadingAgentRoundPrompt(
 		}
 		if len(errorsFound) > 0 {
 			builder.WriteString("已知错误：" + strings.Join(errorsFound, "；") + "\n")
+		}
+		if weak := readingFeynmanWeakAngles(feynman); len(weak) > 0 {
+			builder.WriteString("薄弱角度：" + strings.Join(weak, "；") + "\n")
 		}
 		builder.WriteString("下一轮请优先补齐遗漏、纠正错误。\n\n")
 	}
@@ -585,6 +588,10 @@ func (s *readingRunService) runReadingAgentRound(
 				trace.ChunkIDs = append(trace.ChunkIDs, evidence.ChunkID)
 			}
 			searchTraces = append(searchTraces, trace)
+			types.EmitReadingProgress(ctx, types.ReadingProgressEvent{
+				Type: "search", Phase: "reading", Query: query, HitCount: len(results),
+				SectionID: section.ID, SectionTitle: section.Title, Round: round,
+			})
 			found += len(results)
 			if len(results) == 0 {
 				fmt.Fprintf(&builder, "检索「%s」：未找到匹配内容。\n\n", query)
@@ -765,6 +772,9 @@ func (s *readingRunService) agentReadingStep(
 		return s.Get(ctx, run.ID)
 	}
 	section := &plan.Sections[sectionIndex]
+	round := run.StepCount + 1
+	emitReadingPhase(ctx, "reading", "start", section, round)
+	defer emitReadingPhase(ctx, "reading", "end", section, round)
 	if _, err := s.ensureDocumentReadable(ctx, caller, section.KnowledgeID); err != nil {
 		run.Status = types.ReadingRunStopped
 		run.UpdatedAt = time.Now()
@@ -999,6 +1009,8 @@ func (s *readingRunService) agentSynthesisStep(
 	if err != nil {
 		return nil, err
 	}
+	emitReadingPhase(ctx, "synthesis", "start", nil, 0)
+	defer emitReadingPhase(ctx, "synthesis", "end", nil, 0)
 	depth := readingRunDepth(run)
 	synthesisStart := time.Now()
 	totalUsage := 0
@@ -1010,7 +1022,7 @@ func (s *readingRunService) agentSynthesisStep(
 	var parseErr error
 	var reasoning string
 	for attempt := 0; attempt < 2; attempt++ {
-		resp, callErr := model.Chat(ctx, messages, readingAgentSynthesisOptions(readingRoundMaxTokens(depth)))
+		resp, callErr := s.readingModelChat(ctx, model, messages, readingAgentSynthesisOptions(readingRoundMaxTokens(depth)))
 		if callErr != nil {
 			totalUsage += 0
 			parseErr = fmt.Errorf("综合遍调用失败: %w", callErr)
@@ -1209,6 +1221,8 @@ func buildReadingAgentSelfTestPrompt(
 func (s *readingRunService) agentSelfTestStep(
 	ctx context.Context, run *types.ReadingRun, plan *types.ReadingPlan,
 ) (*types.ReadingRun, error) {
+	emitReadingPhase(ctx, "self_test", "start", nil, 0)
+	defer emitReadingPhase(ctx, "self_test", "end", nil, 0)
 	caller, err := readingCaller(ctx)
 	if err != nil {
 		return nil, err
@@ -1357,7 +1371,7 @@ func (s *readingRunService) callReadingAgentSelfTests(
 	var lastErr error
 	reasoningParts := make([]string, 0, 2)
 	for attempt := 0; attempt < 2; attempt++ {
-		resp, err := model.Chat(ctx, messages, readingAgentSynthesisOptions(readingRoundMaxTokens(depth)))
+		resp, err := s.readingModelChat(ctx, model, messages, readingAgentSynthesisOptions(readingRoundMaxTokens(depth)))
 		if err != nil {
 			return nil, totalUsage, strings.Join(reasoningParts, "\n\n"), fmt.Errorf("自测题生成失败: %w", err)
 		}

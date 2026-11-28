@@ -19,14 +19,47 @@ type readingFeynmanPointResponse struct {
 	Evidence []readingEvidenceRef `json:"evidence"`
 }
 
+type readingFeynmanAngleFeedbackResponse struct {
+	AngleID   string                        `json:"angle_id"`
+	Status    string                        `json:"status"`
+	Summary   string                        `json:"summary"`
+	Omissions []readingFeynmanPointResponse `json:"omissions"`
+	Errors    []readingFeynmanPointResponse `json:"errors"`
+}
+
 type readingFeynmanResponse struct {
-	Score         int                           `json:"score"`
-	Coverage      int                           `json:"coverage"`
-	Accuracy      int                           `json:"accuracy"`
-	EvidenceScore int                           `json:"evidence_score"`
-	Summary       string                        `json:"summary"`
-	Omissions     []readingFeynmanPointResponse `json:"omissions"`
-	Errors        []readingFeynmanPointResponse `json:"errors"`
+	Score         int                                   `json:"score"`
+	Coverage      int                                   `json:"coverage"`
+	Accuracy      int                                   `json:"accuracy"`
+	EvidenceScore int                                   `json:"evidence_score"`
+	Summary       string                                `json:"summary"`
+	Omissions     []readingFeynmanPointResponse         `json:"omissions"`
+	Errors        []readingFeynmanPointResponse         `json:"errors"`
+	AngleFeedback []readingFeynmanAngleFeedbackResponse `json:"angle_feedback"`
+}
+
+const readingFeynmanPromptVersion = 1
+
+type readingFeynmanAngle struct {
+	ID     string
+	Label  string
+	Prompt string
+}
+
+var readingFeynmanAngles = []readingFeynmanAngle{
+	{ID: "macro", Label: "宏观主旨", Prompt: "这一节回答什么问题？核心结论是什么？与上下文的关系？"},
+	{ID: "mechanism", Label: "机制/因果", Prompt: "关键步骤、条件与因果链是什么？为什么这样设计或运行？"},
+	{ID: "detail", Label: "微观细节", Prompt: "关键术语、参数、数字、边界与例外有哪些？"},
+	{ID: "application", Label: "应用/边界", Prompt: "什么场景适用？何时失效？与相似概念的区别？"},
+}
+
+func readingFeynmanAngleByID(id string) (readingFeynmanAngle, bool) {
+	for _, angle := range readingFeynmanAngles {
+		if angle.ID == id {
+			return angle, true
+		}
+	}
+	return readingFeynmanAngle{}, false
 }
 
 func clampReadingScore(value int) int {
@@ -49,13 +82,6 @@ func (s *readingRunService) SubmitFeynman(
 	if req == nil {
 		return nil, werrors.NewValidationError("缺少费曼自述内容")
 	}
-	text := strings.TrimSpace(req.Text)
-	if len([]rune(text)) < 20 {
-		return nil, werrors.NewValidationError("复述内容过短，请至少写 20 个字")
-	}
-	if len([]rune(text)) > 4000 {
-		return nil, werrors.NewValidationError("复述内容最多 4000 字")
-	}
 	var plan types.ReadingPlan
 	if err := json.Unmarshal(run.Plan, &plan); err != nil {
 		return nil, werrors.NewInternalServerError("阅读计划损坏")
@@ -63,6 +89,10 @@ func (s *readingRunService) SubmitFeynman(
 	section := findReadingSection(&plan, req.SectionID)
 	if section == nil {
 		return nil, werrors.NewValidationError("章节不存在")
+	}
+	answers, retelling, promptVersion, err := normalizeReadingFeynmanAnswers(req)
+	if err != nil {
+		return nil, err
 	}
 	_, chunkInfo, chunkSection, err := s.loadReadingDocuments(ctx, caller, run)
 	if err != nil {
@@ -73,7 +103,7 @@ func (s *readingRunService) SubmitFeynman(
 		return nil, err
 	}
 	depth := readingRunDepth(run)
-	msgs := buildFeynmanMessages(s, ctx, run, &plan, section, text)
+	msgs := buildFeynmanMessages(s, ctx, run, &plan, section, answers, retelling)
 	var parsed *readingFeynmanResponse
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
@@ -102,23 +132,102 @@ func (s *readingRunService) SubmitFeynman(
 	}
 	omissions, omissionEvidence := strictReadingFeynmanPoints(parsed.Omissions, chunkInfo, chunkSection)
 	errorsFound, errorEvidence := strictReadingFeynmanPoints(parsed.Errors, chunkInfo, chunkSection)
+	angleFeedback, angleEvidence := strictReadingFeynmanAngleFeedback(
+		parsed.AngleFeedback, answers, chunkInfo, chunkSection,
+	)
 	evidence := append(omissionEvidence, errorEvidence...)
+	evidence = append(evidence, angleEvidence...)
 	omissionJSON, _ := json.Marshal(omissions)
 	errorJSON, _ := json.Marshal(errorsFound)
 	evidenceJSON, _ := json.Marshal(evidence)
+	answersJSON, _ := json.Marshal(answers)
+	feedbackJSON, _ := json.Marshal(angleFeedback)
 	attempt := &types.ReadingFeynmanAttempt{
 		ID: uuid.NewString(), RunID: run.ID, TenantID: run.TenantID,
-		SectionID: section.ID, Text: text,
+		SectionID: section.ID, Text: retelling,
 		Score: clampReadingScore(parsed.Score), Coverage: clampReadingScore(parsed.Coverage),
 		Accuracy: clampReadingScore(parsed.Accuracy), EvidenceScore: clampReadingScore(parsed.EvidenceScore),
 		Summary:   strings.TrimSpace(parsed.Summary),
-		Omissions: types.JSON(omissionJSON), Errors: types.JSON(errorJSON),
-		Evidence: types.JSON(evidenceJSON), CreatedAt: time.Now(),
+		Omissions: types.JSON(omissionJSON), Errors: types.JSON(errorJSON), Evidence: types.JSON(evidenceJSON),
+		Answers: types.JSON(answersJSON), AngleFeedback: types.JSON(feedbackJSON),
+		PromptVersion: promptVersion, CreatedAt: time.Now(),
 	}
 	if err := s.repo.CreateFeynmanAttempt(ctx, attempt); err != nil {
 		return nil, err
 	}
 	return attempt, nil
+}
+
+func normalizeReadingFeynmanAnswers(
+	req *types.SubmitReadingFeynmanRequest,
+) ([]types.ReadingFeynmanAnswer, string, int, error) {
+	const maxAnswerRunes = 2000
+	const maxTotalRunes = 6000
+	provided := map[string]string{}
+	for _, answer := range req.Answers {
+		id := strings.TrimSpace(answer.AngleID)
+		text := strings.TrimSpace(answer.Text)
+		if id == "" || text == "" {
+			continue
+		}
+		provided[id] = text
+	}
+	freeform := strings.TrimSpace(req.Freeform)
+	legacy := strings.TrimSpace(req.Text)
+	out := make([]types.ReadingFeynmanAnswer, 0, len(readingFeynmanAngles)+2)
+	for _, angle := range readingFeynmanAngles {
+		text, ok := provided[angle.ID]
+		if !ok {
+			continue
+		}
+		if len([]rune(text)) > maxAnswerRunes {
+			return nil, "", 0, werrors.NewValidationError(angle.Label + "内容最多 2000 字")
+		}
+		out = append(out, types.ReadingFeynmanAnswer{
+			AngleID: angle.ID, Label: angle.Label, Prompt: angle.Prompt, Text: text,
+		})
+	}
+	if freeform != "" {
+		if len([]rune(freeform)) > maxAnswerRunes {
+			return nil, "", 0, werrors.NewValidationError("其他理解最多 2000 字")
+		}
+		out = append(out, types.ReadingFeynmanAnswer{
+			AngleID: "freeform", Label: "其他理解", Prompt: "其他理解或疑问", Text: freeform,
+		})
+	}
+	promptVersion := readingFeynmanPromptVersion
+	if len(out) == 0 && legacy != "" {
+		if len([]rune(legacy)) > 4000 {
+			return nil, "", 0, werrors.NewValidationError("复述内容最多 4000 字")
+		}
+		out = append(out, types.ReadingFeynmanAnswer{
+			AngleID: "legacy", Label: "复述", Prompt: "复述本章内容", Text: legacy,
+		})
+		promptVersion = 0
+	}
+	if len(out) == 0 {
+		return nil, "", 0, werrors.NewValidationError("请至少填写一个理解角度")
+	}
+	longest := 0
+	total := 0
+	for _, answer := range out {
+		n := len([]rune(answer.Text))
+		if n > longest {
+			longest = n
+		}
+		total += n
+	}
+	if longest < 20 {
+		return nil, "", 0, werrors.NewValidationError("复述内容过短，请至少写 20 个字")
+	}
+	if total > maxTotalRunes {
+		return nil, "", 0, werrors.NewValidationError("复述内容合计最多 6000 字")
+	}
+	var builder strings.Builder
+	for _, answer := range out {
+		builder.WriteString("【" + answer.Label + "】\n" + answer.Text + "\n\n")
+	}
+	return out, strings.TrimSpace(builder.String()), promptVersion, nil
 }
 
 func (s *readingRunService) ListFeynman(
@@ -279,7 +388,8 @@ func (s *readingRunService) CreateCardFromAnnotation(
 
 func buildFeynmanMessages(
 	s *readingRunService, ctx context.Context, run *types.ReadingRun,
-	plan *types.ReadingPlan, section *types.ReadingSection, retelling string,
+	plan *types.ReadingPlan, section *types.ReadingSection,
+	answers []types.ReadingFeynmanAnswer, retelling string,
 ) []chat.Message {
 	var material strings.Builder
 	if len(section.Segments) > 0 {
@@ -292,6 +402,14 @@ func buildFeynmanMessages(
 			material.WriteString("\n\n可用 chunk_id：" + strings.Join(section.ChunkIDs, ", "))
 		}
 	}
+	var answerText strings.Builder
+	if len(answers) > 0 {
+		for _, answer := range answers {
+			answerText.WriteString("【" + answer.Label + "】\n" + answer.Text + "\n\n")
+		}
+	} else {
+		answerText.WriteString(retelling)
+	}
 	user := fmt.Sprintf(`阅读目标：%s
 阅读深度：%s
 当前章节：%s · %s
@@ -299,10 +417,10 @@ func buildFeynmanMessages(
 本章原文：
 %s
 
-用户复述：
+用户按角度作答（所有角度权重相同，自由补充也算一个角度）：
 %s
 
-请只依据上面的原文评估这段复述。返回严格 JSON（不要 Markdown、不要解释）：
+请只依据上面的原文评估这些回答。返回严格 JSON（不要 Markdown、不要解释）：
 {
   "score": 0,
   "coverage": 0,
@@ -310,16 +428,29 @@ func buildFeynmanMessages(
   "evidence_score": 0,
   "summary": "2-3 句总体评价",
   "omissions": [{"text": "遗漏的关键点", "evidence": [{"chunk_id": "chunk id", "quote": "原文连续片段"}]}],
-  "errors": [{"text": "错误或与原文不一致之处", "evidence": [{"chunk_id": "chunk id", "quote": "原文连续片段"}]}]
+  "errors": [{"text": "错误或与原文不一致之处", "evidence": [{"chunk_id": "chunk id", "quote": "原文连续片段"}]}],
+  "angle_feedback": [
+    {
+      "angle_id": "macro|mechanism|detail|application|freeform|legacy",
+      "status": "strong|partial|missing",
+      "summary": "该角度的一句话评价",
+      "omissions": [{"text": "该角度遗漏点", "evidence": [{"chunk_id": "chunk id", "quote": "原文连续片段"}]}],
+      "errors": [{"text": "该角度错误点", "evidence": [{"chunk_id": "chunk id", "quote": "原文连续片段"}]}]
+    }
+  ]
 }
 
 规则：
 - 四个分数字段为 0-100；score 是总体分数，coverage/accuracy/evidence_score 分别衡量覆盖、准确与证据意识。
-- 只判断复述中出现的说法与本章原文；不得引入本章之外的资料。
+- 逐个评估用户提供的角度，angle_id 必须使用输入中出现过的 id；未回答的角度不要编造反馈。
+- status：strong=该角度覆盖准确；partial=部分覆盖或有小错；missing=该角度没有有效内容。
+- 自由补充与预设角度同权参与总体评分；它可以补足预设未覆盖的内容，也可以产生遗漏或错误。
+- 只判断回答中出现的说法与本章原文；不得引入本章之外的资料。
 - 每个 omission / error 必须给出本章原文中可验证的连续 quote 与 chunk_id；无法引用原文的点不要输出。
-- 复述正确且完整时，omissions 与 errors 可以是空数组。
+- 回答正确且完整时，omissions 与 errors 可以是空数组。
 - 不要复述用户原文，不要输出 JSON 之外的内容。
-`, readingGoal(run), readingDepthLabel(plan.Depth), section.Title, section.Heading, material.String(), retelling)
+`, readingGoal(run), readingDepthLabel(plan.Depth), section.Title, section.Heading,
+		material.String(), answerText.String())
 	return []chat.Message{
 		{Role: "system", Content: s.readingInstructions(ctx, run) + "\n\n你负责费曼自述评估，必须严格依据原文证据并返回严格 JSON。"},
 		{Role: "user", Content: user},
@@ -372,6 +503,43 @@ func readingSectionChunkIDs(section *types.ReadingSection) []string {
 	return ids
 }
 
+func parseReadingFeynmanAngleFeedback(raw types.JSON) []types.ReadingFeynmanAngleFeedback {
+	var feedback []types.ReadingFeynmanAngleFeedback
+	if len(raw) == 0 || json.Unmarshal(raw, &feedback) != nil {
+		return nil
+	}
+	return feedback
+}
+
+func readingFeynmanAngleLabel(id string) string {
+	if angle, ok := readingFeynmanAngleByID(id); ok {
+		return angle.Label
+	}
+	if id == "freeform" {
+		return "其他理解"
+	}
+	if id == "legacy" {
+		return "复述"
+	}
+	return id
+}
+
+func readingFeynmanWeakAngles(feynman *types.ReadingFeynmanAttempt) []string {
+	feedback := parseReadingFeynmanAngleFeedback(feynman.AngleFeedback)
+	out := make([]string, 0, len(feedback))
+	for _, item := range feedback {
+		if item.Status == "strong" || item.Status == "skipped" {
+			continue
+		}
+		label := readingFeynmanAngleLabel(item.AngleID)
+		if strings.TrimSpace(item.Summary) != "" {
+			label += "：" + readingTruncateRunes(item.Summary, 120)
+		}
+		out = append(out, label)
+	}
+	return out
+}
+
 func strictReadingFeynmanPoints(
 	points []readingFeynmanPointResponse,
 	chunkInfo map[string]*readingChunkInfo,
@@ -390,6 +558,56 @@ func strictReadingFeynmanPoints(
 		}
 		out = append(out, types.ReadingFeynmanPoint{Text: readingTruncateRunes(text, 300), Evidence: evidence})
 		evidenceAll = append(evidenceAll, evidence...)
+	}
+	return out, evidenceAll
+}
+
+func normalizeReadingFeynmanStatus(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "strong", "covered", "complete", "full":
+		return "strong"
+	case "missing", "none", "absent", "empty":
+		return "missing"
+	case "skipped", "skip":
+		return "skipped"
+	default:
+		return "partial"
+	}
+}
+
+func strictReadingFeynmanAngleFeedback(
+	raw []readingFeynmanAngleFeedbackResponse,
+	answers []types.ReadingFeynmanAnswer,
+	chunkInfo map[string]*readingChunkInfo,
+	chunkSection map[string]string,
+) ([]types.ReadingFeynmanAngleFeedback, []types.ReadingEvidence) {
+	allowed := map[string]struct{}{}
+	for _, answer := range answers {
+		allowed[answer.AngleID] = struct{}{}
+	}
+	out := make([]types.ReadingFeynmanAngleFeedback, 0, len(raw))
+	evidenceAll := make([]types.ReadingEvidence, 0)
+	seen := map[string]struct{}{}
+	for _, item := range raw {
+		id := strings.TrimSpace(item.AngleID)
+		if _, ok := allowed[id]; !ok {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		omissions, omissionEvidence := strictReadingFeynmanPoints(item.Omissions, chunkInfo, chunkSection)
+		errorsFound, errorEvidence := strictReadingFeynmanPoints(item.Errors, chunkInfo, chunkSection)
+		evidenceAll = append(evidenceAll, omissionEvidence...)
+		evidenceAll = append(evidenceAll, errorEvidence...)
+		out = append(out, types.ReadingFeynmanAngleFeedback{
+			AngleID:   id,
+			Status:    normalizeReadingFeynmanStatus(item.Status),
+			Summary:   readingTruncateRunes(strings.TrimSpace(item.Summary), 300),
+			Omissions: omissions,
+			Errors:    errorsFound,
+		})
 	}
 	return out, evidenceAll
 }
@@ -417,9 +635,13 @@ type readingFinalArgumentChain struct {
 
 func readingMermaidLabel(value string, limit int) string {
 	text := readingTruncateRunes(strings.TrimSpace(value), limit)
+	// Mermaid treats $...$ as math and backticks/pipes/angle brackets as
+	// markdown or diagram syntax; raw source quotes often contain them.
 	replacer := strings.NewReplacer(
 		"\"", "'", "\n", " ", "\r", " ",
 		"[", "［", "]", "］", "{", "（", "}", "）",
+		"$", "＄", "\\", " ", "`", "'", "*", "",
+		"|", "｜", "<", "＜", ">", "＞", "&", "＆", "#", "＃",
 	)
 	return replacer.Replace(text)
 }
@@ -573,6 +795,13 @@ func buildReadingReaderLayerMarkdown(run *types.ReadingRun, plan types.ReadingPl
 			}
 			for _, text := range readingFeynmanPointTexts(attempt.Errors) {
 				builder.WriteString("  - 错误：" + text + "\n")
+			}
+			for _, item := range parseReadingFeynmanAngleFeedback(attempt.AngleFeedback) {
+				builder.WriteString(fmt.Sprintf("  - %s：%s", readingFeynmanAngleLabel(item.AngleID), item.Status))
+				if strings.TrimSpace(item.Summary) != "" {
+					builder.WriteString(" — " + readingTruncateRunes(item.Summary, 200))
+				}
+				builder.WriteString("\n")
 			}
 		}
 	}

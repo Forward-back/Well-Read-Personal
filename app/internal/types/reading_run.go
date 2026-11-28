@@ -572,6 +572,9 @@ type ReadingFeynmanAttempt struct {
 	Omissions     JSON      `json:"omissions"      gorm:"type:jsonb;not null"`
 	Errors        JSON      `json:"errors"         gorm:"type:jsonb;not null"`
 	Evidence      JSON      `json:"evidence"       gorm:"type:jsonb;not null"`
+	Answers       JSON      `json:"answers"        gorm:"type:jsonb;not null"`
+	AngleFeedback JSON      `json:"angle_feedback" gorm:"type:jsonb;not null"`
+	PromptVersion int       `json:"prompt_version" gorm:"not null;default:0"`
 	CreatedAt     time.Time `json:"created_at"`
 }
 
@@ -584,10 +587,30 @@ type ReadingArgumentChainNode struct {
 	Evidence ReadingEvidence `json:"evidence"`
 }
 
-// SubmitReadingFeynmanRequest evaluates a free-form retelling of one section.
+// ReadingFeynmanAnswer is one preset-angle or free-form answer.
+type ReadingFeynmanAnswer struct {
+	AngleID string `json:"angle_id"`
+	Label   string `json:"label"`
+	Prompt  string `json:"prompt"`
+	Text    string `json:"text"`
+}
+
+// ReadingFeynmanAngleFeedback is the LLM's per-angle assessment.
+type ReadingFeynmanAngleFeedback struct {
+	AngleID   string                `json:"angle_id"`
+	Status    string                `json:"status"`
+	Summary   string                `json:"summary"`
+	Omissions []ReadingFeynmanPoint `json:"omissions"`
+	Errors    []ReadingFeynmanPoint `json:"errors"`
+}
+
+// SubmitReadingFeynmanRequest evaluates structured angle answers. Text stays
+// accepted for older clients that still send a single free-form retelling.
 type SubmitReadingFeynmanRequest struct {
-	SectionID string `json:"section_id" binding:"required"`
-	Text      string `json:"text" binding:"required"`
+	SectionID string                 `json:"section_id" binding:"required"`
+	Text      string                 `json:"text"`
+	Answers   []ReadingFeynmanAnswer `json:"answers"`
+	Freeform  string                 `json:"freeform"`
 }
 
 // ReadingAnnotation is a quoted passage plus the reader's annotation. The

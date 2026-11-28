@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +19,8 @@ import (
 	"gaze/internal/types"
 	"gaze/internal/types/interfaces"
 )
+
+var readingStepLocks sync.Map
 
 const (
 	readingMaxDocuments    = 5
@@ -403,6 +406,12 @@ func (s *readingRunService) Step(ctx context.Context, runID string) (*types.Read
 	if run == nil {
 		return nil, werrors.NewNotFoundError("精读任务不存在")
 	}
+	lockValue, _ := readingStepLocks.LoadOrStore(run.ID, &sync.Mutex{})
+	lock := lockValue.(*sync.Mutex)
+	if !lock.TryLock() {
+		return nil, werrors.NewValidationError("当前精读步骤正在推进，请等待完成")
+	}
+	defer lock.Unlock()
 	switch run.Status {
 	case types.ReadingRunFinished, types.ReadingRunStopped, types.ReadingRunAbandoned:
 		return nil, werrors.NewValidationError("精读任务已结束")

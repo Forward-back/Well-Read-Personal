@@ -3,6 +3,8 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -89,6 +91,59 @@ func (h *ReadingHandler) Step(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": run})
+}
+
+// StepStream godoc
+// @Summary      流式推进精读步骤
+// @Description  通过 SSE 推送阶段、检索与模型思考过程；最终帧返回完整运行
+// @Tags         精读
+// @Accept       json
+// @Produce      text/event-stream
+// @Param        id  path  string  true  "id"
+// @Security     Bearer
+// @Router       /reading/runs/{id}/step/stream [post]
+func (h *ReadingHandler) StepStream(c *gin.Context) {
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+
+	var writeMu sync.Mutex
+	emit := func(event types.ReadingProgressEvent) {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		c.SSEvent("message", event)
+		c.Writer.Flush()
+	}
+	startedAt := time.Now()
+	done := make(chan struct{})
+	writerDone := make(chan struct{})
+	go func() {
+		defer close(writerDone)
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				emit(types.ReadingProgressEvent{
+					Type: "heartbeat", ElapsedMS: time.Since(startedAt).Milliseconds(),
+				})
+			}
+		}
+	}()
+
+	ctx := types.WithReadingProgress(c.Request.Context(), emit)
+	run, err := h.service.Step(ctx, c.Param("id"))
+	close(done)
+	<-writerDone
+	if err != nil {
+		emit(types.ReadingProgressEvent{Type: "error", Content: err.Error()})
+		return
+	}
+	emit(types.ReadingProgressEvent{Type: "complete", Run: run, ElapsedMS: time.Since(startedAt).Milliseconds()})
 }
 
 // Feedback godoc
