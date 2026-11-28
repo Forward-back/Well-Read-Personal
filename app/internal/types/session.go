@@ -87,6 +87,11 @@ type Session struct {
 	UserID string `json:"user_id,omitempty" gorm:"type:varchar(512);index"`
 	// ReadingRunID links this session to the latest interactive reading run.
 	ReadingRunID string `json:"reading_run_id,omitempty" gorm:"type:varchar(36);not null;default:''"`
+	// Surface marks non-chat workspaces. AgentWorkspaceSurface sessions belong
+	// to the Agent workspace and are hidden from chat/reading session lists.
+	Surface string `json:"surface,omitempty" gorm:"type:varchar(20);not null;default:''"`
+	// SummaryModelID is the chat model chosen for this session.
+	SummaryModelID string `json:"summary_model_id,omitempty" gorm:"type:varchar(64)"`
 	// IsPinned indicates whether the session is pinned in the list.
 	IsPinned bool `json:"is_pinned" gorm:"default:false"`
 	// PinnedAt records when the session was pinned; nil when not pinned.
@@ -215,6 +220,8 @@ type SessionListQuery struct {
 	Keyword  string
 	Source   string
 	AgentID  string
+	// Surface filters by workspace marker; empty means "exclude agent".
+	Surface  string
 	Page     int
 	PageSize int
 }

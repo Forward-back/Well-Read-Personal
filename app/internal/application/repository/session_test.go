@@ -361,3 +361,35 @@ func TestSessionRepositoryQueryPagedHidesMaintenanceSessions(t *testing.T) {
 			"source=%q count must not include the maintenance session", source)
 	}
 }
+
+// Agent-workspace sessions are a separate surface: chat listings must never
+// show them, and the workspace listing must show only them.
+func TestSessionRepositoryQueryPagedSeparatesAgentSurface(t *testing.T) {
+	repo, db := newSessionRepositoryForTest(t)
+	require.NoError(t, db.AutoMigrate(&testIMChannelSession{}))
+	ctx := context.Background()
+
+	chat := createSessionForTest(t, db, 1, "alice")
+	agent := createSessionForTest(t, db, 1, "alice")
+	require.NoError(t, db.Model(&types.Session{}).Where("id = ?", agent.ID).
+		Update("surface", types.AgentWorkspaceSurface).Error)
+
+	items, total, err := repo.QueryPaged(ctx, &types.SessionListQuery{
+		TenantID: 1, UserID: "alice", Page: 1, PageSize: 50,
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{chat.ID}, listItemIDsForTest(items))
+	require.EqualValues(t, 1, total)
+
+	agentItems, agentTotal, err := repo.QueryPaged(ctx, &types.SessionListQuery{
+		TenantID: 1, UserID: "alice", Surface: types.AgentWorkspaceSurface, Page: 1, PageSize: 50,
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{agent.ID}, listItemIDsForTest(agentItems))
+	require.EqualValues(t, 1, agentTotal)
+
+	all, err := repo.GetByTenantID(ctx, 1, "alice")
+	require.NoError(t, err)
+	require.Len(t, all, 1)
+	require.Equal(t, chat.ID, all[0].ID)
+}

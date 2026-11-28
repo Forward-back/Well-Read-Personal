@@ -95,7 +95,8 @@ func (r *sessionRepository) GetIMPlatform(
 func (r *sessionRepository) GetByTenantID(ctx context.Context, tenantID uint64, userID string) ([]*types.Session, error) {
 	var sessions []*types.Session
 	err := applySessionUserScope(
-		r.db.WithContext(ctx).Where("tenant_id = ?", tenantID),
+		r.db.WithContext(ctx).Where("tenant_id = ?", tenantID).
+			Where("(surface IS NULL OR surface <> ?)", types.AgentWorkspaceSurface),
 		userID,
 	).Order("updated_at DESC").Find(&sessions).Error
 	if err != nil {
@@ -113,7 +114,8 @@ func (r *sessionRepository) GetPagedByTenantID(
 
 	// First query the total count
 	baseQ := applySessionUserScope(
-		r.db.WithContext(ctx).Model(&types.Session{}).Where("tenant_id = ?", tenantID),
+		r.db.WithContext(ctx).Model(&types.Session{}).Where("tenant_id = ?", tenantID).
+			Where("(surface IS NULL OR surface <> ?)", types.AgentWorkspaceSurface),
 		userID,
 	)
 	err := baseQ.Count(&total).Error
@@ -123,7 +125,8 @@ func (r *sessionRepository) GetPagedByTenantID(
 
 	// Then query the paginated data
 	err = applySessionUserScope(
-		r.db.WithContext(ctx).Where("tenant_id = ?", tenantID),
+		r.db.WithContext(ctx).Where("tenant_id = ?", tenantID).
+			Where("(surface IS NULL OR surface <> ?)", types.AgentWorkspaceSurface),
 		userID,
 	).
 		Order("updated_at DESC").
@@ -174,6 +177,13 @@ func (r *sessionRepository) QueryPaged(
 		)
 		if kw := strings.TrimSpace(q.Keyword); kw != "" {
 			db = db.Where(titleLikeExpr, "%"+escapeLikeKeyword(kw)+"%")
+		}
+		// Agent-workspace sessions are listed only by the workspace surface
+		// filter; every chat/reading listing excludes them.
+		if surface := strings.TrimSpace(q.Surface); surface != "" {
+			db = db.Where("s.surface = ?", surface)
+		} else {
+			db = db.Where("(s.surface IS NULL OR s.surface <> ?)", types.AgentWorkspaceSurface)
 		}
 		return db
 	}
@@ -342,6 +352,33 @@ func (r *sessionRepository) SetOwnerID(ctx context.Context, tenantID uint64, id,
 			"user_id":    ownerID,
 			"updated_at": time.Now(),
 		})
+	return res.RowsAffected, res.Error
+}
+
+// UpdateAgentWorkspace updates workspace-owned session fields (title, model,
+// scope state) within the owner scope. Only surface="agent" rows match.
+func (r *sessionRepository) UpdateAgentWorkspace(
+	ctx context.Context, tenantID uint64, userID string, id string,
+	title, modelID string, state *types.SessionLastRequestState,
+) (int64, error) {
+	updates := map[string]interface{}{"updated_at": time.Now()}
+	if value := strings.TrimSpace(title); value != "" {
+		updates["title"] = value
+	}
+	if value := strings.TrimSpace(modelID); value != "" {
+		updates["summary_model_id"] = value
+	}
+	if state != nil {
+		v, err := state.Value()
+		if err != nil {
+			return 0, err
+		}
+		updates["agent_config"] = v
+	}
+	res := applySessionUserScope(r.db.WithContext(ctx).
+		Model(&types.Session{}).
+		Where("tenant_id = ? AND id = ? AND surface = ?", tenantID, id, types.AgentWorkspaceSurface), userID).
+		Updates(updates)
 	return res.RowsAffected, res.Error
 }
 

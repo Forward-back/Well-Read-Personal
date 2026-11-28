@@ -168,10 +168,51 @@ func (r *documentVersionRepository) ApplyDocVersionRollback(
 	})
 }
 
+func (r *documentVersionRepository) ApplyDocContentReplace(
+	ctx context.Context, payload *types.DocContentReplaceTx,
+) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		now := payload.Now
+		if err := tx.Model(&types.Chunk{}).
+			Where("tenant_id = ? AND knowledge_id = ? AND deleted_at IS NULL",
+				payload.TenantID, payload.KnowledgeID).
+			Updates(map[string]interface{}{"deleted_at": now, "updated_at": now}).Error; err != nil {
+			return err
+		}
+		if len(payload.NewChunks) > 0 {
+			if tx.Dialector.Name() == "sqlite" {
+				if err := types.AssignChunkSeqIDs(tx, payload.NewChunks); err != nil {
+					return err
+				}
+			}
+			if err := tx.CreateInBatches(payload.NewChunks, 100).Error; err != nil {
+				return err
+			}
+		}
+		if payload.Version != nil {
+			if err := createSnapshotTx(tx, payload.Version); err != nil {
+				return err
+			}
+		}
+		if payload.MarkEngineSyncPending {
+			if err := tx.Model(&types.Knowledge{}).
+				Where("tenant_id = ? AND id = ?", payload.TenantID, payload.KnowledgeID).
+				Updates(map[string]interface{}{
+					"engine_sync_status":       types.EngineSyncStatusPending,
+					"engine_sync_requested_at": now,
+					"engine_sync_error":        "",
+				}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 func createSnapshotTx(tx *gorm.DB, version *types.DocVersion) error {
 	var chunks []*types.Chunk
-	if err := tx.Where("tenant_id = ? AND knowledge_id = ? AND deleted_at IS NULL",
-		version.TenantID, version.KnowledgeID).
+	if err := tx.Where("tenant_id = ? AND knowledge_id = ? AND deleted_at IS NULL AND chunk_type = ?",
+		version.TenantID, version.KnowledgeID, types.ChunkTypeText).
 		Order("chunk_index ASC").
 		Find(&chunks).Error; err != nil {
 		return err

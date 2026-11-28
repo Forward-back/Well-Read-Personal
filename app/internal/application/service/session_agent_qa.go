@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"gaze/internal/agent/tools"
+	werrors "gaze/internal/errors"
 	"gaze/internal/event"
 	"gaze/internal/logger"
 	"gaze/internal/models/chat"
@@ -21,6 +22,9 @@ func (s *sessionService) AgentQA(
 	req *types.QARequest,
 	eventBus *event.EventBus,
 ) error {
+	if req != nil && req.Session != nil && req.Session.Surface == types.AgentWorkspaceSurface {
+		return werrors.NewValidationError("该会话属于智能体工作区，请在工作台中继续")
+	}
 	sessionID := req.Session.ID
 	// Propagate the session ID so stateful sandbox backends (CubeSandbox) can
 	// bind script execution to a per-session MicroVM instance.

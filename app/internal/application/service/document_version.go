@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gaze/internal/application/repository"
@@ -77,17 +78,38 @@ func (s *documentVersionService) EnsureInitialVersion(
 func (s *documentVersionService) CreateVersion(
 	ctx context.Context, tenantID uint64, kbID, knowledgeID, sourceType, sourceID, title, description, actorID string,
 ) (*types.DocVersion, error) {
+	return s.createVersionInternal(ctx, tenantID, kbID, knowledgeID,
+		sourceType, sourceID, title, description, actorID, types.DocVersionAudit{})
+}
+
+func (s *documentVersionService) CreateVersionWithAudit(
+	ctx context.Context, tenantID uint64, kbID, knowledgeID,
+	sourceType, sourceID, title, description, actorID string,
+	audit types.DocVersionAudit,
+) (*types.DocVersion, error) {
+	return s.createVersionInternal(ctx, tenantID, kbID, knowledgeID,
+		sourceType, sourceID, title, description, actorID, audit)
+}
+
+func (s *documentVersionService) createVersionInternal(
+	ctx context.Context, tenantID uint64, kbID, knowledgeID,
+	sourceType, sourceID, title, description, actorID string,
+	audit types.DocVersionAudit,
+) (*types.DocVersion, error) {
 	version, err := s.nextVersion(ctx, tenantID, kbID, knowledgeID, sourceType, sourceID, title, description, actorID)
 	if err != nil {
 		return nil, err
 	}
+	version.SessionID = audit.SessionID
+	version.MessageID = audit.MessageID
+	version.ToolName = audit.ToolName
 	chunks, err := s.chunkRepo.ListChunksByKnowledgeID(ctx, tenantID, knowledgeID)
 	if err != nil {
 		return nil, err
 	}
 	snaps := make([]*types.DocVersionChunk, 0, len(chunks))
 	for _, chunk := range chunks {
-		if chunk == nil {
+		if chunk == nil || chunk.ChunkType != types.ChunkTypeText {
 			continue
 		}
 		snaps = append(snaps, &types.DocVersionChunk{
@@ -102,6 +124,34 @@ func (s *documentVersionService) CreateVersion(
 	}
 	version.ChunkCount = len(snaps)
 	if err := s.repo.CreateDocVersion(ctx, version, snaps); err != nil {
+		return nil, err
+	}
+	return version, nil
+}
+
+// CommitAgentContent swaps the document's chunk set and snapshots it as a new
+// version in one transaction, marking engine sync pending.
+func (s *documentVersionService) CommitAgentContent(
+	ctx context.Context, req *types.AgentContentCommit,
+) (*types.DocVersion, error) {
+	version, err := s.nextVersion(ctx, req.TenantID, req.KnowledgeBaseID, req.KnowledgeID,
+		req.SourceType, req.SourceID, req.Title, req.Description, req.ActorID)
+	if err != nil {
+		return nil, err
+	}
+	version.SessionID = req.Audit.SessionID
+	version.MessageID = req.Audit.MessageID
+	version.ToolName = req.Audit.ToolName
+	now := time.Now()
+	payload := &types.DocContentReplaceTx{
+		Version:               version,
+		TenantID:              req.TenantID,
+		KnowledgeID:           req.KnowledgeID,
+		NewChunks:             req.NewChunks,
+		MarkEngineSyncPending: req.MarkEngineSyncPending,
+		Now:                   now,
+	}
+	if err := s.repo.ApplyDocContentReplace(ctx, payload); err != nil {
 		return nil, err
 	}
 	return version, nil
@@ -168,11 +218,26 @@ func (s *documentVersionService) CompareVersions(
 		return nil, err
 	}
 	return &types.DocVersionCompareResponse{
-		From:       from,
-		To:         to,
-		FromChunks: fromChunks,
-		ToChunks:   toChunks,
+		From:         from,
+		To:           to,
+		FromChunks:   fromChunks,
+		ToChunks:     toChunks,
+		FromMarkdown: joinVersionChunksMarkdown(fromChunks),
+		ToMarkdown:   joinVersionChunksMarkdown(toChunks),
 	}, nil
+}
+
+func joinVersionChunksMarkdown(chunks []*types.DocVersionChunk) string {
+	parts := make([]string, 0, len(chunks))
+	for _, chunk := range chunks {
+		if chunk == nil {
+			continue
+		}
+		if text := strings.TrimSpace(chunk.Content); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 func (s *documentVersionService) Rollback(

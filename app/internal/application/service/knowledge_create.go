@@ -1162,6 +1162,15 @@ func (s *knowledgeService) bindContentResources(
 func (s *knowledgeService) triggerManualProcessing(ctx context.Context,
 	kb *types.KnowledgeBase, knowledge *types.Knowledge, content string, doSync bool,
 ) {
+	s.triggerManualProcessingWithOptions(ctx, kb, knowledge, content, doSync, false)
+}
+
+// triggerManualProcessingWithOptions is triggerManualProcessing with the engine
+// push split out: agent edits push through PublishKnowledgeChange instead of a
+// blocking per-document ingest.
+func (s *knowledgeService) triggerManualProcessingWithOptions(ctx context.Context,
+	kb *types.KnowledgeBase, knowledge *types.Knowledge, content string, doSync, skipEnginePush bool,
+) {
 	clean := strings.TrimSpace(content)
 	if clean == "" {
 		return
@@ -1259,5 +1268,7 @@ func (s *knowledgeService) triggerManualProcessing(ctx context.Context,
 
 	// Manual content is plain markdown - push to the RAG engine the same way
 	// uploaded files are (best-effort, idempotent by knowledge ID).
-	s.pushToEngine(ctx, kb, knowledge, clean)
+	if !skipEnginePush {
+		s.pushToEngine(ctx, kb, knowledge, clean)
+	}
 }

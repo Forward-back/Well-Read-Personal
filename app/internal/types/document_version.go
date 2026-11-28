@@ -8,10 +8,12 @@ import (
 
 // Document version sources.
 const (
-	DocVersionSourceUpload     = "upload"
-	DocVersionSourceManualEdit = "manual_edit"
-	DocVersionSourceRollback   = "rollback"
-	DocVersionSourceReparse    = "reparse"
+	DocVersionSourceUpload      = "upload"
+	DocVersionSourceManualEdit  = "manual_edit"
+	DocVersionSourceRollback    = "rollback"
+	DocVersionSourceReparse     = "reparse"
+	DocVersionSourceAgentEdit   = "agent_edit"
+	DocVersionSourceAgentCreate = "agent_create"
 )
 
 // Engine sync states stored on knowledges.
@@ -37,6 +39,11 @@ type DocVersion struct {
 	CreatedBy       string    `json:"created_by"       gorm:"type:varchar(36)"`
 	CreatedAt       time.Time `json:"created_at"`
 	IsCurrent       bool      `json:"is_current"       gorm:"-"`
+
+	// Agent workspace audit trail: which session/message/tool produced it.
+	SessionID *string `json:"session_id,omitempty" gorm:"type:varchar(36)"`
+	MessageID *string `json:"message_id,omitempty" gorm:"type:varchar(36)"`
+	ToolName  *string `json:"tool_name,omitempty"  gorm:"type:varchar(64)"`
 
 	CreatedByName string `json:"created_by_name,omitempty" gorm:"-"`
 }
@@ -78,10 +85,39 @@ func (c *EngineSyncConfig) Scan(value interface{}) error {
 
 // DocVersionCompareResponse pairs two snapshots for a side-by-side diff.
 type DocVersionCompareResponse struct {
-	From       *DocVersion        `json:"from"`
-	To         *DocVersion        `json:"to"`
-	FromChunks []*DocVersionChunk `json:"from_chunks"`
-	ToChunks   []*DocVersionChunk `json:"to_chunks"`
+	From         *DocVersion        `json:"from"`
+	To           *DocVersion        `json:"to"`
+	FromChunks   []*DocVersionChunk `json:"from_chunks"`
+	ToChunks     []*DocVersionChunk `json:"to_chunks"`
+	FromMarkdown string             `json:"from_markdown,omitempty"`
+	ToMarkdown   string             `json:"to_markdown,omitempty"`
+}
+
+// DocContentReplaceTx atomically swaps a document's chunk set, snapshots it as
+// a new version, and marks engine sync pending.
+type DocContentReplaceTx struct {
+	Version               *DocVersion
+	TenantID              uint64
+	KnowledgeID           string
+	NewChunks             []*Chunk
+	MarkEngineSyncPending bool
+	Now                   time.Time
+}
+
+// AgentContentCommit asks the version service to replace a document's chunks
+// and record the resulting snapshot in one transaction.
+type AgentContentCommit struct {
+	TenantID              uint64
+	KnowledgeBaseID       string
+	KnowledgeID           string
+	ActorID               string
+	SourceType            string
+	SourceID              string
+	Title                 string
+	Description           string
+	Audit                 DocVersionAudit
+	NewChunks             []*Chunk
+	MarkEngineSyncPending bool
 }
 
 // RollbackDocVersionRequest optionally records why a rollback happened.

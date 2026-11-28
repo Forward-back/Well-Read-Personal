@@ -204,6 +204,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewDocumentVersionService))
 	must(container.Provide(service.NewEngineSyncService))
 	must(container.Provide(func(svc *service.EngineSyncService) handler.EngineSyncTrigger { return svc }))
+	must(container.Provide(func(svc *service.EngineSyncService) interfaces.KnowledgeChangePublisher { return svc }))
+	must(container.Provide(func(svc interfaces.KnowledgeService) interfaces.AgentDocumentService {
+		return svc.(interfaces.AgentDocumentService)
+	}))
+	must(container.Provide(service.NewAgentWorkspaceService))
 	must(container.Provide(service.NewGazeIngestService, dig.Name("gazeIngest")))
 	// Web search service (needed by AgentService)
 	logger.Debugf(ctx, "[Container] Registering web search registry and providers...")

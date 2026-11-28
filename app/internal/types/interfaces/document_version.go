@@ -14,6 +14,7 @@ type DocumentVersionRepository interface {
 	ListDocVersions(ctx context.Context, tenantID uint64, knowledgeID string) ([]*types.DocVersion, error)
 	GetDocVersion(ctx context.Context, tenantID uint64, knowledgeID string, versionID string) (*types.DocVersion, []*types.DocVersionChunk, error)
 	ApplyDocVersionRollback(ctx context.Context, payload *types.DocVersionRollbackTx) error
+	ApplyDocContentReplace(ctx context.Context, payload *types.DocContentReplaceTx) error
 }
 
 // DocumentVersionService snapshots documents and performs immutable rollback.
@@ -26,4 +27,14 @@ type DocumentVersionService interface {
 	CompareVersions(ctx context.Context, tenantID uint64, kbID, knowledgeID, fromVersionID, toVersionID string) (*types.DocVersionCompareResponse, error)
 	Rollback(ctx context.Context, tenantID uint64, kbID, knowledgeID, versionID, actorID, comment string) (*types.DocVersion, error)
 	RecordManualEdit(ctx context.Context, tenantID uint64, kbID, knowledgeID, actorID string) error
+	// CreateVersionWithAudit snapshots the current text chunks and records the
+	// agent session/message/tool that produced the change.
+	CreateVersionWithAudit(
+		ctx context.Context, tenantID uint64, kbID, knowledgeID,
+		sourceType, sourceID, title, description, actorID string,
+		audit types.DocVersionAudit,
+	) (*types.DocVersion, error)
+	// CommitAgentContent replaces a document's chunk set and snapshots it in one
+	// transaction, marking engine sync pending.
+	CommitAgentContent(ctx context.Context, req *types.AgentContentCommit) (*types.DocVersion, error)
 }

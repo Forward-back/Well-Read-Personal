@@ -49,6 +49,8 @@ type Handler struct {
 	ragEngine engine.RAGEngine
 	// docVersions binds citations to the document version current at answer time.
 	docVersions interfaces.DocumentVersionService
+	// agentWorkspaceService owns Agent-workspace sessions and runs.
+	agentWorkspaceService interfaces.AgentWorkspaceService
 }
 
 // NewHandler creates a new instance of Handler with all necessary dependencies
@@ -74,6 +76,7 @@ func NewHandler(
 	terminalService *service.SandboxTerminalService,
 	ragEngine engine.RAGEngine,
 	docVersions interfaces.DocumentVersionService,
+	agentWorkspaceService interfaces.AgentWorkspaceService,
 ) *Handler {
 	return &Handler{
 		sessionService:       sessionService,
@@ -95,6 +98,7 @@ func NewHandler(
 		terminalService:      terminalService,
 		ragEngine:            ragEngine,
 		docVersions:          docVersions,
+		agentWorkspaceService: agentWorkspaceService,
 		attachmentProcessor: NewAttachmentProcessor(
 			fileService,
 			documentReader,

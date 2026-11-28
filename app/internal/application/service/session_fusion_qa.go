@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	werrors "gaze/internal/errors"
 	"gaze/internal/event"
 	"gaze/internal/logger"
 	"gaze/internal/types"
@@ -66,6 +67,9 @@ func (s *sessionService) resolveSkillInjection(
 func (s *sessionService) KnowledgeQAFusion(
 	ctx context.Context, qaReq *types.QARequest, eventBus *event.EventBus,
 ) error {
+	if qaReq != nil && qaReq.Session != nil && qaReq.Session.Surface == types.AgentWorkspaceSurface {
+		return werrors.NewValidationError("该会话属于智能体工作区，请在工作台中继续")
+	}
 	sessionID := qaReq.Session.ID
 	question := qaReq.Query
 

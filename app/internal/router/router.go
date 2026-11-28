@@ -185,6 +185,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterChunkerDebugRoutes(v1, apiKeyGuards)
 		RegisterReadingRoutes(v1, params.ReadingHandler, apiKeyGuards)
 		RegisterReviewRoutes(v1, params.ReviewHandler)
+		RegisterAgentWorkspaceRoutes(v1, params.SessionHandler)
 
 		// Fail fast if any declared API-key policy points at a route
 		// template that does not actually exist (typo / path drift). A

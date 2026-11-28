@@ -94,6 +94,12 @@ type SessionRepository interface {
 	// session (agent, model, KB scope, etc.) so the chat UI can restore it
 	// when the session is reopened. Scope rules match Update.
 	UpdateLastRequestState(ctx context.Context, tenantID uint64, userID string, sessionID string, state *types.SessionLastRequestState) (int64, error)
+	// UpdateAgentWorkspace updates workspace-owned session fields (title, model,
+	// scope state) within the owner scope.
+	UpdateAgentWorkspace(
+		ctx context.Context, tenantID uint64, userID string, id string,
+		title, modelID string, state *types.SessionLastRequestState,
+	) (int64, error)
 	// SetPinned pins or unpins a session row scoped by tenant.
 	// userID, when non-empty, is enforced so users cannot pin sessions they don't own.
 	// Returns the number of rows affected; 0 means the session doesn't exist or is

@@ -34,6 +34,9 @@ type KnowledgeHandler struct {
 	spanRepo      repository.KnowledgeSpanRepository
 	knowledgeRepo interfaces.KnowledgeRepository
 	folderService interfaces.KnowledgeFolderService
+	docVersions   interfaces.DocumentVersionService
+	agentDocs     interfaces.AgentDocumentService
+	engineSync    interfaces.KnowledgeChangePublisher
 }
 
 // NewKnowledgeHandler creates a new knowledge handler instance
@@ -45,6 +48,9 @@ func NewKnowledgeHandler(
 	spanRepo repository.KnowledgeSpanRepository,
 	knowledgeRepo interfaces.KnowledgeRepository,
 	folderService interfaces.KnowledgeFolderService,
+	docVersions interfaces.DocumentVersionService,
+	agentDocs interfaces.AgentDocumentService,
+	engineSync interfaces.KnowledgeChangePublisher,
 ) *KnowledgeHandler {
 	return &KnowledgeHandler{
 		kgService:     kgService,
@@ -54,6 +60,9 @@ func NewKnowledgeHandler(
 		spanRepo:      spanRepo,
 		knowledgeRepo: knowledgeRepo,
 		folderService: folderService,
+		docVersions:   docVersions,
+		agentDocs:     agentDocs,
+		engineSync:    engineSync,
 	}
 }
 
