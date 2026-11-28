@@ -1,7 +1,7 @@
 # WellRead Agent 功能说明
 
-> 状态：规划
-> 最后更新：2026-11-26
+> 状态：当前
+> 最后更新：2026-11-28
 > 目标读者：产品、后端、前端、Agent / RAG 开发者
 > 关联：[Agent 原型](Agent插件VSCode原型.html)、[Markdown 版本控制技术方案](MD文档版本控制_技术方案.md)、[系统总览](../../01-项目总览/系统总览.md)
 
@@ -144,23 +144,27 @@ Diff 卡使用行级增删、上下文折叠与统计；点击行可定位编辑
 - 刷新/重进后任务、消息、pending 状态与版本一致；失败有重试，过期任务不可执行。
 - 不出现多 owner、角色、ACL、共享空间或 MCP 工具扩展。
 
-## 9.1 当前实现与差距（2026-11-27）
+## 9.1 当前实现与差距（2026-11-28）
 
-**已落地：** 左栏第七项与 `/platform/agent` 路由；PageTopbar；文档树 / 编辑器·Diff / Agent 对话三栏；对话栏竖向时间线（圆点颜色编码角色/状态/板块），Agent 回答无气泡、用户消息右对齐透明蓝框；对话头部使用问答 robot 图标并命名 Gaze；工具节点、Diff、L2 待确认卡与撤销/确认静态交互；浅色/深色 token。2026-11-27 完成视觉对齐：页头下三栏齐平全宽，左树固定，中/右可独立折叠并允许全收起，中右边界可拖拽调宽并持久化，拖动范围从画面中央到最右侧；页头全部图标按钮；亮色采用 VS Code Default High Contrast Light 配色（纸面 `#FFFFFF`、墨 `#292929`、交互/边框 `#0F4A85`、警告 `#895503`、危险 `#B5200D`、新增 `#096D48`），暗色采用 GitHub Primer `dark-high-contrast`（canvas `#010409`、muted `#151B23`、border `#B7BDC8`、fg `#FFFFFF` / `#D1D7E0`、accent `#74B9FF` / `#194FB1`、success `#2BD853`、attention `#F0B72F`、danger `#FF9492`）；Agent 默认主操作色为高对比蓝。UI 设置新增「智能体工作台」纸面/抬高面/边框与智能体主操作色（仅亮色）。详见[Agent 视觉对齐阶段记录](../../03-进度与交接/阶段记录/2026-11-27-Agent视觉对齐.md)。
+**视觉（2026-11-27，owner 已确认）：** 左栏第七项与 `/platform/agent` 路由；PageTopbar；文档树 / 编辑器 / 对话三栏；对话栏竖向时间线（圆点颜色编码角色/状态/板块），Agent 回答无气泡、用户消息右对齐透明蓝框；对话头部使用问答 robot 图标并命名 Gaze；页头下三栏齐平全宽，左树固定，中/右可独立折叠并允许全收起，中右边界可拖拽调宽并持久化；页头全部图标按钮；亮色 VS Code Default High Contrast Light（纸面 `#FFFFFF`、墨 `#292929`、交互/边框 `#0F4A85`、警告 `#895503`、危险 `#B5200D`、新增 `#096D48`），暗色 GitHub Primer `dark-high-contrast`（canvas `#010409`、muted `#151B23`、border `#B7BDC8`、fg `#FFFFFF`、accent `#74B9FF`、emphasis `#194FB1`、success `#2BD853`、attention `#F0B72F`、danger `#FF9492`）；UI 设置含「智能体工作台」纸面/抬高面/边框与主操作色（仅亮色）。详见[Agent 视觉对齐阶段记录](../../03-进度与交接/阶段记录/2026-11-27-Agent视觉对齐.md)。
 
-**签收状态：** owner 于 2026-11-27 确认本轮视觉到此为止；5173 已通过明暗、1600–760px、拖拽持久化、折叠与设置取色检查；生产前端镜像留待批量签收后重建。
+**后端与真实数据（2026-11-28，编辑闭环 MVP）：**
 
-**未落地（后端占位）：**
+1. 会话与消息：复用 chat `sessions`/`messages` + `surface='agent'` 标记（migration 11），问答/阅读会话列表排除 agent 会话；会话可选模型（KnowledgeQA，存 `summary_model_id`）。
+2. SSE：`POST /api/v1/agent-workspace/sessions/:id/messages` 复用 ReAct 引擎与 AgentStreamHandler 事件（agent_query/thinking/tool_call/tool_result/answer/complete/error）。
+3. 工具：L0 `list_documents`/`get_document`/`search_documents`/`extract_knowledge_points`；L1 `edit_document_section`（replace/append/prepend/delete，自动提交版本）与 `create_document`（新建 Markdown + 初始版本）；每回合最多 3 次 L1。
+4. 版本：扩展 `doc_versions` 快照链（migration 11 审计列 `session_id/message_id/tool_name`），新增内容替换事务、`/knowledge/:id/content`、`/versions`、`/versions/:id`、`/versions/compare`、`/versions/:id/rollback`；版本历史对话框支持列表、对比预览与任意版本回滚，工具卡支持「撤销本次修改」。
+5. 写后索引：每次 L1 提交全文重切分、单事务替换 chunk 集与快照，`PublishKnowledgeChange` 等待 ≤5s 转后台，入库状态在工具卡与编辑器可见。
+6. 前端：任务新建/历史/删除、知识库文档树、编辑器真实内容、消息与工具卡回放、编辑结果条、版本对话框、会话级模型选择均接真实接口。
 
-1. Agent 会话、消息、工具调用、pending task 的表与 API；会话历史与问答隔离。
-2. 流式 Agent 运行接口（消息 + 工具卡 + pending 状态）。
-3. 文档读取/写入工具；写入统一走版本服务，不直接改文档。
-4. 版本服务（版本表、CAS、commit、读、diff、revert、409）。
-5. confirm_token 签发/消费、过期、执行前 `current_seq` 复核。
-6. 版本历史/Diff/回滚 UI 的真实数据。
-7. Agent 模型选择与会话状态真实接入。
+**未落地（下一批）：**
 
-当前页面所有「新任务 / 历史 / 版本 / 发送 / 确认 / 撤销」均为占位，不产生后端事实。
+1. L2/L3：dry_run、pending_task、confirm_token（签发/消费/过期/409 复核）、拆分/合并/删除/恢复工具与待确认卡真实数据。
+2. 行级 diff/patch 存储与 fingerprint 增量重切（当前为 chunk 级 diff 与全文重切）。
+3. live-run/stop 与中途刷新续流；标题自动生成。
+4. 快照仅 text chunk，回滚不恢复 parent-text 展开元数据；应用侧向量索引不重建（文档问答真值走 YLSW）。
+
+详见[Agent 后端 MVP 阶段记录](../../03-进度与交接/阶段记录/2026-11-28-Agent后端MVP.md)。签名状态：owner 于 2026-11-28 通过真实链路验收（建任务 → L0 列文档 → L1 编辑 → 撤销回滚）。
 
 ## 10. 非目标
 
