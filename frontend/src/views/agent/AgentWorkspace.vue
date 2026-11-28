@@ -11,17 +11,17 @@
     <PageTopbar :title="$t('agentWorkspace.title')" :meta="$t('agentWorkspace.meta')">
       <template #actions>
         <t-tooltip :content="$t('agentWorkspace.newTask')" placement="bottom">
-          <button type="button" class="agent-bar-btn is-primary" :aria-label="$t('agentWorkspace.newTask')" @click="notAvailable">
+          <button type="button" class="agent-bar-btn is-primary" :aria-label="$t('agentWorkspace.newTask')" @click="openNewTaskDialog">
             <AddIcon />
           </button>
         </t-tooltip>
         <t-tooltip :content="$t('agentWorkspace.history')" placement="bottom">
-          <button type="button" class="agent-bar-btn" :aria-label="$t('agentWorkspace.history')" @click="notAvailable">
+          <button type="button" class="agent-bar-btn" :aria-label="$t('agentWorkspace.history')" @click="historyDialogVisible = true">
             <HistoryIcon />
           </button>
         </t-tooltip>
         <t-tooltip :content="$t('agentWorkspace.versions')" placement="bottom">
-          <button type="button" class="agent-bar-btn" :aria-label="$t('agentWorkspace.versions')" @click="notAvailable">
+          <button type="button" class="agent-bar-btn" :aria-label="$t('agentWorkspace.versions')" @click="openVersionsDialog">
             <GitBranchIcon />
           </button>
         </t-tooltip>
@@ -56,86 +56,68 @@
     <div ref="workbenchRef" class="agent-workbench" :style="workbenchStyle">
       <aside class="agent-pane agent-tree" :aria-label="$t('agentWorkspace.treeAria')">
         <div class="agent-tree__head">
-          <span>{{ $t('agentWorkspace.treeRoot') }}</span>
-          <button type="button" class="agent-icon-btn" :aria-label="$t('agentWorkspace.newDocument')" @click="notAvailable">
+          <span>{{ scopeTitle }}</span>
+          <button type="button" class="agent-icon-btn" :aria-label="$t('agentWorkspace.newTask')" @click="openNewTaskDialog">
             <AddIcon />
           </button>
         </div>
 
-        <button type="button" class="agent-tree__row is-folder" @click="notAvailable">
-          <ChevronDownIcon class="agent-tree__caret" />
-          <FolderIcon class="agent-tree__icon" />
-          <span>{{ $t('agentWorkspace.treeRequirements') }}</span>
-          <em>8</em>
-        </button>
-        <button type="button" class="agent-tree__row is-child is-active" @click="notAvailable">
-          <span class="agent-tree__caret" />
-          <FileIcon class="agent-tree__icon" />
-          <span>{{ $t('agentWorkspace.treeMain') }}</span>
-          <i class="agent-tree__dot" :title="$t('agentWorkspace.treeModified')" />
-        </button>
-        <button type="button" class="agent-tree__row is-child" @click="notAvailable">
-          <span class="agent-tree__caret" />
-          <FileIcon class="agent-tree__icon" />
-          <span>{{ $t('agentWorkspace.treeCache') }}</span>
-        </button>
-        <button type="button" class="agent-tree__row is-child" @click="notAvailable">
-          <span class="agent-tree__caret" />
-          <FileIcon class="agent-tree__icon" />
-          <span>{{ $t('agentWorkspace.treeChecklist') }}</span>
-        </button>
-        <button type="button" class="agent-tree__row is-folder is-muted" @click="notAvailable">
-          <ChevronRightIcon class="agent-tree__caret" />
-          <FolderIcon class="agent-tree__icon" />
-          <span>{{ $t('agentWorkspace.treeCards') }}</span>
-          <em>12</em>
-        </button>
-        <button type="button" class="agent-tree__row is-folder is-muted" @click="notAvailable">
-          <ChevronRightIcon class="agent-tree__caret" />
-          <FolderIcon class="agent-tree__icon" />
-          <span>{{ $t('agentWorkspace.treeAppendix') }}</span>
-          <em>3</em>
-        </button>
-
-        <div class="agent-tree__divider" />
-
-        <button type="button" class="agent-tree__row is-folder" @click="notAvailable">
-          <ChevronDownIcon class="agent-tree__caret" />
-          <FolderIcon class="agent-tree__icon" />
-          <span>{{ $t('agentWorkspace.treeTech') }}</span>
-        </button>
-        <button type="button" class="agent-tree__row is-child" @click="notAvailable">
-          <span class="agent-tree__caret" />
-          <FileIcon class="agent-tree__icon" />
-          <span>{{ $t('agentWorkspace.treeVersionDoc') }}</span>
-        </button>
-
-        <div class="agent-version-card">
-          <strong>{{ $t('agentWorkspace.currentVersion') }}</strong>
-          <span>main · 2026-11-26 20:42</span>
-          <small>{{ $t('agentWorkspace.lastCommit') }}</small>
+        <div v-if="!activeSession" class="agent-tree__empty">
+          <p>{{ $t('agentWorkspace.sessionsEmpty') }}</p>
+          <button type="button" class="agent-btn is-primary" @click="openNewTaskDialog">
+            {{ $t('agentWorkspace.newTask') }}
+          </button>
         </div>
+        <template v-else>
+          <div v-for="group in docGroups" :key="group.path" class="agent-tree__group">
+            <button type="button" class="agent-tree__row is-folder" @click="toggleFolder(group.path)">
+              <ChevronDownIcon v-if="expandedFolders.includes(group.path) || group.path === ''" class="agent-tree__caret" />
+              <ChevronRightIcon v-else class="agent-tree__caret" />
+              <FolderIcon class="agent-tree__icon" />
+              <span>{{ group.label }}</span>
+              <em>{{ group.docs.length }}</em>
+            </button>
+            <template v-if="expandedFolders.includes(group.path) || group.path === ''">
+              <button
+                v-for="doc in group.docs"
+                :key="doc.id"
+                type="button"
+                class="agent-tree__row is-child"
+                :class="{ 'is-active': doc.id === currentDocId }"
+                @click="selectDoc(doc.id)"
+              >
+                <span class="agent-tree__caret" />
+                <FileIcon class="agent-tree__icon" />
+                <span>{{ doc.title }}</span>
+                <i
+                  v-if="doc.syncStatus === 'pending'"
+                  class="agent-tree__dot"
+                  :title="$t('agentWorkspace.syncPending')"
+                />
+              </button>
+            </template>
+          </div>
+          <p v-if="activeSession && !documents.length" class="agent-hint">{{ $t('agentWorkspace.documentsEmpty') }}</p>
+
+          <div class="agent-version-card">
+            <strong>{{ $t('agentWorkspace.currentVersion') }} {{ currentVersionLabel }}</strong>
+            <span>{{ currentDocTitle || '—' }}</span>
+            <small>{{ syncLabel }}</small>
+          </div>
+        </template>
       </aside>
 
       <section v-show="!editorCollapsed" class="agent-pane agent-editor" :aria-label="$t('agentWorkspace.editorAria')">
         <div class="agent-tabs">
           <button type="button" class="agent-tab is-active">
             <FileIcon />
-            <span>{{ $t('agentWorkspace.tabMain') }}</span>
-            <i class="agent-tab__dirty" />
-          </button>
-          <button type="button" class="agent-tab" @click="notAvailable">
-            <span>{{ $t('agentWorkspace.tabSummary') }}</span>
+            <span>{{ currentDocTitle || $t('agentWorkspace.selectDoc') }}</span>
+            <i v-if="syncStatus === 'pending'" class="agent-tab__dirty" />
           </button>
           <span class="agent-tabs__spacer" />
-          <t-tooltip :content="$t('agentWorkspace.splitEditor')" placement="bottom">
-            <button type="button" class="agent-icon-btn" :aria-label="$t('agentWorkspace.splitEditor')" @click="notAvailable">
-              <ColumnLayoutIcon />
-            </button>
-          </t-tooltip>
-          <t-tooltip :content="$t('agentWorkspace.moreActions')" placement="bottom">
-            <button type="button" class="agent-icon-btn" :aria-label="$t('agentWorkspace.moreActions')" @click="notAvailable">
-              <EllipsisIcon />
+          <t-tooltip :content="$t('agentWorkspace.versions')" placement="bottom">
+            <button type="button" class="agent-icon-btn" :aria-label="$t('agentWorkspace.versions')" @click="openVersionsDialog">
+              <GitBranchIcon />
             </button>
           </t-tooltip>
           <t-tooltip :content="$t('agentWorkspace.collapseEditor')" placement="bottom">
@@ -145,22 +127,16 @@
           </t-tooltip>
         </div>
         <div class="agent-breadcrumb">
-          {{ $t('agentWorkspace.breadcrumbRoot') }} › <b>{{ $t('agentWorkspace.tabMain') }}</b> ›
-          <span>{{ $t('agentWorkspace.breadcrumbInsert') }}</span>
+          {{ scopeTitle }} › <b>{{ currentDocTitle || '—' }}</b> ›
+          <span>{{ currentVersionLabel }} · {{ syncLabel }}</span>
         </div>
-        <div class="agent-code" role="document">
+        <div v-if="!currentDocId" class="agent-editor__empty">
+          <p>{{ $t('agentWorkspace.selectDoc') }}</p>
+        </div>
+        <div v-else class="agent-code" role="document">
           <div v-for="line in editorLines" :key="line.key" class="agent-line" :class="line.kind">
             <span class="agent-line__no">{{ line.no }}</span>
-            <span class="agent-line__text">
-              <span v-if="line.tag" class="agent-insert-tag">{{ $t('agentWorkspace.insertTag') }}</span>
-              <template v-if="line.parts">
-                <template v-for="(part, partIndex) in line.parts" :key="partIndex">
-                  <code v-if="part.code" class="agent-inline-code">{{ part.text }}</code>
-                  <template v-else>{{ part.text }}</template>
-                </template>
-              </template>
-              <template v-else>{{ line.text }}</template>
-            </span>
+            <span class="agent-line__text">{{ line.text }}</span>
           </div>
         </div>
       </section>
@@ -185,16 +161,16 @@
           <TraceSourceIcon class="agent-chat__icon" name="robot" :size="26" />
           <div class="agent-chat__identity">
             <strong>{{ $t('agentWorkspace.chatTitle') }}</strong>
-            <span>{{ $t('agentWorkspace.chatSub') }}</span>
+            <span>{{ activeSession?.title || $t('agentWorkspace.sessionsEmpty') }}</span>
           </div>
           <div class="agent-chat__actions">
             <t-tooltip :content="$t('agentWorkspace.newTask')" placement="bottom">
-              <button type="button" class="agent-icon-btn" :aria-label="$t('agentWorkspace.newTask')" @click="notAvailable">
+              <button type="button" class="agent-icon-btn" :aria-label="$t('agentWorkspace.newTask')" @click="openNewTaskDialog">
                 <AddIcon />
               </button>
             </t-tooltip>
             <t-tooltip :content="$t('agentWorkspace.history')" placement="bottom">
-              <button type="button" class="agent-icon-btn" :aria-label="$t('agentWorkspace.history')" @click="notAvailable">
+              <button type="button" class="agent-icon-btn" :aria-label="$t('agentWorkspace.history')" @click="historyDialogVisible = true">
                 <HistoryIcon />
               </button>
             </t-tooltip>
@@ -206,106 +182,116 @@
           </div>
         </header>
 
-        <div class="agent-chat__body">
-          <div class="agent-timeline">
-            <section class="agent-turn is-user">
-            <span class="agent-node is-user" aria-hidden="true" />
-            <div class="agent-turn__content">
-              <div class="agent-turn__meta">{{ $t('agentWorkspace.you') }}</div>
-              <div class="agent-user-box">{{ $t('agentWorkspace.userMessage') }}</div>
-            </div>
-          </section>
-
-          <section class="agent-turn is-agent">
-            <span class="agent-node is-agent" aria-hidden="true" />
-            <div class="agent-turn__content">
-              <div class="agent-turn__meta">{{ $t('agentWorkspace.chatTitle') }}</div>
-              <p class="agent-turn__text">{{ $t('agentWorkspace.agentReply') }}</p>
-            </div>
-          </section>
-
-          <section class="agent-turn">
-            <span class="agent-node is-success" aria-hidden="true" />
-            <div class="agent-turn__content">
-              <div class="agent-node__head">
-                <FileIcon />
-                <strong>{{ $t('agentWorkspace.toolRead') }}</strong>
-                <span class="agent-state is-done">{{ $t('agentWorkspace.done') }}</span>
-              </div>
-              <div class="agent-node__panel">
-                <p>{{ $t('agentWorkspace.toolReadRisk') }}</p>
-                <p>{{ $t('agentWorkspace.toolReadReturn') }}</p>
-              </div>
-            </div>
-          </section>
-
-          <section class="agent-turn">
-            <span class="agent-node is-write" aria-hidden="true" />
-            <div class="agent-turn__content">
-              <div class="agent-node__head">
-                <EditIcon />
-                <strong>{{ $t('agentWorkspace.toolEdit') }}</strong>
-                <span class="agent-state is-done">{{ $t('agentWorkspace.toolEditState') }}</span>
-              </div>
-              <div class="agent-node__panel">
-                <p>{{ $t('agentWorkspace.toolEditPos') }}</p>
-                <p>{{ $t('agentWorkspace.toolEditSource') }}</p>
-              </div>
-              <footer class="agent-node__foot">
-                <button type="button" class="agent-text-btn" @click="undoEdit">{{ $t('agentWorkspace.undo') }}</button>
-              </footer>
-            </div>
-          </section>
-
-          <section class="agent-turn is-agent">
-            <span class="agent-node is-agent" aria-hidden="true" />
-            <div class="agent-turn__content">
-              <div class="agent-turn__meta">{{ $t('agentWorkspace.chatTitle') }}</div>
-              <p class="agent-turn__text">{{ $t('agentWorkspace.agentReply2') }}</p>
-            </div>
-          </section>
-
-          <section class="agent-turn">
-            <span class="agent-node is-diff" aria-hidden="true" />
-            <div class="agent-turn__content">
-              <div class="agent-node__head">
-                <GitBranchIcon />
-                <strong>{{ $t('agentWorkspace.diffTitle') }}</strong>
-                <span class="agent-node__stat">+14 −6</span>
-              </div>
-              <div class="agent-diff-box">
-                <div class="agent-diff__line"><span> </span>## 7. 非功能需求</div>
-                <div class="agent-diff__line is-del"><span>−</span>## 附录 C：决策点裁决记录</div>
-                <div class="agent-diff__line is-del"><span>−</span>| # | 决策点 | 裁决 |</div>
-                <div class="agent-diff__line is-add"><span>+</span>&gt; 附录 C 已拆分至独立文档，此处保留回链。</div>
-                <div class="agent-diff__line is-add"><span>+</span>详见 [附录C_决策点裁决记录.md]</div>
-                <div class="agent-diff__line is-add"><span>+</span>【新文档】附录C_决策点裁决记录.md</div>
-              </div>
-            </div>
-          </section>
-
-          <section class="agent-turn">
-            <span class="agent-node" :class="pendingConfirmed ? 'is-success' : 'is-warning'" aria-hidden="true" />
-            <div class="agent-turn__content">
-              <article class="agent-pending-box" :class="{ 'is-confirmed': pendingConfirmed }">
-                <header>
-                  <CheckCircleIcon v-if="pendingConfirmed" />
-                  <ErrorCircleIcon v-else />
-                  {{ pendingConfirmed ? $t('agentWorkspace.confirmed') : $t('agentWorkspace.pendingTitle') }}
-                </header>
-                <div class="agent-pending__meta">
-                  <p><code>pending_task_id</code> pt_9f3c2a41-d08e-4b7f</p>
-                  <p><code>confirm_token</code> {{ pendingConfirmed ? $t('agentWorkspace.tokenIssued') : $t('agentWorkspace.tokenPending') }}</p>
-                  <p>{{ $t('agentWorkspace.pendingImpact') }}</p>
+        <div ref="chatBodyRef" class="agent-chat__body">
+          <div v-if="!activeSession" class="agent-chat__empty">{{ $t('agentWorkspace.chatEmpty') }}</div>
+          <div v-else class="agent-timeline">
+            <template v-for="message in historyMessages" :key="message.id">
+              <section v-if="message.role === 'user'" class="agent-turn is-user">
+                <span class="agent-node is-user" aria-hidden="true" />
+                <div class="agent-turn__content">
+                  <div class="agent-turn__meta">{{ $t('agentWorkspace.you') }} · {{ formatTime(message.created_at) }}</div>
+                  <div class="agent-user-box">{{ message.content }}</div>
                 </div>
-                <div v-if="!pendingConfirmed" class="agent-pending__actions">
-                  <button type="button" class="agent-btn is-primary" @click="confirmTask">{{ $t('agentWorkspace.confirm') }}</button>
-                  <button type="button" class="agent-btn is-danger" @click="notAvailable">{{ $t('agentWorkspace.reject') }}</button>
-                  <button type="button" class="agent-btn" @click="notAvailable">{{ $t('agentWorkspace.expire') }}</button>
+              </section>
+              <template v-else>
+                <section v-if="assistantEvents(message).length" class="agent-turn">
+                  <span class="agent-node is-agent" aria-hidden="true" />
+                  <div class="agent-turn__content">
+                    <template v-for="(event, index) in assistantEvents(message)" :key="`${message.id}-ev-${index}`">
+                      <details v-if="event.type === 'thinking'" class="agent-thinking">
+                        <summary>{{ $t('agentWorkspace.thinking') }}</summary>
+                        <pre>{{ (event as any).content }}</pre>
+                      </details>
+                      <div v-else-if="event.type === 'tool_call'" class="agent-tool-line">
+                        <div class="agent-tool-head">
+                          <strong>{{ toolLabel((event as any).tool_name) }}</strong>
+                          <span
+                            class="agent-state"
+                            :class="{ 'is-done': !(event as any).pending && (event as any).success, 'is-warn': !(event as any).pending && !(event as any).success }"
+                          >
+                            {{ toolStateLabel(event) }}
+                          </span>
+                        </div>
+                        <p v-if="(event as any).output" class="agent-tool-output">{{ String((event as any).output).slice(0, 600) }}</p>
+                        <p v-if="(event as any).error" class="agent-tool-error">{{ (event as any).error }}</p>
+                      </div>
+                    </template>
+                    <div v-if="message.content" class="agent-answer" v-html="assistantHtml(message)" />
+                  </div>
+                </section>
+                <section v-else-if="message.content" class="agent-turn is-agent">
+                  <span class="agent-node is-agent" aria-hidden="true" />
+                  <div class="agent-turn__content">
+                    <div class="agent-turn__meta">{{ $t('agentWorkspace.chatTitle') }}</div>
+                    <div class="agent-answer" v-html="assistantHtml(message)" />
+                  </div>
+                </section>
+                <section v-if="assistantEdits(message).length" class="agent-turn">
+                  <span class="agent-node is-write" aria-hidden="true" />
+                  <div class="agent-turn__content">
+                    <div class="agent-edit-strip">
+                      <div
+                        v-for="(edit, index) in assistantEdits(message)"
+                        :key="`${message.id}-edit-${index}`"
+                        class="agent-edit-row"
+                      >
+                        <EditIcon />
+                        <span class="agent-edit-row__label">
+                          {{ edit.toolName === 'create_document' ? $t('agentWorkspace.createdTag') : $t('agentWorkspace.editedTag') }}
+                          · {{ edit.title }} · {{ edit.versionLabel }}
+                        </span>
+                        <span class="agent-foot-sync">{{ syncStatusLabel(edit.engineSyncStatus) }}</span>
+                        <button
+                          v-if="edit.previousVersionId"
+                          type="button"
+                          class="agent-text-btn"
+                          @click="undoEdit(edit.documentId, edit.previousVersionId)"
+                        >
+                          {{ $t('agentWorkspace.undoEdit') }}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </template>
+            </template>
+
+            <section v-if="liveTurn" class="agent-turn">
+              <span class="agent-node is-agent" aria-hidden="true" />
+              <div class="agent-turn__content">
+                <div class="agent-turn__meta">{{ $t('agentWorkspace.streaming') }}</div>
+                <details v-if="liveThinking" class="agent-thinking" open>
+                  <summary>{{ $t('agentWorkspace.thinking') }}</summary>
+                  <pre>{{ liveThinking }}</pre>
+                </details>
+                <div v-for="(event, index) in liveToolEvents" :key="`live-${index}`" class="agent-tool-line">
+                  <div class="agent-tool-head">
+                    <strong>{{ toolLabel(event.tool_name) }}</strong>
+                    <span
+                      class="agent-state"
+                      :class="{ 'is-done': !event.pending && event.success, 'is-warn': !event.pending && !event.success }"
+                    >
+                      {{ toolStateLabel(event) }}
+                    </span>
+                  </div>
+                  <p v-if="event.output" class="agent-tool-output">{{ event.output.slice(0, 600) }}</p>
+                  <p v-if="event.error" class="agent-tool-error">{{ event.error }}</p>
                 </div>
-              </article>
-            </div>
-          </section>
+                <div v-if="liveTurn.content" class="agent-answer" v-html="liveAnswerHtml" />
+              </div>
+            </section>
+
+            <section class="agent-turn">
+              <span class="agent-node is-warning" aria-hidden="true" />
+              <div class="agent-turn__content">
+                <article class="agent-pending-box">
+                  <header>{{ $t('agentWorkspace.pendingTitle') }}</header>
+                  <div class="agent-pending__meta">
+                    <p>{{ $t('agentWorkspace.l2Placeholder') }}</p>
+                  </div>
+                </article>
+              </div>
+            </section>
           </div>
         </div>
 
@@ -315,16 +301,26 @@
             <span class="agent-muted agent-foot-ask">{{ $t('agentWorkspace.askMode') }}</span>
           </div>
           <textarea
-            :value="draft"
+            v-model="draft"
             :placeholder="$t('agentWorkspace.composerPlaceholder')"
-            @input="draft = ($event.target as HTMLTextAreaElement).value"
+            :disabled="!activeSession"
+            @keydown.enter.exact.prevent="send"
           />
           <div class="agent-composer__foot">
-            <span class="agent-foot-scope">{{ $t('agentWorkspace.atScope') }}</span>
-            <span class="agent-foot-context">{{ $t('agentWorkspace.context') }}</span>
+            <span class="agent-foot-scope">{{ $t('agentWorkspace.scopeLabel') }}：{{ scopeHint }}</span>
             <span class="agent-composer__spacer" />
-            <span class="agent-foot-model">{{ $t('agentWorkspace.model') }}</span>
-            <button type="button" class="agent-send" @click="notAvailable">{{ $t('agentWorkspace.send') }}</button>
+            <div class="agent-foot-model">
+              <ModelSelector
+                model-type="KnowledgeQA"
+                :selected-model-id="activeSession?.model_id || ''"
+                :all-models="models"
+                :allow-add="false"
+                @update:selected-model-id="changeSessionModel"
+              />
+            </div>
+            <button type="button" class="agent-send" :disabled="!canSend" @click="send">
+              {{ streaming ? $t('agentWorkspace.streaming') : $t('agentWorkspace.send') }}
+            </button>
           </div>
         </div>
       </aside>
@@ -344,23 +340,138 @@
         </div>
       </div>
     </div>
+
+    <t-dialog
+      v-model:visible="newSessionDialogVisible"
+      :header="$t('agentWorkspace.newTask')"
+      width="520px"
+      :footer="false"
+    >
+      <div class="agent-dialog">
+        <label class="agent-field">
+          <span>{{ $t('agentWorkspace.sessionTitleLabel') }}</span>
+          <input v-model="newSessionForm.title" type="text" :placeholder="$t('agentWorkspace.sessionTitlePlaceholder')" />
+        </label>
+        <label class="agent-field">
+          <span>{{ $t('agentWorkspace.sessionKbLabel') }}</span>
+          <select v-model="newSessionForm.kbId">
+            <option v-for="kb in knowledgeBases" :key="kb.id" :value="kb.id">{{ kb.name }}</option>
+          </select>
+        </label>
+        <label class="agent-field">
+          <span>{{ $t('agentWorkspace.sessionModelLabel') }}</span>
+          <ModelSelector
+            v-model:selected-model-id="newSessionForm.modelId"
+            model-type="KnowledgeQA"
+            :all-models="models"
+            :allow-add="false"
+          />
+        </label>
+        <div class="agent-dialog__actions">
+          <button type="button" class="agent-btn" @click="newSessionDialogVisible = false">{{ $t('common.cancel') }}</button>
+          <button type="button" class="agent-btn is-primary" :disabled="newSessionSaving" @click="submitNewSession">
+            {{ $t('agentWorkspace.create') }}
+          </button>
+        </div>
+      </div>
+    </t-dialog>
+
+    <t-dialog
+      v-model:visible="historyDialogVisible"
+      :header="$t('agentWorkspace.history')"
+      width="560px"
+      :footer="false"
+    >
+      <div class="agent-dialog">
+        <p v-if="sessionsLoading" class="agent-hint">{{ $t('agentWorkspace.loading') }}</p>
+        <p v-else-if="!sessions.length" class="agent-hint">{{ $t('agentWorkspace.sessionsEmpty') }}</p>
+        <div v-else class="agent-session-list">
+          <div
+            v-for="session in sessions"
+            :key="session.id"
+            class="agent-session-row"
+            :class="{ 'is-active': session.id === activeSession?.id }"
+          >
+            <button type="button" class="agent-session-row__main" @click="openSessionFromHistory(session)">
+              <strong>{{ session.title }}</strong>
+              <span>{{ session.knowledge_base_ids.map((id) => knowledgeBaseName[id] || id).join('、') }} · {{ formatTime(session.updated_at) }}</span>
+            </button>
+            <button type="button" class="agent-text-btn is-danger" @click="removeSession(session)">
+              {{ $t('common.delete') }}
+            </button>
+          </div>
+        </div>
+        <div class="agent-dialog__actions">
+          <button type="button" class="agent-btn is-primary" @click="openNewTaskDialog">{{ $t('agentWorkspace.newTask') }}</button>
+        </div>
+      </div>
+    </t-dialog>
+
+    <t-dialog
+      v-model:visible="versionsDialogVisible"
+      :header="$t('agentWorkspace.versionHistory')"
+      width="760px"
+      :footer="false"
+    >
+      <div class="agent-dialog">
+        <p v-if="versionsLoading" class="agent-hint">{{ $t('agentWorkspace.loading') }}</p>
+        <p v-else-if="!currentVersions.length" class="agent-hint">{{ $t('agentWorkspace.noVersions') }}</p>
+        <div v-else class="agent-version-list">
+          <div v-for="version in currentVersions" :key="version.id" class="agent-version-row">
+            <div class="agent-version-row__main">
+              <strong>{{ version.version_label }}</strong>
+              <span>{{ versionSourceLabel(version) }} · {{ formatTime(version.created_at) }}</span>
+              <small>{{ version.title || version.description || '—' }}</small>
+            </div>
+            <span v-if="version.is_current" class="agent-state is-done">{{ $t('agentWorkspace.versionCurrent') }}</span>
+            <button
+              v-else
+              type="button"
+              class="agent-text-btn"
+              @click="rollbackToVersion(version)"
+            >
+              {{ $t('agentWorkspace.versionRollback') }}
+            </button>
+          </div>
+        </div>
+        <div v-if="currentVersions.length > 1" class="agent-version-compare">
+          <div class="agent-version-compare__row">
+            <label class="agent-field is-inline">
+              <span>{{ $t('agentWorkspace.compareFrom') }}</span>
+              <select v-model="compareFrom">
+                <option v-for="version in currentVersions" :key="version.id" :value="version.id">{{ version.version_label }}</option>
+              </select>
+            </label>
+            <label class="agent-field is-inline">
+              <span>{{ $t('agentWorkspace.compareTo') }}</span>
+              <select v-model="compareTo">
+                <option v-for="version in currentVersions" :key="version.id" :value="version.id">{{ version.version_label }}</option>
+              </select>
+            </label>
+            <button type="button" class="agent-btn" :disabled="comparing" @click="runCompare">
+              {{ $t('agentWorkspace.compare') }}
+            </button>
+          </div>
+          <div v-if="compareData" class="agent-version-diff">
+            <p class="agent-hint">{{ $t('agentWorkspace.compareSummary', { from: compareData.from.version_label, to: compareData.to.version_label }) }}</p>
+            <pre>{{ (compareData.to_markdown || '').slice(0, 4000) }}</pre>
+          </div>
+        </div>
+      </div>
+    </t-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import {
   AddIcon,
   ChatIcon,
-  CheckCircleIcon,
   ChevronDownIcon,
   ChevronRightIcon,
-  ColumnLayoutIcon,
   EditIcon,
-  EllipsisIcon,
-  ErrorCircleIcon,
   FileIcon,
   FolderIcon,
   GitBranchIcon,
@@ -369,19 +480,62 @@ import {
 } from 'tdesign-icons-vue-next'
 import PageTopbar from '@/components/layout/PageTopbar.vue'
 import TraceSourceIcon from '@/views/chat/components/TraceSourceIcon.vue'
+import ModelSelector from '@/components/ModelSelector.vue'
 import { loadPreference, savePreference } from '@/composables/preferenceStorage'
+import { renderDocumentPreviewMarkdown } from '@/utils/documentPreviewMarkdown'
+import {
+  createAgentWorkspaceSession,
+  deleteAgentWorkspaceSession,
+  listAgentWorkspaceSessions,
+  loadAgentWorkspaceMessages,
+  streamAgentWorkspaceMessage,
+  updateAgentWorkspaceSession,
+  type AgentWorkspaceMessage,
+  type AgentWorkspaceSession,
+  type AgentWorkspaceStreamEvent,
+} from '@/api/agent-workspace'
+import { listModels, type ModelConfig } from '@/api/model'
+import { listKnowledgeBases, listKnowledgeFiles } from '@/api/knowledge-base'
+import {
+  compareDocVersions,
+  getKnowledgeContent,
+  listDocVersions,
+  rollbackDocVersion,
+  type DocVersion,
+  type DocVersionCompare,
+  type DocumentContentView,
+} from '@/api/knowledge-base/versions'
+import {
+  applyWorkspaceStreamEvent,
+  createWorkspaceTurn,
+  editResultsFromEvents,
+  eventsFromAgentSteps,
+  type WorkspaceStreamItem,
+  type WorkspaceToolEvent,
+  type WorkspaceTurnState,
+} from '@/utils/agentWorkspaceStream'
 
-type LineKind = 'normal' | 'is-add' | 'is-del' | 'is-h1' | 'is-h2' | 'is-quote'
-type LinePart = { text: string; code?: boolean }
-type EditorLine = { key: string; no: number; text?: string; parts?: LinePart[]; kind?: LineKind; tag?: boolean }
+type LineKind = 'normal' | 'is-h1' | 'is-h2' | 'is-quote'
+type EditorLine = { key: string; no: number; text: string; kind: LineKind }
+type DocRow = {
+  id: string
+  title: string
+  fileName: string
+  folderPath: string
+  folderId: string
+  knowledgeBaseId: string
+  parseStatus: string
+  syncStatus: string
+}
+type KnowledgeBaseOption = { id: string; name: string; type: string }
 
 const { t } = useI18n()
 const chatCollapsed = ref(false)
 const editorCollapsed = ref(false)
-const pendingConfirmed = ref(false)
 const draft = ref('')
 
 const workbenchRef = ref<HTMLElement | null>(null)
+const chatBodyRef = ref<HTMLElement | null>(null)
 const resizing = ref(false)
 const MIN_CHAT_WIDTH = 280
 const DEFAULT_CHAT_WIDTH = 392
@@ -394,39 +548,555 @@ const maxChatWidth = computed(() => {
 })
 const workbenchStyle = computed(() => ({ '--agent-chat-width': `${Math.round(chatWidth.value)}px` }))
 
-const editorLines: EditorLine[] = [
-  { key: 'l1', no: 1, text: '知识库平台 Agent 功能需求文档（V3 定稿版）', kind: 'is-h1' },
-  { key: 'l2', no: 2, text: '' },
-  { key: 'l3', no: 3, text: '> 版本：V3.0（定稿版） · 日期：2026-11-26 · 状态：已定稿', kind: 'is-quote' },
-  { key: 'l4', no: 4, text: '' },
-  { key: 'l5', no: 5, text: '缓存设计 · 核心知识', kind: 'is-add', tag: true },
-  { key: 'l6', no: 6, text: '- 三类缓存：Prompt 前缀缓存 C1、检索结果缓存 C2（15–30 min）、文档解析缓存 C3（随 content_hash 失效）', kind: 'is-add' },
-  { key: 'l7', no: 7, text: '- 写后失效：文档变更采用事件驱动失效；缓存条目记录 doc_version 防脏读', kind: 'is-add' },
-  { key: 'l8', no: 8, text: '- 缓存只省检索计算，不省权限：命中后仍按当前文档范围二次过滤', kind: 'is-add' },
-  { key: 'l9', no: 9, text: '- 失效风暴保护：批量导入合并失效事件，重建进入低优先级队列限速执行', kind: 'is-add' },
-  { key: 'l10', no: 10, text: '' },
-  { key: 'l11', no: 11, text: '## 2. 上下文设计', kind: 'is-h2' },
-  { key: 'l12', no: 12, text: '上下文由五层组成，按优先级注入：系统层 → 会话层 → 文档层 → 知识层 → 历史层。' },
-  { key: 'l13', no: 13, text: '' },
-  { key: 'l14', no: 14, text: '## 4. 工具封装', kind: 'is-h2' },
-  {
-    key: 'l15',
-    no: 15,
-    parts: [
-      { text: '统一使用 JSON Schema（兼容 MCP inputSchema）。L2/L3 工具 ' },
-      { text: 'dry_run=true', code: true },
-      { text: ' 只返回 Diff 与 ' },
-      { text: 'pending_task_id', code: true },
-      { text: '，不返回可执行 token。' },
-    ],
+// ---- agent workspace data -------------------------------------------------
+const sessions = ref<AgentWorkspaceSession[]>([])
+const activeSession = ref<AgentWorkspaceSession | null>(null)
+const knowledgeBases = ref<KnowledgeBaseOption[]>([])
+const documents = ref<DocRow[]>([])
+const currentDocId = ref('')
+const currentDoc = ref<DocumentContentView | null>(null)
+const currentVersions = ref<DocVersion[]>([])
+const historyMessages = ref<AgentWorkspaceMessage[]>([])
+const messageEvents = ref<Map<string, WorkspaceStreamItem[]>>(new Map())
+const liveTurn = ref<WorkspaceTurnState | null>(null)
+const streaming = ref(false)
+const models = ref<ModelConfig[]>([])
+const expandedFolders = ref<string[]>([''])
+let streamHandle: { close: () => void } | null = null
+let documentChangedInTurn = false
+
+const newSessionDialogVisible = ref(false)
+const newSessionSaving = ref(false)
+const newSessionForm = reactive({ title: '', kbId: '', modelId: '' })
+const historyDialogVisible = ref(false)
+const sessionsLoading = ref(false)
+const versionsDialogVisible = ref(false)
+const versionsLoading = ref(false)
+const compareFrom = ref('')
+const compareTo = ref('')
+const compareData = ref<DocVersionCompare | null>(null)
+const comparing = ref(false)
+
+const knowledgeBaseName = computed(() => {
+  const map: Record<string, string> = {}
+  for (const kb of knowledgeBases.value) map[kb.id] = kb.name
+  return map
+})
+const scopeTitle = computed(() => {
+  const ids = activeSession.value?.knowledge_base_ids || []
+  if (!ids.length) return t('agentWorkspace.treeRoot')
+  return ids.map((id) => knowledgeBaseName.value[id] || id).join(' · ')
+})
+const currentDocTitle = computed(() => currentDoc.value?.title || '')
+const currentVersionLabel = computed(() => currentDoc.value?.version?.version_label || '—')
+const syncStatus = computed(() => currentDoc.value?.engine_sync_status || '')
+const syncLabel = computed(() => {
+  switch (syncStatus.value) {
+    case 'pending':
+      return t('agentWorkspace.syncPending')
+    case 'failed':
+      return t('agentWorkspace.syncFailed')
+    case 'synced':
+      return t('agentWorkspace.syncSynced')
+    default:
+      return '—'
+  }
+})
+const scopeHint = computed(() => {
+  const ids = activeSession.value?.knowledge_base_ids || []
+  return ids.map((id) => knowledgeBaseName.value[id] || id).join('、') || '—'
+})
+const liveThinking = computed(() => {
+  const events = liveTurn.value?.events || []
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event.type === 'thinking' && event.content) return event.content
+  }
+  return ''
+})
+const liveToolEvents = computed<WorkspaceToolEvent[]>(() =>
+  (liveTurn.value?.events || []).filter((event): event is WorkspaceToolEvent => event.type === 'tool_call'),
+)
+const liveAnswerHtml = computed(() => renderDocumentPreviewMarkdown(liveTurn.value?.content || ''))
+function syncStatusLabel(status: string): string {
+  if (status === 'pending') return t('agentWorkspace.syncPending')
+  if (status === 'failed') return t('agentWorkspace.syncFailed')
+  if (status === 'synced') return t('agentWorkspace.syncSynced')
+  return ''
+}
+const docGroups = computed(() => {
+  const groups = new Map<string, DocRow[]>()
+  for (const doc of documents.value) {
+    const key = doc.folderPath || ''
+    const list = groups.get(key) || []
+    list.push(doc)
+    groups.set(key, list)
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([path, docs]) => ({
+      path,
+      label: path || t('agentWorkspace.treeRoot'),
+      docs: docs.slice().sort((a, b) => a.title.localeCompare(b.title)),
+    }))
+})
+const editorLines = computed<EditorLine[]>(() => {
+  const markdown = currentDoc.value?.markdown || ''
+  if (!markdown) return []
+  return markdown.replace(/\r\n/g, '\n').split('\n').map((text, index) => {
+    let kind: LineKind = 'normal'
+    if (/^#\s/.test(text)) kind = 'is-h1'
+    else if (/^#{2,6}\s/.test(text)) kind = 'is-h2'
+    else if (/^>\s?/.test(text)) kind = 'is-quote'
+    return { key: `line-${index}`, no: index + 1, text, kind }
+  })
+})
+const canSend = computed(() => Boolean(activeSession.value) && !streaming.value)
+
+// ---- loading --------------------------------------------------------------
+async function loadModels() {
+  try {
+    const all = await listModels('KnowledgeQA')
+    models.value = Array.isArray(all) ? all : []
+    if (!newSessionForm.modelId && models.value.length) {
+      newSessionForm.modelId = String(models.value[0].id || '')
+    }
+  } catch {
+    models.value = []
+  }
+}
+
+async function loadKnowledgeBases() {
+  try {
+    const response = await listKnowledgeBases({ page: 1, page_size: 200 } as never)
+    const body = response as unknown as { data?: KnowledgeBaseOption[] | { data?: KnowledgeBaseOption[] } }
+    const raw = body?.data
+    const list = (Array.isArray(raw) ? raw : raw?.data) || []
+    knowledgeBases.value = list.filter((kb) => kb.type !== 'faq')
+    if (!newSessionForm.kbId && knowledgeBases.value.length) {
+      newSessionForm.kbId = knowledgeBases.value[0].id
+    }
+  } catch {
+    knowledgeBases.value = []
+  }
+}
+
+async function loadSessions() {
+  sessionsLoading.value = true
+  try {
+    const response = await listAgentWorkspaceSessions({ page: 1, page_size: 50 })
+    sessions.value = response.data || []
+  } catch (error: unknown) {
+    MessagePlugin.error(error instanceof Error ? error.message : t('agentWorkspace.sessionLoadFailed'))
+  } finally {
+    sessionsLoading.value = false
+  }
+}
+
+async function loadDocuments() {
+  const session = activeSession.value
+  if (!session) {
+    documents.value = []
+    return
+  }
+  const rows: DocRow[] = []
+  for (const kbId of session.knowledge_base_ids) {
+    try {
+      const response = await listKnowledgeFiles(kbId, { page: 1, page_size: 200 })
+      const list = (response as unknown as { data?: Array<Record<string, unknown>> }).data || []
+      for (const doc of list) {
+        rows.push({
+          id: String(doc.id || ''),
+          title: String(doc.title || doc.file_name || doc.id || ''),
+          fileName: String(doc.file_name || ''),
+          folderPath: String(doc.folder_path || ''),
+          folderId: String(doc.folder_id || ''),
+          knowledgeBaseId: kbId,
+          parseStatus: String(doc.parse_status || ''),
+          syncStatus: String(doc.engine_sync_status || ''),
+        })
+      }
+    } catch {
+      // A KB failure should not hide documents from the other KBs.
+    }
+  }
+  documents.value = rows.filter((row) => row.id)
+  if (!currentDocId.value && documents.value.length) {
+    await selectDoc(documents.value[0].id)
+  }
+}
+
+async function loadDocContent() {
+  if (!currentDocId.value) {
+    currentDoc.value = null
+    currentVersions.value = []
+    return
+  }
+  try {
+    const response = await getKnowledgeContent(currentDocId.value)
+    currentDoc.value = response.data
+    await loadVersions()
+  } catch (error: unknown) {
+    currentDoc.value = null
+    MessagePlugin.error(error instanceof Error ? error.message : t('agentWorkspace.loadDocFailed'))
+  }
+}
+
+async function loadVersions() {
+  if (!currentDocId.value) {
+    currentVersions.value = []
+    return
+  }
+  try {
+    const response = await listDocVersions(currentDocId.value)
+    currentVersions.value = response.data?.versions || []
+  } catch {
+    currentVersions.value = []
+  }
+}
+
+async function loadMessages() {
+  const session = activeSession.value
+  if (!session) {
+    historyMessages.value = []
+    messageEvents.value = new Map()
+    return
+  }
+  try {
+    const response = await loadAgentWorkspaceMessages(session.id, { page: 1, page_size: 200 })
+    const messages = response.data?.messages || []
+    historyMessages.value = messages
+    const map = new Map<string, WorkspaceStreamItem[]>()
+    for (const message of messages) {
+      if (message.role === 'assistant') {
+        map.set(message.id, eventsFromAgentSteps(message.agent_steps))
+      }
+    }
+    messageEvents.value = map
+    await nextTick()
+    scrollChatToBottom()
+  } catch (error: unknown) {
+    MessagePlugin.error(error instanceof Error ? error.message : t('agentWorkspace.sessionLoadFailed'))
+  }
+}
+
+async function selectSession(session: AgentWorkspaceSession) {
+  cancelStream()
+  activeSession.value = session
+  currentDocId.value = ''
+  currentDoc.value = null
+  currentVersions.value = []
+  liveTurn.value = null
+  await Promise.all([loadDocuments(), loadMessages()])
+}
+
+async function openSessionFromHistory(session: AgentWorkspaceSession) {
+  historyDialogVisible.value = false
+  await selectSession(session)
+}
+
+async function selectDoc(docId: string) {
+  if (!docId) return
+  currentDocId.value = docId
+  await loadDocContent()
+}
+
+// ---- session dialogs ------------------------------------------------------
+function openNewTaskDialog() {
+  if (!knowledgeBases.value.length) {
+    void loadKnowledgeBases()
+  }
+  if (!models.value.length) {
+    void loadModels()
+  }
+  newSessionForm.title = ''
+  if (!newSessionForm.kbId && knowledgeBases.value.length) {
+    newSessionForm.kbId = knowledgeBases.value[0].id
+  }
+  if (!newSessionForm.modelId && models.value.length) {
+    newSessionForm.modelId = String(models.value[0].id || '')
+  }
+  newSessionDialogVisible.value = true
+}
+
+async function submitNewSession() {
+  if (!newSessionForm.kbId) {
+    MessagePlugin.warning(t('agentWorkspace.sessionKbRequired'))
+    return
+  }
+  newSessionSaving.value = true
+  try {
+    const response = await createAgentWorkspaceSession({
+      title: newSessionForm.title.trim() || undefined,
+      model_id: newSessionForm.modelId || undefined,
+      knowledge_base_ids: [newSessionForm.kbId],
+    })
+    newSessionDialogVisible.value = false
+    await loadSessions()
+    await selectSession(response.data)
+  } catch (error: unknown) {
+    MessagePlugin.error(error instanceof Error ? error.message : t('agentWorkspace.createFailed'))
+  } finally {
+    newSessionSaving.value = false
+  }
+}
+
+function removeSession(session: AgentWorkspaceSession) {
+  const dialog = DialogPlugin.confirm({
+    header: t('agentWorkspace.deleteSession'),
+    body: t('agentWorkspace.deleteSessionConfirm'),
+    theme: 'warning',
+    confirmBtn: t('common.delete'),
+    cancelBtn: t('common.cancel'),
+    onConfirm: async () => {
+      dialog.hide()
+      try {
+        await deleteAgentWorkspaceSession(session.id)
+        if (activeSession.value?.id === session.id) {
+          activeSession.value = null
+          historyMessages.value = []
+          documents.value = []
+          currentDoc.value = null
+        }
+        await loadSessions()
+      } catch (error: unknown) {
+        MessagePlugin.error(error instanceof Error ? error.message : t('agentWorkspace.deleteFailed'))
+      }
+    },
+  })
+}
+
+async function changeSessionModel(value: string) {
+  const session = activeSession.value
+  if (!session || !value || value === session.model_id) return
+  try {
+    const response = await updateAgentWorkspaceSession(session.id, { model_id: value })
+    activeSession.value = response.data
+    const index = sessions.value.findIndex((item) => item.id === session.id)
+    if (index >= 0) sessions.value[index] = response.data
+  } catch (error: unknown) {
+    MessagePlugin.error(error instanceof Error ? error.message : t('agentWorkspace.createFailed'))
+  }
+}
+
+// ---- versions -------------------------------------------------------------
+async function openVersionsDialog() {
+  if (!currentDocId.value) {
+    MessagePlugin.warning(t('agentWorkspace.selectDocFirst'))
+    return
+  }
+  versionsDialogVisible.value = true
+  versionsLoading.value = true
+  compareData.value = null
+  try {
+    await loadVersions()
+    const list = currentVersions.value
+    compareTo.value = list[0]?.id || ''
+    compareFrom.value = list[1]?.id || list[0]?.id || ''
+  } finally {
+    versionsLoading.value = false
+  }
+}
+
+async function runCompare() {
+  if (!currentDocId.value || !compareFrom.value || !compareTo.value) return
+  comparing.value = true
+  try {
+    const response = await compareDocVersions(currentDocId.value, compareFrom.value, compareTo.value)
+    compareData.value = response.data
+  } catch (error: unknown) {
+    MessagePlugin.error(error instanceof Error ? error.message : t('agentWorkspace.compareFailed'))
+  } finally {
+    comparing.value = false
+  }
+}
+
+function rollbackToVersion(version: DocVersion) {
+  const dialog = DialogPlugin.confirm({
+    header: t('agentWorkspace.versionRollback'),
+    body: t('agentWorkspace.rollbackConfirmBody', { label: version.version_label }),
+    theme: 'warning',
+    confirmBtn: t('agentWorkspace.versionRollback'),
+    cancelBtn: t('common.cancel'),
+    onConfirm: async () => {
+      dialog.hide()
+      await doRollback(version.id)
+    },
+  })
+}
+
+async function doRollback(versionId: string) {
+  if (!currentDocId.value || !versionId) return
+  try {
+    await rollbackDocVersion(currentDocId.value, versionId)
+    MessagePlugin.success(t('agentWorkspace.rollbackDone'))
+    await Promise.all([loadDocContent(), loadDocuments()])
+    if (versionsDialogVisible.value) await loadVersions()
+  } catch (error: unknown) {
+    MessagePlugin.error(error instanceof Error ? error.message : t('agentWorkspace.rollbackFailed'))
+  }
+}
+
+function undoEdit(documentId: string, previousVersionId: string) {
+  if (!previousVersionId) {
+    MessagePlugin.warning(t('agentWorkspace.noPreviousVersion'))
+    return
+  }
+  if (documentId !== currentDocId.value) {
+    void selectDoc(documentId).then(() => doRollback(previousVersionId))
+    return
+  }
+  void doRollback(previousVersionId)
+}
+
+// ---- chat turn ------------------------------------------------------------
+function cancelStream() {
+  streamHandle?.close()
+  streamHandle = null
+  streaming.value = false
+  liveTurn.value = null
+  documentChangedInTurn = false
+}
+
+async function send() {
+  const session = activeSession.value
+  if (!session) {
+    openNewTaskDialog()
+    return
+  }
+  if (streaming.value) return
+  const query = draft.value.trim()
+  if (!query) return
+  draft.value = ''
+  documentChangedInTurn = false
+  historyMessages.value = [
+    ...historyMessages.value,
+    {
+      id: `local-${Date.now()}`,
+      session_id: session.id,
+      role: 'user',
+      content: query,
+      created_at: new Date().toISOString(),
+    },
+  ]
+  const state = reactive(createWorkspaceTurn()) as WorkspaceTurnState
+  liveTurn.value = state
+  streaming.value = true
+  await nextTick()
+  scrollChatToBottom()
+  streamHandle = streamAgentWorkspaceMessage(session.id, query, {
+    onEvent(event: AgentWorkspaceStreamEvent) {
+      const effect = applyWorkspaceStreamEvent(state, event)
+      if (effect.documentChange) {
+        documentChangedInTurn = true
+        if (effect.documentChange.data.document_id === currentDocId.value) {
+          void loadDocContent()
+        } else if (effect.documentChange.toolName === 'create_document') {
+          void loadDocuments()
+        }
+      }
+      scrollChatToBottom()
+    },
+    onError(error: Error) {
+      MessagePlugin.error(error.message || t('agentWorkspace.sendFailed'))
+      finishTurn()
+    },
+    onClose() {
+      finishTurn()
+    },
+  })
+}
+
+let finishing = false
+async function finishTurn() {
+  if (finishing) return
+  finishing = true
+  streaming.value = false
+  streamHandle = null
+  await loadMessages()
+  liveTurn.value = null
+  if (documentChangedInTurn) {
+    await loadDocuments()
+    await loadDocContent()
+  }
+  finishing = false
+}
+
+function scrollChatToBottom() {
+  const el = chatBodyRef.value
+  if (!el) return
+  void nextTick(() => {
+    el.scrollTop = el.scrollHeight
+  })
+}
+
+watch(
+  () => historyMessages.value.length,
+  () => {
+    void nextTick(scrollChatToBottom)
   },
-  { key: 'l16', no: 16, text: '附录 C 原文内容……（Agent 已准备拆分，等待确认）', kind: 'is-del' },
-  { key: 'l17', no: 17, text: '> 附录 C 已拆分至独立文档，此处保留回链：', kind: 'is-add' },
-  { key: 'l18', no: 18, text: '详见 [附录C_决策点裁决记录.md]（同目录）', kind: 'is-add' },
-  { key: 'l19', no: 19, text: '' },
-  { key: 'l20', no: 20, text: '## 8. 分期落地建议', kind: 'is-h2' },
-  { key: 'l21', no: 21, text: 'P0 文档编辑 Agent · P1 chunk 联动 · P2 归档与协作能力。' },
-]
+)
+
+function assistantEvents(message: AgentWorkspaceMessage): WorkspaceStreamItem[] {
+  return messageEvents.value.get(message.id) || []
+}
+
+function assistantEdits(message: AgentWorkspaceMessage) {
+  return editResultsFromEvents(assistantEvents(message))
+}
+
+function assistantHtml(message: AgentWorkspaceMessage): string {
+  return renderDocumentPreviewMarkdown(String(message.content || ''))
+}
+
+function toolLabel(name: string): string {
+  const map: Record<string, string> = {
+    list_documents: t('agentWorkspace.toolListDocuments'),
+    get_document: t('agentWorkspace.toolGetDocument'),
+    search_documents: t('agentWorkspace.toolSearchDocuments'),
+    extract_knowledge_points: t('agentWorkspace.toolExtractPoints'),
+    edit_document_section: t('agentWorkspace.toolEditSection'),
+    create_document: t('agentWorkspace.toolCreateDocument'),
+  }
+  return map[name] || name
+}
+
+function toolStateLabel(event: WorkspaceStreamItem): string {
+  if (event.type !== 'tool_call') return ''
+  if (event.pending) return t('agentWorkspace.toolPending')
+  return event.success ? t('agentWorkspace.toolDone') : t('agentWorkspace.toolFailed')
+}
+
+function toolDotClass(event: WorkspaceStreamItem): string {
+  if (event.type !== 'tool_call') return ''
+  if (event.pending) return 'is-warning'
+  return event.success ? 'is-success' : 'is-warning'
+}
+
+function versionSourceLabel(version: DocVersion): string {
+  const map: Record<string, string> = {
+    upload: t('agentWorkspace.versionSourceUpload'),
+    manual_edit: t('agentWorkspace.versionSourceManual'),
+    rollback: t('agentWorkspace.versionSourceRollback'),
+    reparse: t('agentWorkspace.versionSourceReparse'),
+    agent_edit: t('agentWorkspace.versionSourceAgentEdit'),
+    agent_create: t('agentWorkspace.versionSourceAgentCreate'),
+  }
+  return map[version.source_type] || version.source_type
+}
+
+function formatTime(value?: string): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString()
+}
+
+function toggleFolder(path: string) {
+  expandedFolders.value = expandedFolders.value.includes(path)
+    ? expandedFolders.value.filter((item) => item !== path)
+    : [...expandedFolders.value, path]
+}
 
 function loadChatWidth(): number {
   const raw = Number(loadPreference('agent_chat_width'))
@@ -487,25 +1157,16 @@ function syncWorkbenchWidth() {
   chatWidth.value = clampChatWidth(chatWidth.value)
 }
 
-function notAvailable() {
-  MessagePlugin.info(t('agentWorkspace.backendPending'))
-}
-
-function confirmTask() {
-  pendingConfirmed.value = true
-  MessagePlugin.success(t('agentWorkspace.confirmPlaceholder'))
-}
-
-function undoEdit() {
-  MessagePlugin.info(t('agentWorkspace.undoPlaceholder'))
-}
-
-onMounted(() => {
+onMounted(async () => {
   syncWorkbenchWidth()
   window.addEventListener('resize', syncWorkbenchWidth)
   if (workbenchRef.value && typeof ResizeObserver !== 'undefined') {
     workbenchObserver = new ResizeObserver(syncWorkbenchWidth)
     workbenchObserver.observe(workbenchRef.value)
+  }
+  await Promise.all([loadKnowledgeBases(), loadModels(), loadSessions()])
+  if (sessions.value.length) {
+    await selectSession(sessions.value[0])
   }
 })
 
@@ -514,6 +1175,7 @@ onUnmounted(() => {
   window.removeEventListener('resize', syncWorkbenchWidth)
   workbenchObserver?.disconnect()
   workbenchObserver = null
+  streamHandle?.close()
 })
 </script>
 
@@ -1483,6 +2145,346 @@ html[theme-mode="dark"] .agent-page {
   display: flex;
   gap: 10px;
   margin-top: 8px;
+}
+
+/* live data additions */
+.agent-hint {
+  margin: 8px 6px;
+  color: var(--ag-muted);
+  font-size: 12.5px;
+}
+
+.agent-tree__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 6px;
+  color: var(--ag-body);
+  font-size: 13px;
+}
+
+.agent-tree__empty p {
+  margin: 0;
+}
+
+.agent-editor__empty {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  color: var(--ag-muted);
+  font-size: 13px;
+}
+
+.agent-chat__empty {
+  padding: 24px 16px;
+  color: var(--ag-muted);
+  font-size: 13px;
+}
+
+.agent-thinking {
+  margin: 0 0 10px;
+  color: var(--ag-body);
+  font-size: 12.5px;
+}
+
+.agent-thinking summary {
+  color: var(--ag-muted);
+  cursor: pointer;
+}
+
+.agent-thinking pre {
+  max-height: 200px;
+  padding: 8px 10px;
+  margin: 6px 0 0;
+  overflow: auto;
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  background: var(--ag-code-bg);
+  border: 1px solid var(--ag-border-soft);
+  border-radius: 3px;
+}
+
+.agent-tool-line {
+  padding: 8px 10px;
+  margin: 0 0 10px;
+  background: var(--ag-paper);
+  border: 1px solid var(--ag-border-soft);
+  border-radius: 3px;
+}
+
+.agent-tool-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+}
+
+.agent-tool-head strong {
+  color: var(--ag-ink);
+}
+
+.agent-tool-output {
+  max-height: 180px;
+  margin: 6px 0 0;
+  overflow: auto;
+  color: var(--ag-body);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.agent-tool-error {
+  margin: 6px 0 0;
+  color: var(--ag-danger);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+}
+
+.agent-state.is-warn {
+  background: var(--ag-warning-soft);
+  color: var(--ag-warning);
+}
+
+.agent-answer {
+  margin-top: 6px;
+  color: var(--ag-ink);
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.agent-answer :deep(h1),
+.agent-answer :deep(h2),
+.agent-answer :deep(h3) {
+  margin: 10px 0 6px;
+  color: var(--ag-accent);
+  font-size: 1.05em;
+}
+
+.agent-answer :deep(p) {
+  margin: 6px 0;
+}
+
+.agent-answer :deep(ul),
+.agent-answer :deep(ol) {
+  padding-left: 20px;
+  margin: 6px 0;
+}
+
+.agent-answer :deep(code) {
+  padding: 1px 4px;
+  font-family: var(--app-font-family-mono, monospace);
+  font-size: 0.92em;
+  background: var(--ag-code-bg);
+  border: 1px solid var(--ag-border-soft);
+  border-radius: 2px;
+}
+
+.agent-answer :deep(table) {
+  margin: 8px 0;
+  font-size: 13px;
+  border-collapse: collapse;
+}
+
+.agent-answer :deep(th),
+.agent-answer :deep(td) {
+  padding: 4px 8px;
+  border: 1px solid var(--ag-border-soft);
+}
+
+.agent-edit-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--ag-add-soft);
+  border: 1px solid var(--ag-add);
+  border-radius: 3px;
+}
+
+.agent-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ag-ink);
+  font-size: 12.5px;
+}
+
+.agent-edit-row svg {
+  flex: none;
+  color: var(--ag-add);
+}
+
+.agent-edit-row__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-foot-sync {
+  color: var(--ag-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.agent-text-btn.is-danger {
+  color: var(--ag-danger);
+}
+
+.agent-foot-model {
+  width: 180px;
+}
+
+.agent-send:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.agent-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.agent-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--ag-body);
+  font-size: 12.5px;
+}
+
+.agent-field.is-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-field input,
+.agent-field select {
+  height: 32px;
+  padding: 0 10px;
+  color: var(--ag-ink);
+  font-size: 13px;
+  background: var(--ag-paper);
+  border: 1px solid var(--ag-border);
+  border-radius: 3px;
+  outline: 0;
+}
+
+.agent-field input:focus,
+.agent-field select:focus {
+  border-color: var(--ag-focus);
+}
+
+.agent-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.agent-session-list,
+.agent-version-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.agent-session-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--ag-border-soft);
+  border-radius: 3px;
+}
+
+.agent-session-row.is-active {
+  background: var(--ag-selection);
+  border-color: var(--ag-accent);
+}
+
+.agent-session-row__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0;
+  color: var(--ag-ink);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+.agent-session-row__main span {
+  overflow: hidden;
+  color: var(--ag-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-version-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--ag-border-soft);
+  border-radius: 3px;
+}
+
+.agent-version-row__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--ag-ink);
+  font-size: 13px;
+}
+
+.agent-version-row__main span,
+.agent-version-row__main small {
+  color: var(--ag-muted);
+  font-size: 12px;
+}
+
+.agent-version-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.agent-version-compare__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.agent-version-diff pre {
+  max-height: 260px;
+  padding: 10px;
+  overflow: auto;
+  font-family: var(--app-font-family-mono, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  background: var(--ag-code-bg);
+  border: 1px solid var(--ag-border-soft);
+  border-radius: 3px;
 }
 
 @media (max-width: 1100px) {
